@@ -69,6 +69,7 @@ services:
         condition: service_healthy
     environment:
       AUTOZAP_BACKEND_HOST: ${AUTOZAP_BACKEND_HOST}
+      AUTOZAP_BACKEND_FALLBACK_HOST: ${AUTOZAP_BACKEND_FALLBACK_HOST:-}
     ports:
       - "80:80"
       - "443:443"
