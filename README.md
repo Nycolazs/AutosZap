@@ -153,7 +153,7 @@ Além disso:
 
 1. Copie `.env.production.example` para `.env.production`.
 2. Preencha `FRONTEND_URL`, segredos JWT, `APP_ENCRYPTION_KEY` e variáveis da Meta.
-3. Defina `AUTOZAP_BACKEND_HOST` com um host HTTPS que resolva para a VPS. Exemplo sem domínio próprio: `178-156-252-137.sslip.io`.
+3. Defina `AUTOSZAP_BACKEND_HOST` com um host HTTPS que resolva para a VPS. Exemplo sem domínio próprio: `178-156-252-137.sslip.io`.
 4. Defina `BACKEND_PUBLIC_URL` com a URL pública definitiva da API. Exemplo: `https://api.autoszap.com`.
 5. Suba com:
 
