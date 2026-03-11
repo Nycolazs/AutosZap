@@ -313,13 +313,19 @@ export class MetaWhatsAppService {
       },
     });
 
-    const matched = instances.some(
+    const envVerifyToken = this.configService.get<string>(
+      'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+    );
+
+    const matchedInstanceToken = instances.some(
       (instance) =>
         this.cryptoService.decrypt(instance.webhookVerifyTokenEncrypted) ===
         token,
     );
 
-    if (!matched) {
+    const matchedEnvToken = envVerifyToken === token;
+
+    if (!matchedInstanceToken && !matchedEnvToken) {
       throw new UnauthorizedException('Webhook verify token invalido.');
     }
 
