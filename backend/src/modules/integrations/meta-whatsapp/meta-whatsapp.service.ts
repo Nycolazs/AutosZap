@@ -1,0 +1,736 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  ConversationOwnership,
+  ConversationStatus,
+  InstanceStatus,
+  MessageDirection,
+  MessageStatus,
+  Prisma,
+  WebhookEventType,
+} from '@prisma/client';
+import { CryptoService } from '../../../common/crypto/crypto.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { MetaWhatsAppProvider } from './meta-whatsapp.provider';
+import {
+  MessagingInstanceConfig,
+  ProviderInstanceDiagnostics,
+  ProviderTemplateSummary,
+  TemplateParameter,
+} from './messaging-provider.interface';
+
+@Injectable()
+export class MetaWhatsAppService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cryptoService: CryptoService,
+    private readonly provider: MetaWhatsAppProvider,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async testConnection(workspaceId: string, instanceId: string) {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    return this.provider.healthCheck(config);
+  }
+
+  async syncInstance(
+    workspaceId: string,
+    instanceId: string,
+  ): Promise<ProviderInstanceDiagnostics> {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const diagnostics = await this.provider.getInstanceDiagnostics(config);
+
+    await this.prisma.instance.update({
+      where: { id: instanceId },
+      data: {
+        phoneNumber:
+          diagnostics.phoneNumber?.displayPhoneNumber ?? config.phoneNumber,
+        status: diagnostics.healthy
+          ? InstanceStatus.CONNECTED
+          : InstanceStatus.SYNCING,
+        lastSyncAt: new Date(),
+      },
+    });
+
+    return diagnostics;
+  }
+
+  async subscribeApp(
+    workspaceId: string,
+    instanceId: string,
+    payload?: {
+      overrideCallbackUri?: string;
+      verifyToken?: string;
+    },
+  ) {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const result = await this.provider.subscribeApp(config, payload);
+
+    await this.prisma.instance.update({
+      where: { id: instanceId },
+      data: {
+        status: InstanceStatus.CONNECTED,
+        lastSyncAt: new Date(),
+      },
+    });
+
+    return result;
+  }
+
+  async listTemplates(
+    workspaceId: string,
+    instanceId: string,
+  ): Promise<ProviderTemplateSummary[]> {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    return this.provider.listTemplates(config);
+  }
+
+  async sendDirectMessage(
+    workspaceId: string,
+    payload: {
+      instanceId: string;
+      to: string;
+      body: string;
+      userId?: string;
+      contactName?: string;
+    },
+  ) {
+    const contact = await this.ensureContact(
+      workspaceId,
+      payload.to,
+      payload.contactName,
+    );
+    const conversation = await this.ensureConversation(
+      workspaceId,
+      contact.id,
+      payload.instanceId,
+      payload.userId,
+    );
+    return this.sendConversationMessage(
+      workspaceId,
+      conversation.id,
+      payload.userId ?? null,
+      payload.body,
+    );
+  }
+
+  async sendTemplateDirectMessage(
+    workspaceId: string,
+    payload: {
+      instanceId: string;
+      to: string;
+      templateName: string;
+      languageCode: string;
+      userId?: string;
+      contactName?: string;
+      headerParameters?: string[];
+      bodyParameters?: string[];
+    },
+  ) {
+    const contact = await this.ensureContact(
+      workspaceId,
+      payload.to,
+      payload.contactName,
+    );
+    const conversation = await this.ensureConversation(
+      workspaceId,
+      contact.id,
+      payload.instanceId,
+      payload.userId,
+    );
+
+    return this.sendTemplateConversationMessage(
+      workspaceId,
+      conversation.id,
+      payload.userId ?? null,
+      {
+        instanceId: payload.instanceId,
+        templateName: payload.templateName,
+        languageCode: payload.languageCode,
+        headerParameters: payload.headerParameters,
+        bodyParameters: payload.bodyParameters,
+      },
+    );
+  }
+
+  async sendConversationMessage(
+    workspaceId: string,
+    conversationId: string,
+    senderUserId: string | null,
+    content: string,
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        contact: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversa nao encontrada.');
+    }
+
+    const instanceId = conversation.instanceId
+      ? conversation.instanceId
+      : (
+          await this.prisma.instance.findFirst({
+            where: {
+              workspaceId,
+              deletedAt: null,
+            },
+            orderBy: {
+              updatedAt: 'desc',
+            },
+          })
+        )?.id;
+
+    if (!instanceId) {
+      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    await this.assertCustomerServiceWindow(
+      conversation.id,
+      workspaceId,
+      config,
+    );
+
+    const providerResult = await this.provider.sendTextMessage(
+      config,
+      conversation.contact.phone,
+      content,
+    );
+
+    return this.persistOutboundMessage({
+      workspaceId,
+      conversationId: conversation.id,
+      senderUserId,
+      instanceId,
+      content,
+      providerResult,
+    });
+  }
+
+  async sendTemplateConversationMessage(
+    workspaceId: string,
+    conversationId: string,
+    senderUserId: string | null,
+    payload: {
+      instanceId?: string;
+      templateName: string;
+      languageCode: string;
+      headerParameters?: string[];
+      bodyParameters?: string[];
+    },
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        contact: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversa nao encontrada.');
+    }
+
+    const instanceId =
+      payload.instanceId ??
+      conversation.instanceId ??
+      (
+        await this.prisma.instance.findFirst({
+          where: {
+            workspaceId,
+            deletedAt: null,
+          },
+          orderBy: {
+            updatedAt: 'desc',
+          },
+        })
+      )?.id;
+
+    if (!instanceId) {
+      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const providerResult = await this.provider.sendTemplateMessage(
+      config,
+      conversation.contact.phone,
+      {
+        name: payload.templateName,
+        languageCode: payload.languageCode,
+        headerParameters: this.mapTemplateParameters(payload.headerParameters),
+        bodyParameters: this.mapTemplateParameters(payload.bodyParameters),
+      },
+    );
+
+    const content = `Template ${payload.templateName} (${payload.languageCode})`;
+
+    return this.persistOutboundMessage({
+      workspaceId,
+      conversationId: conversation.id,
+      senderUserId,
+      instanceId,
+      content,
+      providerResult,
+    });
+  }
+
+  async verifyWebhook(query: {
+    'hub.mode'?: string;
+    'hub.verify_token'?: string;
+    'hub.challenge'?: string;
+  }) {
+    const mode = query['hub.mode'];
+    const token = query['hub.verify_token'];
+    const challenge = query['hub.challenge'];
+
+    if (mode !== 'subscribe' || !token || !challenge) {
+      throw new BadRequestException('Parametros de verificacao ausentes.');
+    }
+
+    const instances = await this.prisma.instance.findMany({
+      where: {
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        webhookVerifyTokenEncrypted: true,
+      },
+    });
+
+    const matched = instances.some(
+      (instance) =>
+        this.cryptoService.decrypt(instance.webhookVerifyTokenEncrypted) ===
+        token,
+    );
+
+    if (!matched) {
+      throw new UnauthorizedException('Webhook verify token invalido.');
+    }
+
+    return challenge;
+  }
+
+  async handleWebhook(
+    payload: Record<string, unknown>,
+    context?: {
+      signature?: string;
+      rawBody?: Buffer;
+    },
+  ) {
+    const parsed = this.provider.parseWebhook(payload);
+    const firstPhoneNumberId =
+      parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
+
+    const instance = firstPhoneNumberId
+      ? await this.prisma.instance.findFirst({
+          where: {
+            phoneNumberId: firstPhoneNumberId,
+            deletedAt: null,
+          },
+        })
+      : null;
+
+    await this.assertWebhookSignature(
+      instance?.id,
+      firstPhoneNumberId,
+      context?.signature,
+      context?.rawBody,
+    );
+
+    const webhookEvent = await this.prisma.whatsAppWebhookEvent.create({
+      data: {
+        workspaceId: instance?.workspaceId,
+        instanceId: instance?.id,
+        externalId: Array.isArray(payload.entry)
+          ? payload.entry
+              .map((entry) => (entry as { id?: string }).id)
+              .filter(Boolean)
+              .join(',')
+          : undefined,
+        eventType:
+          parsed.messages.length > 0
+            ? WebhookEventType.MESSAGE
+            : parsed.statuses.length > 0
+              ? WebhookEventType.STATUS
+              : WebhookEventType.OTHER,
+        payload: payload as Prisma.InputJsonValue,
+      },
+    });
+
+    for (const inbound of parsed.messages) {
+      const inboundInstance =
+        inbound.phoneNumberId &&
+        (await this.prisma.instance.findFirst({
+          where: {
+            phoneNumberId: inbound.phoneNumberId,
+            deletedAt: null,
+          },
+        }));
+
+      if (!inboundInstance) {
+        continue;
+      }
+
+      const contact = await this.ensureContact(
+        inboundInstance.workspaceId,
+        inbound.from,
+        inbound.profileName,
+      );
+      const conversation = await this.ensureConversation(
+        inboundInstance.workspaceId,
+        contact.id,
+        inboundInstance.id,
+      );
+
+      await this.prisma.conversationMessage.create({
+        data: {
+          workspaceId: inboundInstance.workspaceId,
+          conversationId: conversation.id,
+          senderContactId: contact.id,
+          instanceId: inboundInstance.id,
+          externalMessageId: inbound.externalMessageId,
+          direction: MessageDirection.INBOUND,
+          content: inbound.body,
+          status: MessageStatus.READ,
+          sentAt: inbound.timestamp
+            ? new Date(Number(inbound.timestamp) * 1000)
+            : new Date(),
+          deliveredAt: new Date(),
+          readAt: new Date(),
+        },
+      });
+
+      await this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          status: ConversationStatus.OPEN,
+          ownership: conversation.assignedUserId
+            ? ConversationOwnership.MINE
+            : ConversationOwnership.UNASSIGNED,
+          unreadCount: {
+            increment: 1,
+          },
+          lastMessageAt: new Date(),
+          lastMessagePreview: inbound.body,
+        },
+      });
+    }
+
+    for (const status of parsed.statuses) {
+      const message = await this.prisma.conversationMessage.findFirst({
+        where: {
+          externalMessageId: status.externalMessageId,
+        },
+      });
+
+      if (!message) {
+        continue;
+      }
+
+      const nextStatus = this.mapMetaStatus(status.status);
+
+      await this.prisma.conversationMessage.update({
+        where: { id: message.id },
+        data: {
+          status: nextStatus,
+          deliveredAt:
+            nextStatus === MessageStatus.DELIVERED ||
+            nextStatus === MessageStatus.READ
+              ? new Date()
+              : message.deliveredAt,
+          readAt:
+            nextStatus === MessageStatus.READ ? new Date() : message.readAt,
+        },
+      });
+
+      await this.prisma.messageDeliveryStatus.create({
+        data: {
+          workspaceId: message.workspaceId,
+          messageId: message.id,
+          instanceId: message.instanceId,
+          provider: (instance?.provider ?? 'META_WHATSAPP') as never,
+          externalMessageId: status.externalMessageId,
+          status: nextStatus,
+          payload: status as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    await this.prisma.whatsAppWebhookEvent.update({
+      where: { id: webhookEvent.id },
+      data: {
+        processedAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      processedMessages: parsed.messages.length,
+      processedStatuses: parsed.statuses.length,
+    };
+  }
+
+  private async getInstanceConfig(
+    instanceId: string,
+    workspaceId: string,
+  ): Promise<MessagingInstanceConfig & { provider: 'META_WHATSAPP' }> {
+    const instance = await this.prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        workspaceId,
+        deletedAt: null,
+      },
+    });
+
+    if (!instance) {
+      throw new NotFoundException('Instancia nao encontrada.');
+    }
+
+    return {
+      id: instance.id,
+      workspaceId: instance.workspaceId,
+      provider: 'META_WHATSAPP',
+      mode: instance.mode,
+      phoneNumber: instance.phoneNumber,
+      phoneNumberId: instance.phoneNumberId,
+      businessAccountId: instance.businessAccountId,
+      accessToken: this.cryptoService.decrypt(instance.accessTokenEncrypted),
+      verifyToken: this.cryptoService.decrypt(
+        instance.webhookVerifyTokenEncrypted,
+      ),
+      appSecret: this.cryptoService.decrypt(instance.appSecretEncrypted),
+    };
+  }
+
+  private async assertWebhookSignature(
+    instanceId: string | undefined,
+    phoneNumberId: string | undefined,
+    signature: string | undefined,
+    rawBody: Buffer | undefined,
+  ) {
+    if (
+      (this.configService.get<string>('META_MODE') ?? 'DEV').toUpperCase() !==
+      'PRODUCTION'
+    ) {
+      return;
+    }
+
+    const candidateInstances = await this.prisma.instance.findMany({
+      where: {
+        deletedAt: null,
+        ...(instanceId
+          ? { id: instanceId }
+          : phoneNumberId
+            ? { phoneNumberId }
+            : {}),
+      },
+      select: {
+        appSecretEncrypted: true,
+      },
+    });
+
+    const secrets = candidateInstances
+      .map((candidate) =>
+        this.cryptoService.decrypt(candidate.appSecretEncrypted),
+      )
+      .filter((value): value is string => Boolean(value));
+
+    if (!secrets.length) {
+      return;
+    }
+
+    if (!signature || !rawBody) {
+      throw new UnauthorizedException(
+        'Assinatura X-Hub-Signature-256 obrigatoria para webhooks em producao.',
+      );
+    }
+
+    const valid = secrets.some((secret) =>
+      this.provider.validateWebhookSignature(rawBody, signature, secret),
+    );
+
+    if (!valid) {
+      throw new UnauthorizedException('Assinatura do webhook Meta invalida.');
+    }
+  }
+
+  private async assertCustomerServiceWindow(
+    conversationId: string,
+    workspaceId: string,
+    config: MessagingInstanceConfig,
+  ) {
+    if (!this.provider.isProductionMode(config)) {
+      return;
+    }
+
+    const latestInbound = await this.prisma.conversationMessage.findFirst({
+      where: {
+        workspaceId,
+        conversationId,
+        direction: MessageDirection.INBOUND,
+      },
+      orderBy: {
+        sentAt: 'desc',
+      },
+    });
+
+    const serviceWindowMs = 24 * 60 * 60 * 1000;
+
+    if (
+      !latestInbound?.sentAt ||
+      Date.now() - latestInbound.sentAt.getTime() > serviceWindowMs
+    ) {
+      throw new BadRequestException(
+        'A janela de atendimento de 24 horas nao esta aberta. Use envio por template aprovado.',
+      );
+    }
+  }
+
+  private async persistOutboundMessage(payload: {
+    workspaceId: string;
+    conversationId: string;
+    senderUserId: string | null;
+    instanceId: string;
+    content: string;
+    providerResult: {
+      externalMessageId: string;
+      simulated: boolean;
+      raw: Record<string, unknown>;
+    };
+  }) {
+    const message = await this.prisma.conversationMessage.create({
+      data: {
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+        senderUserId: payload.senderUserId ?? undefined,
+        instanceId: payload.instanceId,
+        externalMessageId: payload.providerResult.externalMessageId,
+        direction: MessageDirection.OUTBOUND,
+        content: payload.content,
+        status: payload.providerResult.simulated
+          ? MessageStatus.DELIVERED
+          : MessageStatus.SENT,
+        sentAt: new Date(),
+        deliveredAt: payload.providerResult.simulated ? new Date() : null,
+      },
+    });
+
+    await this.prisma.messageDeliveryStatus.create({
+      data: {
+        workspaceId: payload.workspaceId,
+        messageId: message.id,
+        instanceId: payload.instanceId,
+        provider: 'META_WHATSAPP',
+        externalMessageId: payload.providerResult.externalMessageId,
+        status: payload.providerResult.simulated
+          ? MessageStatus.DELIVERED
+          : MessageStatus.SENT,
+        payload: payload.providerResult.raw as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.prisma.conversation.update({
+      where: { id: payload.conversationId },
+      data: {
+        instanceId: payload.instanceId,
+        lastMessageAt: new Date(),
+        lastMessagePreview: payload.content,
+        updatedAt: new Date(),
+      },
+    });
+
+    return message;
+  }
+
+  private mapTemplateParameters(values?: string[]): TemplateParameter[] {
+    return (values ?? []).filter(Boolean).map((value) => ({
+      type: 'text',
+      text: value,
+    }));
+  }
+
+  private async ensureContact(
+    workspaceId: string,
+    phone: string,
+    name?: string,
+  ) {
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+    const existing = await this.prisma.contact.findFirst({
+      where: {
+        workspaceId,
+        phone: normalizedPhone,
+        deletedAt: null,
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.contact.create({
+      data: {
+        workspaceId,
+        name: name ?? `Contato ${normalizedPhone.slice(-4)}`,
+        phone: normalizedPhone,
+      },
+    });
+  }
+
+  private async ensureConversation(
+    workspaceId: string,
+    contactId: string,
+    instanceId: string,
+    assignedUserId?: string | null,
+  ) {
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        workspaceId,
+        contactId,
+        instanceId,
+        deletedAt: null,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.conversation.create({
+      data: {
+        workspaceId,
+        contactId,
+        instanceId,
+        assignedUserId: assignedUserId ?? undefined,
+        ownership: assignedUserId
+          ? ConversationOwnership.MINE
+          : ConversationOwnership.UNASSIGNED,
+      },
+    });
+  }
+
+  private mapMetaStatus(status: string) {
+    if (status === 'read') return MessageStatus.READ;
+    if (status === 'delivered') return MessageStatus.DELIVERED;
+    if (status === 'failed') return MessageStatus.FAILED;
+    return MessageStatus.SENT;
+  }
+}

@@ -1,0 +1,803 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  INACTIVE
+}
+
+enum ContactSource {
+  MANUAL
+  WHATSAPP
+  WEBSITE
+  IMPORT
+  CAMPAIGN
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum ConversationOwnership {
+  MINE
+  UNASSIGNED
+  TEAM
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  SYSTEM
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+enum CampaignAudienceType {
+  LIST
+  TAG
+  GROUP
+  CUSTOM
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+enum LeadSource {
+  MANUAL
+  WHATSAPP
+  WEBSITE
+  REFERRAL
+  CAMPAIGN
+  IMPORT
+}
+
+enum AssistantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum KnowledgeBaseType {
+  INTERNAL
+  FAQ
+  URL
+  MIXED
+}
+
+enum KnowledgeDocumentType {
+  TEXT
+  URL
+  NOTE
+}
+
+enum EntityStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum InstanceProvider {
+  META_WHATSAPP
+}
+
+enum InstanceStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  SYNCING
+}
+
+enum InstanceMode {
+  DEV
+  SANDBOX
+  PRODUCTION
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  INVITE
+  SEND
+  SYNC
+}
+
+enum WebhookEventType {
+  MESSAGE
+  STATUS
+  TEMPLATE
+  OTHER
+}
+
+model Workspace {
+  id                String                  @id @default(cuid())
+  name              String
+  slug              String                  @unique
+  companyName       String
+  settings          Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  deletedAt         DateTime?
+  users             User[]
+  refreshTokens     RefreshToken[]
+  teamMembers       TeamMember[]
+  contacts          Contact[]
+  contactLists      ContactList[]
+  groups            Group[]
+  tags              Tag[]
+  conversations     Conversation[]
+  conversationMsgs  ConversationMessage[]
+  conversationNotes ConversationNote[]
+  campaigns         Campaign[]
+  pipelines         Pipeline[]
+  pipelineStages    PipelineStage[]
+  leads             Lead[]
+  assistants        Assistant[]
+  knowledgeBases    KnowledgeBase[]
+  knowledgeDocs     KnowledgeDocument[]
+  aiTools           AiTool[]
+  instances         Instance[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  webhookEvents     WhatsAppWebhookEvent[]
+  messageStatuses   MessageDeliveryStatus[]
+}
+
+model User {
+  id                  String                    @id @default(cuid())
+  workspaceId         String
+  name                String
+  email               String                    @unique
+  passwordHash        String
+  role                Role                      @default(AGENT)
+  status              UserStatus                @default(ACTIVE)
+  title               String?
+  avatarUrl           String?
+  lastLoginAt         DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  deletedAt           DateTime?
+  workspace           Workspace                 @relation(fields: [workspaceId], references: [id])
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  sentMessages        ConversationMessage[]     @relation("UserMessages")
+  notes               ConversationNote[]        @relation("UserNotes")
+  assignedConvos      Conversation[]            @relation("ConversationAssignee")
+  conversationOwners  ConversationParticipant[]
+  assignmentsTo       ConversationAssignment[]  @relation("AssignmentTo")
+  assignmentsFrom     ConversationAssignment[]  @relation("AssignmentFrom")
+  leadsOwned          Lead[]                    @relation("LeadOwner")
+  campaignsCreated    Campaign[]                @relation("CampaignCreator")
+  instancesCreated    Instance[]                @relation("InstanceCreator")
+  notifications       Notification[]
+  auditLogs           AuditLog[]                @relation("AuditActor")
+  teamMembership      TeamMember?               @relation("TeamMembership")
+  sentInvites         TeamMember[]              @relation("InvitedBy")
+
+  @@index([workspaceId, role])
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([workspaceId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model TeamMember {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  userId        String?    @unique
+  invitedById   String?
+  name          String
+  email         String
+  title         String?
+  role          Role       @default(AGENT)
+  status        UserStatus @default(PENDING)
+  inviteToken   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deactivatedAt DateTime?
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
+  user          User?      @relation("TeamMembership", fields: [userId], references: [id])
+  invitedBy     User?      @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, status])
+}
+
+model Contact {
+  id                 String                    @id @default(cuid())
+  workspaceId        String
+  name               String
+  phone              String
+  email              String?
+  company            String?
+  jobTitle           String?
+  source             ContactSource             @default(MANUAL)
+  lastInteractionAt  DateTime?
+  notes              String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id])
+  tagLinks           ContactTag[]
+  listItems          ContactListItem[]
+  groupMembers       GroupMember[]
+  conversations      Conversation[]
+  conversationParts  ConversationParticipant[]
+  sentMessages       ConversationMessage[]
+  campaignRecipients CampaignRecipient[]
+  leads              Lead[]
+
+  @@unique([workspaceId, phone])
+  @@index([workspaceId, name])
+  @@index([workspaceId, email])
+}
+
+model ContactList {
+  id          String            @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdById String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id])
+  items       ContactListItem[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model ContactListItem {
+  id        String      @id @default(cuid())
+  listId    String
+  contactId String
+  createdAt DateTime    @default(now())
+  list      ContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact   Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, contactId])
+  @@index([contactId])
+}
+
+model Group {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  members     GroupMember[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  contactId String
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, contactId])
+  @@index([contactId])
+}
+
+model Tag {
+  id            String            @id @default(cuid())
+  workspaceId   String
+  name          String
+  color         String
+  description   String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id])
+  contacts      ContactTag[]
+  conversations ConversationTag[]
+  leads         LeadTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model ContactTag {
+  id        String   @id @default(cuid())
+  contactId String
+  tagId     String
+  createdAt DateTime @default(now())
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, tagId])
+  @@index([tagId])
+}
+
+model Conversation {
+  id                 String                    @id @default(cuid())
+  workspaceId        String
+  contactId          String
+  instanceId         String?
+  assignedUserId     String?
+  status             ConversationStatus        @default(OPEN)
+  ownership          ConversationOwnership     @default(UNASSIGNED)
+  unreadCount        Int                       @default(0)
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id])
+  contact            Contact                   @relation(fields: [contactId], references: [id])
+  instance           Instance?                 @relation(fields: [instanceId], references: [id])
+  assignedUser       User?                     @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
+  messages           ConversationMessage[]
+  notes              ConversationNote[]
+  participants       ConversationParticipant[]
+  assignments        ConversationAssignment[]
+  tags               ConversationTag[]
+
+  @@index([workspaceId, status, lastMessageAt])
+  @@index([contactId])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  userId         String?
+  contactId      String?
+  role           String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact        Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, conversationId])
+}
+
+model ConversationAssignment {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  assignedToId   String
+  assignedById   String?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  assignedTo     User         @relation("AssignmentTo", fields: [assignedToId], references: [id])
+  assignedBy     User?        @relation("AssignmentFrom", fields: [assignedById], references: [id])
+
+  @@index([workspaceId, conversationId])
+}
+
+model ConversationMessage {
+  id                String                  @id @default(cuid())
+  workspaceId       String
+  conversationId    String
+  senderContactId   String?
+  senderUserId      String?
+  instanceId        String?
+  externalMessageId String?
+  direction         MessageDirection
+  messageType       String                  @default("text")
+  content           String
+  metadata          Json?
+  status            MessageStatus           @default(QUEUED)
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  workspace         Workspace               @relation(fields: [workspaceId], references: [id])
+  conversation      Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderContact     Contact?                @relation(fields: [senderContactId], references: [id], onDelete: SetNull)
+  senderUser        User?                   @relation("UserMessages", fields: [senderUserId], references: [id], onDelete: SetNull)
+  instance          Instance?               @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  deliveryStatuses  MessageDeliveryStatus[]
+
+  @@index([workspaceId, conversationId, createdAt])
+  @@index([externalMessageId])
+}
+
+model ConversationNote {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  authorId       String
+  content        String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         User         @relation("UserNotes", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, conversationId])
+}
+
+model ConversationTag {
+  id             String       @id @default(cuid())
+  conversationId String
+  tagId          String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag            Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, tagId])
+  @@index([tagId])
+}
+
+model Campaign {
+  id             String               @id @default(cuid())
+  workspaceId    String
+  createdById    String
+  instanceId     String?
+  name           String
+  description    String?
+  audienceType   CampaignAudienceType
+  targetConfig   Json
+  message        String
+  scheduledAt    DateTime?
+  status         CampaignStatus       @default(DRAFT)
+  recipientCount Int                  @default(0)
+  sentCount      Int                  @default(0)
+  failedCount    Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  deletedAt      DateTime?
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id])
+  creator        User                 @relation("CampaignCreator", fields: [createdById], references: [id])
+  instance       Instance?            @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  recipients     CampaignRecipient[]
+
+  @@index([workspaceId, status, createdAt])
+}
+
+model CampaignRecipient {
+  id          String                  @id @default(cuid())
+  campaignId  String
+  contactId   String
+  status      CampaignRecipientStatus @default(PENDING)
+  messageId   String?
+  error       String?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  createdAt   DateTime                @default(now())
+  campaign    Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact     Contact                 @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([contactId, status])
+}
+
+model Pipeline {
+  id          String          @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id])
+  stages      PipelineStage[]
+  leads       Lead[]
+
+  @@unique([workspaceId, name])
+}
+
+model PipelineStage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  pipelineId  String
+  name        String
+  color       String
+  order       Int
+  probability Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  pipeline    Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  leads       Lead[]
+
+  @@unique([pipelineId, name])
+  @@index([workspaceId, pipelineId, order])
+}
+
+model Lead {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  pipelineId   String
+  stageId      String
+  contactId    String?
+  assignedToId String?
+  name         String
+  company      String?
+  source       LeadSource    @default(MANUAL)
+  value        Decimal       @db.Decimal(12, 2)
+  order        Int           @default(0)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
+  pipeline     Pipeline      @relation(fields: [pipelineId], references: [id])
+  stage        PipelineStage @relation(fields: [stageId], references: [id])
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  assignedTo   User?         @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  tags         LeadTag[]
+
+  @@index([workspaceId, stageId, order])
+  @@index([contactId])
+}
+
+model LeadTag {
+  id        String   @id @default(cuid())
+  leadId    String
+  tagId     String
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tagId])
+  @@index([tagId])
+}
+
+model Assistant {
+  id             String                   @id @default(cuid())
+  workspaceId    String
+  name           String
+  description    String?
+  objective      String?
+  systemPrompt   String
+  temperature    Float                    @default(0.2)
+  model          String
+  status         AssistantStatus          @default(ACTIVE)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  deletedAt      DateTime?
+  workspace      Workspace                @relation(fields: [workspaceId], references: [id])
+  knowledgeBases AssistantKnowledgeBase[]
+  tools          AssistantTool[]
+
+  @@unique([workspaceId, name])
+}
+
+model KnowledgeBase {
+  id          String                   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  type        KnowledgeBaseType
+  status      EntityStatus             @default(ACTIVE)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace                @relation(fields: [workspaceId], references: [id])
+  documents   KnowledgeDocument[]
+  assistants  AssistantKnowledgeBase[]
+
+  @@unique([workspaceId, name])
+}
+
+model KnowledgeDocument {
+  id              String                @id @default(cuid())
+  workspaceId     String
+  knowledgeBaseId String
+  title           String
+  type            KnowledgeDocumentType
+  sourceUrl       String?
+  content         String
+  metadata        Json?
+  status          EntityStatus          @default(ACTIVE)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id])
+  knowledgeBase   KnowledgeBase         @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, knowledgeBaseId])
+}
+
+model AiTool {
+  id          String          @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  type        String
+  endpoint    String?
+  action      String?
+  status      EntityStatus    @default(ACTIVE)
+  config      Json?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id])
+  assistants  AssistantTool[]
+
+  @@unique([workspaceId, name])
+}
+
+model AssistantKnowledgeBase {
+  id              String        @id @default(cuid())
+  assistantId     String
+  knowledgeBaseId String
+  assistant       Assistant     @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@unique([assistantId, knowledgeBaseId])
+}
+
+model AssistantTool {
+  id          String    @id @default(cuid())
+  assistantId String
+  toolId      String
+  assistant   Assistant @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+  tool        AiTool    @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([assistantId, toolId])
+}
+
+model Instance {
+  id                          String                  @id @default(cuid())
+  workspaceId                 String
+  createdById                 String?
+  name                        String
+  provider                    InstanceProvider        @default(META_WHATSAPP)
+  status                      InstanceStatus          @default(DISCONNECTED)
+  mode                        InstanceMode            @default(DEV)
+  phoneNumber                 String?
+  businessAccountId           String?
+  phoneNumberId               String?
+  accessTokenEncrypted        String?
+  webhookVerifyTokenEncrypted String?
+  appSecretEncrypted          String?
+  lastSyncAt                  DateTime?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+  deletedAt                   DateTime?
+  workspace                   Workspace               @relation(fields: [workspaceId], references: [id])
+  creator                     User?                   @relation("InstanceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  conversations               Conversation[]
+  messages                    ConversationMessage[]
+  campaigns                   Campaign[]
+  webhookEvents               WhatsAppWebhookEvent[]
+  deliveryStatuses            MessageDeliveryStatus[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, provider, status])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String
+  body        String
+  type        NotificationType @default(INFO)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id])
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, readAt])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  workspaceId String
+  actorId     String?
+  entityType  String
+  entityId    String
+  action      AuditAction
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id])
+  actor       User?       @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, entityType, createdAt])
+}
+
+model WhatsAppWebhookEvent {
+  id          String           @id @default(cuid())
+  workspaceId String?
+  instanceId  String?
+  externalId  String?
+  eventType   WebhookEventType @default(OTHER)
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime         @default(now())
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id])
+  instance    Instance?        @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@index([instanceId, createdAt])
+}
+
+model MessageDeliveryStatus {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  messageId         String
+  instanceId        String?
+  provider          InstanceProvider
+  externalMessageId String?
+  status            MessageStatus
+  payload           Json?
+  occurredAt        DateTime            @default(now())
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id])
+  message           ConversationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  instance          Instance?           @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, externalMessageId])
+  @@index([messageId, occurredAt])
+}

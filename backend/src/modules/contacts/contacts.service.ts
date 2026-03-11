@@ -1,0 +1,256 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ContactSource, Prisma } from '@prisma/client';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import {
+  getPagination,
+  paginatedResponse,
+} from '../../common/utils/pagination';
+
+type ContactPayload = {
+  name: string;
+  phone: string;
+  email?: string;
+  company?: string;
+  jobTitle?: string;
+  source?: ContactSource;
+  notes?: string;
+  tagIds?: string[];
+};
+
+@Injectable()
+export class ContactsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async list(
+    workspaceId: string,
+    query: PaginationQueryDto & { tagId?: string },
+  ) {
+    const { page, limit, skip, take } = getPagination(query.page, query.limit);
+
+    const where: Prisma.ContactWhereInput = {
+      workspaceId,
+      deletedAt: null,
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' } },
+              { phone: { contains: query.search, mode: 'insensitive' } },
+              { email: { contains: query.search, mode: 'insensitive' } },
+              { company: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+      ...(query.tagId
+        ? {
+            tagLinks: {
+              some: {
+                tagId: query.tagId,
+              },
+            },
+          }
+        : {}),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.contact.findMany({
+        where,
+        include: {
+          tagLinks: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+        skip,
+        take,
+      }),
+      this.prisma.contact.count({ where }),
+    ]);
+
+    return paginatedResponse(
+      data.map((contact) => ({
+        ...contact,
+        tags: contact.tagLinks.map((tagLink) => tagLink.tag),
+      })),
+      total,
+      page,
+      limit,
+    );
+  }
+
+  async findOne(id: string, workspaceId: string) {
+    const contact = await this.prisma.contact.findFirst({
+      where: {
+        id,
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        tagLinks: {
+          include: { tag: true },
+        },
+        listItems: {
+          include: {
+            list: true,
+          },
+        },
+        groupMembers: {
+          include: {
+            group: true,
+          },
+        },
+        conversations: {
+          where: {
+            deletedAt: null,
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+          orderBy: {
+            lastMessageAt: 'desc',
+          },
+        },
+        campaignRecipients: {
+          include: {
+            campaign: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!contact) {
+      throw new NotFoundException('Contato nao encontrado.');
+    }
+
+    const timeline = [
+      ...contact.conversations.map((conversation) => ({
+        type: 'conversation',
+        title: conversation.lastMessagePreview ?? 'Interacao na inbox',
+        date: conversation.lastMessageAt ?? conversation.updatedAt,
+      })),
+      ...contact.campaignRecipients.map((recipient) => ({
+        type: 'campaign',
+        title: `${recipient.campaign.name} - ${recipient.status}`,
+        date: recipient.sentAt ?? recipient.createdAt,
+      })),
+    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    return {
+      ...contact,
+      tags: contact.tagLinks.map((tagLink) => tagLink.tag),
+      lists: contact.listItems.map((item) => item.list),
+      groups: contact.groupMembers.map((item) => item.group),
+      timeline,
+    };
+  }
+
+  async create(workspaceId: string, payload: ContactPayload) {
+    const existing = await this.prisma.contact.findFirst({
+      where: {
+        workspaceId,
+        phone: payload.phone,
+        deletedAt: null,
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Ja existe um contato com este telefone.');
+    }
+
+    const contact = await this.prisma.contact.create({
+      data: {
+        workspaceId,
+        name: payload.name,
+        phone: payload.phone,
+        email: payload.email,
+        company: payload.company,
+        jobTitle: payload.jobTitle,
+        source: payload.source as never,
+        notes: payload.notes,
+      },
+    });
+
+    if (payload.tagIds?.length) {
+      await this.syncTags(contact.id, payload.tagIds);
+    }
+
+    return this.findOne(contact.id, workspaceId);
+  }
+
+  async update(
+    id: string,
+    workspaceId: string,
+    payload: Partial<ContactPayload>,
+  ) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+    });
+
+    if (!contact) {
+      throw new NotFoundException('Contato nao encontrado.');
+    }
+
+    await this.prisma.contact.update({
+      where: { id },
+      data: {
+        name: payload.name ?? contact.name,
+        phone: payload.phone ?? contact.phone,
+        email: payload.email ?? contact.email,
+        company: payload.company ?? contact.company,
+        jobTitle: payload.jobTitle ?? contact.jobTitle,
+        source: (payload.source as never) ?? contact.source,
+        notes: payload.notes ?? contact.notes,
+      },
+    });
+
+    if (payload.tagIds) {
+      await this.syncTags(id, payload.tagIds);
+    }
+
+    return this.findOne(id, workspaceId);
+  }
+
+  async remove(id: string, workspaceId: string) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+    });
+
+    if (!contact) {
+      throw new NotFoundException('Contato nao encontrado.');
+    }
+
+    await this.prisma.contact.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+
+    return { success: true };
+  }
+
+  private async syncTags(contactId: string, tagIds: string[]) {
+    await this.prisma.contactTag.deleteMany({
+      where: { contactId },
+    });
+
+    if (tagIds.length) {
+      await this.prisma.contactTag.createMany({
+        data: tagIds.map((tagId) => ({ contactId, tagId })),
+        skipDuplicates: true,
+      });
+    }
+  }
+}

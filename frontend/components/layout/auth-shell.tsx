@@ -1,0 +1,80 @@
+import Link from 'next/link';
+import { Bot, BriefcaseBusiness, MessageSquareText } from 'lucide-react';
+
+const bullets = [
+  { icon: MessageSquareText, text: 'Inbox multi-atendente com historico unificado' },
+  { icon: BriefcaseBusiness, text: 'CRM com pipeline, listas, tags e campanhas' },
+  { icon: Bot, text: 'Camada pronta para IA e integracao oficial com a Meta' },
+];
+
+export function AuthShell({
+  eyebrow,
+  title,
+  accent,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  accent: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative min-h-screen overflow-hidden px-5 py-6 lg:px-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(50,151,255,0.2),transparent_30%),radial-gradient(circle_at_85%_80%,rgba(25,183,215,0.18),transparent_20%)]" />
+      <div className="relative grid min-h-[calc(100vh-3rem)] grid-cols-1 gap-6 lg:grid-cols-[1.06fr_0.94fr] lg:items-center">
+        <section className="flex flex-col justify-center px-2 lg:px-8">
+          <Link href="/login" className="mb-10 flex items-center gap-3">
+            <div className="rounded-2xl bg-primary p-2.5 text-white shadow-[0_16px_42px_rgba(50,151,255,0.28)]">
+              <MessageSquareText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-heading text-xl font-semibold">AutoZap</p>
+              <p className="text-xs text-muted-foreground">Atendimento, CRM e automacao para WhatsApp</p>
+            </div>
+          </Link>
+
+          <div className="mb-5 inline-flex w-fit rounded-full border border-primary/25 bg-primary-soft px-3.5 py-1.5 text-xs font-semibold text-primary">
+            {eyebrow}
+          </div>
+          <h1 className="max-w-3xl font-heading text-4xl font-semibold leading-[1.02] tracking-tight text-foreground md:text-5xl">
+            {title} <span className="text-primary">{accent}</span>
+          </h1>
+          <p className="mt-5 max-w-xl text-lg leading-8 text-muted-foreground">{description}</p>
+
+          <div className="mt-8 space-y-3.5">
+            {bullets.map((bullet) => {
+              const Icon = bullet.icon;
+              return (
+                <div key={bullet.text} className="flex items-center gap-3.5">
+                  <div className="rounded-2xl border border-primary/15 bg-primary-soft p-2.5 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-base text-foreground/88">{bullet.text}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="glass-panel mt-10 max-w-xl rounded-[26px] border-white/6 p-5">
+            <p className="text-lg italic text-foreground/82">
+              &ldquo;Centralizamos atendimento, pipeline comercial e disparos sem perder a qualidade operacional.&rdquo;
+            </p>
+            <div className="mt-5 flex items-center gap-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-base font-semibold text-primary">
+                AZ
+              </div>
+              <div>
+                <p className="font-medium">Equipe AutoZap Labs</p>
+                <p className="text-xs text-muted-foreground">Setup local completo com backend real e seed demo</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="flex justify-center lg:justify-end">{children}</section>
+      </div>
+    </div>
+  );
+}
