@@ -24,6 +24,42 @@ export function formatDate(value?: string | Date | null) {
   }).format(date);
 }
 
+export function normalizePhone(value?: string | null) {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+export function formatBrazilPhone(value?: string | null) {
+  const digits = normalizePhone(value);
+
+  if (digits.length === 11) {
+    return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  }
+
+  if (digits.length === 10) {
+    return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  }
+
+  return value ?? '';
+}
+
+export function applyBrazilPhoneMask(value?: string | null) {
+  const digits = normalizePhone(value).slice(0, 11);
+
+  if (digits.length <= 2) {
+    return digits ? `(${digits}` : '';
+  }
+
+  if (digits.length <= 6) {
+    return digits.replace(/(\d{2})(\d+)/, '($1) $2');
+  }
+
+  if (digits.length <= 10) {
+    return digits.replace(/(\d{2})(\d{4})(\d+)/, '($1) $2-$3');
+  }
+
+  return digits.replace(/(\d{2})(\d{5})(\d+)/, '($1) $2-$3');
+}
+
 export function buildQuery(params: Record<string, string | number | boolean | undefined | null>) {
   const searchParams = new URLSearchParams();
 

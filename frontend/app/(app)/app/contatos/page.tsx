@@ -20,16 +20,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import { Contact, PaginatedResponse, Tag } from '@/lib/types';
-import { formatDate } from '@/lib/utils';
+import { applyBrazilPhoneMask, cn, formatBrazilPhone, formatDate, normalizePhone } from '@/lib/utils';
 import { ContactRound } from 'lucide-react';
 
 const schema = z.object({
   name: z.string().min(2),
-  phone: z.string().min(8),
+  phone: z
+    .string()
+    .min(1, 'Informe o telefone.')
+    .refine((value) => {
+      const digits = normalizePhone(value);
+      return digits.length === 10 || digits.length === 11;
+    }, 'Use o formato (99) 99999-9999.'),
   email: z.string().optional(),
   company: z.string().optional(),
   jobTitle: z.string().optional(),
-  source: z.string().optional(),
   notes: z.string().optional(),
   tagIds: z.array(z.string()).optional(),
 });
@@ -38,7 +43,11 @@ type FormValues = z.infer<typeof schema>;
 
 const columns: ColumnDef<Contact>[] = [
   { accessorKey: 'name', header: 'Nome' },
-  { accessorKey: 'phone', header: 'Telefone' },
+  {
+    accessorKey: 'phone',
+    header: 'Telefone',
+    cell: ({ row }) => formatBrazilPhone(row.original.phone),
+  },
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'company', header: 'Empresa' },
   {
@@ -69,6 +78,15 @@ export default function ContactsPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      phone: '',
+      email: '',
+      company: '',
+      jobTitle: '',
+      notes: '',
+      tagIds: [],
+    },
   });
   const selectedTagIds = useWatch({
     control: form.control,
@@ -79,7 +97,11 @@ export default function ContactsPage() {
     mutationFn: (values: FormValues) =>
       apiRequest(selectedContact ? `contacts/${selectedContact.id}` : 'contacts', {
         method: selectedContact ? 'PATCH' : 'POST',
-        body: values,
+        body: {
+          ...values,
+          phone: normalizePhone(values.phone),
+          tagIds: values.tagIds ?? [],
+        },
       }),
     onSuccess: async () => {
       setDialogOpen(false);
@@ -91,6 +113,13 @@ export default function ContactsPage() {
 
   const contacts = contactsQuery.data?.data ?? [];
   const detail = contactDetailQuery.data;
+  const availableTags = tagsQuery.data ?? [];
+
+  function toggleTag(tagId: string) {
+    const current = selectedTagIds ?? [];
+    const next = current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId];
+    form.setValue('tagIds', next, { shouldDirty: true });
+  }
 
   return (
     <div className="space-y-6">
@@ -101,7 +130,7 @@ export default function ContactsPage() {
           <Button
             onClick={() => {
               setSelectedContact(null);
-              form.reset({ name: '', phone: '', email: '', company: '', jobTitle: '', source: 'MANUAL', notes: '', tagIds: [] });
+              form.reset({ name: '', phone: '', email: '', company: '', jobTitle: '', notes: '', tagIds: [] });
               setDialogOpen(true);
             }}
           >
@@ -123,11 +152,10 @@ export default function ContactsPage() {
                   setSelectedContact(contact);
                   form.reset({
                     name: contact.name,
-                    phone: contact.phone,
+                    phone: applyBrazilPhoneMask(contact.phone),
                     email: contact.email ?? '',
                     company: contact.company ?? '',
                     jobTitle: contact.jobTitle ?? '',
-                    source: contact.source ?? 'MANUAL',
                     notes: contact.notes ?? '',
                     tagIds: contact.tags?.map((tag) => tag.id) ?? [],
                   });
@@ -155,14 +183,18 @@ export default function ContactsPage() {
                   <p className="mt-1 text-sm text-muted-foreground">{detail.company ?? 'Sem empresa'}</p>
                 </div>
                 <div className="rounded-[24px] border border-border bg-white/[0.03] p-4">
-                  <p className="text-sm text-muted-foreground">{detail.phone}</p>
+                  <p className="text-sm text-muted-foreground">{formatBrazilPhone(detail.phone)}</p>
                   <p className="text-sm text-muted-foreground">{detail.email ?? 'Sem email cadastrado'}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {detail.tags?.map((tag) => (
-                      <Badge key={tag.id} variant="secondary">
-                        {tag.name}
-                      </Badge>
-                    ))}
+                    {detail.tags?.length ? (
+                      detail.tags.map((tag) => (
+                        <Badge key={tag.id} variant="secondary">
+                          {tag.name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Nenhuma tag vinculada.</span>
+                    )}
                   </div>
                 </div>
                 <Button
@@ -209,7 +241,21 @@ export default function ContactsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Telefone</Label>
-                <Input {...form.register('phone')} />
+                <Input
+                  placeholder="(99) 99999-9999"
+                  {...form.register('phone', {
+                    onChange: (event) => {
+                      const masked = applyBrazilPhoneMask(event.target.value);
+                      form.setValue('phone', masked, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    },
+                  })}
+                />
+                {form.formState.errors.phone ? (
+                  <p className="text-xs text-danger">{form.formState.errors.phone.message}</p>
+                ) : null}
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -227,36 +273,37 @@ export default function ContactsPage() {
                 <Label>Cargo</Label>
                 <Input {...form.register('jobTitle')} />
               </div>
-              <div className="space-y-2">
-                <Label>Origem</Label>
-                <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" {...form.register('source')}>
-                  <option value="MANUAL">Manual</option>
-                  <option value="WHATSAPP">WhatsApp</option>
-                  <option value="WEBSITE">Website</option>
-                  <option value="IMPORT">Importacao</option>
-                  <option value="CAMPAIGN">Campanha</option>
-                </select>
-              </div>
             </div>
             <div className="space-y-2">
               <Label>Tags</Label>
-              <select
-                multiple
-                className="min-h-28 rounded-2xl border border-border bg-background-panel px-4 py-3"
-                value={selectedTagIds ?? []}
-                onChange={(event) =>
-                  form.setValue(
-                    'tagIds',
-                    Array.from(event.target.selectedOptions).map((option) => option.value),
-                  )
-                }
-              >
-                {tagsQuery.data?.map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
-                  </option>
-                ))}
-              </select>
+              {availableTags.length ? (
+                <div className="grid gap-2 rounded-[24px] border border-border bg-background-panel/80 p-3 sm:grid-cols-2">
+                  {availableTags.map((tag) => {
+                    const active = (selectedTagIds ?? []).includes(tag.id);
+
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        className={cn(
+                          'flex min-h-11 items-center gap-3 rounded-2xl border px-3 py-2 text-left transition',
+                          active
+                            ? 'border-primary/60 bg-primary/15 text-foreground'
+                            : 'border-border bg-white/[0.02] text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                        )}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                        <span className="text-sm font-medium">{tag.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-border bg-background-panel/70 px-4 py-5 text-sm text-muted-foreground">
+                  Nenhuma tag cadastrada ainda. Crie tags em <span className="text-foreground">Workspace &gt; Tags</span> para associar ao contato.
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Notas</Label>
