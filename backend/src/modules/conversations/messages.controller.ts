@@ -1,8 +1,28 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { IsString } from 'class-validator';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { IsOptional, IsString } from 'class-validator';
+import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { ConversationsService } from './conversations.service';
+
+type UploadedMediaFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
 
 class MessagesQueryDto {
   @IsString()
@@ -15,6 +35,15 @@ class SendMessageDto {
 
   @IsString()
   content!: string;
+}
+
+class SendMediaDto {
+  @IsString()
+  conversationId!: string;
+
+  @IsOptional()
+  @IsString()
+  caption?: string;
 }
 
 @Controller('messages')
@@ -37,5 +66,66 @@ export class MessagesController {
       user.sub,
       dto.content,
     );
+  }
+
+  @Post('media')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 25 * 1024 * 1024,
+      },
+    }),
+  )
+  sendMedia(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: SendMediaDto,
+    @UploadedFile() file: UploadedMediaFile | undefined,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Selecione um arquivo para envio.');
+    }
+
+    return this.conversationsService.sendMediaMessage(
+      dto.conversationId,
+      user.workspaceId,
+      user.sub,
+      {
+        buffer: file.buffer,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        caption: dto.caption,
+      },
+    );
+  }
+
+  @Get(':id/media')
+  async getMedia(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const media = await this.conversationsService.getMessageMedia(
+      id,
+      user.workspaceId,
+    );
+
+    response.setHeader(
+      'Content-Type',
+      media.mimeType ?? 'application/octet-stream',
+    );
+    response.setHeader('Cache-Control', 'private, max-age=300');
+
+    if (media.contentLength) {
+      response.setHeader('Content-Length', String(media.contentLength));
+    }
+
+    if (media.fileName) {
+      response.setHeader(
+        'Content-Disposition',
+        `inline; filename="${media.fileName.replace(/"/g, '')}"`,
+      );
+    }
+
+    return media.buffer;
   }
 }

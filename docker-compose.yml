@@ -1,10 +1,10 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: autozap-postgres
+    container_name: autoszap-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: autozap
+      POSTGRES_DB: autoszap
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -12,14 +12,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d autozap"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d autoszap"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: autozap-redis
+    container_name: autoszap-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
@@ -36,7 +36,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: autozap-backend
+    container_name: autoszap-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,8 +46,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      FRONTEND_URL: http://localhost:3000
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/autozap?schema=public
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000,http://localhost:3001}
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/autoszap?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: change-me-access-secret
       JWT_ACCESS_EXPIRES_IN: 15m

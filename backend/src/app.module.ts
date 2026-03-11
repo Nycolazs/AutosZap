@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { RealtimeModule } from './common/realtime/realtime.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AssistantsModule } from './modules/assistants/assistants.module';
@@ -15,6 +16,7 @@ import { ContactsModule } from './modules/contacts/contacts.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { DevelopmentModule } from './modules/development/development.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { MetaWhatsAppModule } from './modules/integrations/meta-whatsapp/meta-whatsapp.module';
 import { InstancesModule } from './modules/instances/instances.module';
@@ -31,6 +33,7 @@ import { UsersModule } from './modules/users/users.module';
     PrismaModule,
     RedisModule,
     CryptoModule,
+    RealtimeModule,
     AuthModule,
     UsersModule,
     TeamModule,
@@ -39,6 +42,7 @@ import { UsersModule } from './modules/users/users.module';
     ListsModule,
     GroupsModule,
     MetaWhatsAppModule,
+    DevelopmentModule,
     InstancesModule,
     ConversationsModule,
     CrmModule,

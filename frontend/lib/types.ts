@@ -42,7 +42,16 @@ export interface Contact {
 export interface ConversationMessage {
   id: string;
   direction: 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
+  messageType: string;
   content: string;
+  metadata?: {
+    mediaId?: string;
+    mimeType?: string | null;
+    fileName?: string | null;
+    caption?: string | null;
+    animated?: boolean;
+    voice?: boolean;
+  } | null;
   status: string;
   createdAt: string;
 }
@@ -121,6 +130,50 @@ export interface Instance {
   webhookVerifyTokenMasked?: string | null;
   appSecretMasked?: string | null;
   lastSyncAt?: string | null;
+}
+
+export interface DevelopmentOverview {
+  environment: {
+    nodeEnv: string;
+    metaMode: string;
+    backendPublicUrl?: string | null;
+    productionCallbackUrl?: string | null;
+    healthUrl?: string | null;
+    docsUrl?: string | null;
+    webhookPath: string;
+    hasMetaCredentials: boolean;
+    signatureValidationEnabled: boolean;
+  };
+  local: {
+    frontendUrl: string;
+    backendUrl: string;
+    tunnelUrl?: string | null;
+    callbackUrl?: string | null;
+    ready: boolean;
+    notes?: string | null;
+  };
+  webhook: {
+    verifyToken?: string | null;
+    callbackPath: string;
+    hasVerifyToken: boolean;
+  };
+  checklist: {
+    hasMetaCredentials: boolean;
+    hasInstance: boolean;
+    hasProductionUrl: boolean;
+    hasTunnel: boolean;
+    hasVerifyToken: boolean;
+    canRouteLocal: boolean;
+    canRouteProduction: boolean;
+  };
+  commands: {
+    startStack: string;
+    seed: string;
+    startFrontend: string;
+    startTunnel: string;
+  };
+  selectedInstanceId?: string | null;
+  instances: Array<Pick<Instance, 'id' | 'name' | 'status' | 'mode' | 'phoneNumber' | 'businessAccountId' | 'phoneNumberId' | 'lastSyncAt'>>;
 }
 
 export interface WhatsAppTemplateSummary {

@@ -15,7 +15,9 @@ function parseFrontendOrigins(value?: string) {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  return origins?.length ? origins : ['http://localhost:3000'];
+  return origins?.length
+    ? origins
+    : ['http://localhost:3000', 'http://localhost:3001'];
 }
 
 async function bootstrap() {
@@ -50,8 +52,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('AutoZap API')
-    .setDescription('API REST multi-tenant do AutoZap')
+    .setTitle('AutosZap API')
+    .setDescription('API REST multi-tenant do AutosZap')
     .setVersion('1.0.0')
     .addBearerAuth()
     .build();

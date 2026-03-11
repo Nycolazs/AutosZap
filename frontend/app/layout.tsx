@@ -14,7 +14,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: 'AutoZap',
+  title: 'AutosZap',
   description: 'Inbox, CRM e automacao premium para WhatsApp Business Platform.',
 };
 

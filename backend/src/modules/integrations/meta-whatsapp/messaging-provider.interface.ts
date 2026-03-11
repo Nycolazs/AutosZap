@@ -17,6 +17,8 @@ export interface ProviderSendResult {
   status: 'sent' | 'delivered' | 'queued';
   simulated: boolean;
   raw: Record<string, unknown>;
+  messageType?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TemplateParameter {
@@ -77,8 +79,10 @@ export interface ParsedWebhookPayload {
     from: string;
     profileName?: string;
     externalMessageId: string;
+    messageType: string;
     body: string;
     timestamp?: string;
+    metadata?: Record<string, unknown>;
   }>;
   statuses: Array<{
     phoneNumberId?: string;
@@ -113,6 +117,38 @@ export interface MessagingProvider {
       bodyParameters?: TemplateParameter[];
     },
   ): Promise<ProviderSendResult>;
+  uploadMedia(
+    config: MessagingInstanceConfig,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+    },
+  ): Promise<{
+    mediaId: string;
+    mimeType?: string | null;
+    raw: Record<string, unknown>;
+    simulated: boolean;
+  }>;
+  sendMediaMessage(
+    config: MessagingInstanceConfig,
+    to: string,
+    payload: {
+      type: 'image' | 'audio' | 'video' | 'document' | 'sticker';
+      mediaId: string;
+      caption?: string;
+      fileName?: string;
+    },
+  ): Promise<ProviderSendResult>;
+  downloadMedia(
+    config: MessagingInstanceConfig,
+    mediaId: string,
+  ): Promise<{
+    buffer: Buffer;
+    mimeType?: string | null;
+    fileName?: string | null;
+    contentLength?: number | null;
+  }>;
   healthCheck(config: MessagingInstanceConfig): Promise<ProviderHealthResult>;
   getInstanceDiagnostics(
     config: MessagingInstanceConfig,

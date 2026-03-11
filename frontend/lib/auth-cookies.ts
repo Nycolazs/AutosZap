@@ -1,5 +1,5 @@
-export const ACCESS_COOKIE = 'autozap_access_token';
-export const REFRESH_COOKIE = 'autozap_refresh_token';
+export const ACCESS_COOKIE = 'autoszap_access_token';
+export const REFRESH_COOKIE = 'autoszap_refresh_token';
 
 export const authCookieOptions = {
   httpOnly: true,

@@ -3,16 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bot,
-  BookOpenText,
   BriefcaseBusiness,
   Building2,
+  Code2,
   ContactRound,
   LayoutDashboard,
   Megaphone,
   MessageSquareText,
   RadioTower,
-  SearchCode,
   Settings,
   Tags,
   Users,
@@ -42,17 +40,10 @@ const sections = [
     ],
   },
   {
-    label: 'IA',
-    items: [
-      { href: '/app/assistentes', label: 'Assistentes', icon: Bot },
-      { href: '/app/bases-de-conhecimento', label: 'Bases de Conhecimento', icon: BookOpenText },
-      { href: '/app/ferramentas-ia', label: 'Ferramentas de IA', icon: SearchCode },
-    ],
-  },
-  {
     label: 'Workspace',
     items: [
       { href: '/app/instancias', label: 'Instancias', icon: RadioTower },
+      { href: '/app/desenvolvimento', label: 'Desenvolvimento', icon: Code2 },
       { href: '/app/pipeline', label: 'Pipeline', icon: Workflow },
       { href: '/app/tags', label: 'Tags', icon: Tags },
       { href: '/app/equipe', label: 'Equipe', icon: Users },
@@ -71,20 +62,9 @@ export function AppSidebar() {
           <MessageSquareText className="h-5 w-5" />
         </div>
         <div>
-          <p className="font-heading text-lg font-semibold">AutoZap</p>
+          <p className="font-heading text-lg font-semibold">AutosZap</p>
           <p className="text-xs text-muted-foreground">SaaS premium para WhatsApp</p>
         </div>
-      </div>
-
-      <div className="glass-panel mb-5 rounded-[20px] p-3.5">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Plano Demo</span>
-          <span className="font-semibold text-primary">68%</span>
-        </div>
-        <div className="mt-2.5 h-1.5 rounded-full bg-white/6">
-          <div className="h-1.5 w-[68%] rounded-full bg-primary" />
-        </div>
-        <p className="mt-2.5 text-[11px] text-muted-foreground">Uso ilustrativo com seed completa para testes locais.</p>
       </div>
 
       <div className="space-y-5 overflow-y-auto pr-1">

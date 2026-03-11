@@ -35,7 +35,7 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
     <AuthShell
       eyebrow="RESET DE ACESSO"
       title="Defina uma nova senha para o"
-      accent="AutoZap"
+      accent="AutosZap"
       description="Use o token gerado para redefinir sua senha e recuperar acesso a sua workspace."
     >
       <Card className="w-full max-w-[520px] p-0">

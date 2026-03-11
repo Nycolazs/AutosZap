@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  Sse,
 } from '@nestjs/common';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -60,6 +61,11 @@ export class ConversationsController {
     @Query() query: ConversationsQueryDto,
   ) {
     return this.conversationsService.list(user.workspaceId, query);
+  }
+
+  @Sse('stream')
+  stream(@CurrentUser() user: CurrentAuthUser) {
+    return this.conversationsService.stream(user.workspaceId);
   }
 
   @Get(':id')

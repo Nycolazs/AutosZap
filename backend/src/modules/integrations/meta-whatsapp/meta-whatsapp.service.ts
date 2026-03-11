@@ -23,6 +23,7 @@ import {
   ProviderTemplateSummary,
   TemplateParameter,
 } from './messaging-provider.interface';
+import { InboxEventsService } from '../../../common/realtime/inbox-events.service';
 
 @Injectable()
 export class MetaWhatsAppService {
@@ -31,6 +32,7 @@ export class MetaWhatsAppService {
     private readonly cryptoService: CryptoService,
     private readonly provider: MetaWhatsAppProvider,
     private readonly configService: ConfigService,
+    private readonly inboxEventsService: InboxEventsService,
   ) {}
 
   async testConnection(workspaceId: string, instanceId: string) {
@@ -69,7 +71,8 @@ export class MetaWhatsAppService {
     },
   ) {
     const config = await this.getInstanceConfig(instanceId, workspaceId);
-    const result = await this.provider.subscribeApp(config, payload);
+    const subscribePayload = this.buildSubscribePayload(config, payload);
+    const result = await this.provider.subscribeApp(config, subscribePayload);
 
     await this.prisma.instance.update({
       where: { id: instanceId },
@@ -217,6 +220,99 @@ export class MetaWhatsAppService {
       instanceId,
       content,
       providerResult,
+    });
+  }
+
+  async sendConversationMediaMessage(
+    workspaceId: string,
+    conversationId: string,
+    senderUserId: string | null,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      caption?: string;
+    },
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        contact: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversa nao encontrada.');
+    }
+
+    const instanceId = conversation.instanceId
+      ? conversation.instanceId
+      : (
+          await this.prisma.instance.findFirst({
+            where: {
+              workspaceId,
+              deletedAt: null,
+            },
+            orderBy: {
+              updatedAt: 'desc',
+            },
+          })
+        )?.id;
+
+    if (!instanceId) {
+      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    await this.assertCustomerServiceWindow(
+      conversation.id,
+      workspaceId,
+      config,
+    );
+
+    const normalizedMessageType = this.resolveOutboundMediaType(
+      payload.mimeType,
+    );
+    const uploadResult = await this.provider.uploadMedia(config, {
+      buffer: payload.buffer,
+      fileName: payload.fileName,
+      mimeType: payload.mimeType,
+    });
+
+    const providerResult = await this.provider.sendMediaMessage(
+      config,
+      conversation.contact.phone,
+      {
+        type: normalizedMessageType,
+        mediaId: uploadResult.mediaId,
+        caption: payload.caption,
+        fileName: payload.fileName,
+      },
+    );
+
+    return this.persistOutboundMessage({
+      workspaceId,
+      conversationId: conversation.id,
+      senderUserId,
+      instanceId,
+      content:
+        payload.caption?.trim() ||
+        this.buildMediaPlaceholder(normalizedMessageType, payload.fileName),
+      providerResult: {
+        ...providerResult,
+        messageType: normalizedMessageType,
+        metadata: {
+          ...(providerResult.metadata ?? {}),
+          mediaId: uploadResult.mediaId,
+          mimeType: payload.mimeType,
+          fileName: payload.fileName,
+          caption: payload.caption,
+        },
+      },
     });
   }
 
@@ -412,7 +508,9 @@ export class MetaWhatsAppService {
           instanceId: inboundInstance.id,
           externalMessageId: inbound.externalMessageId,
           direction: MessageDirection.INBOUND,
+          messageType: inbound.messageType,
           content: inbound.body,
+          metadata: inbound.metadata as Prisma.InputJsonValue | undefined,
           status: MessageStatus.READ,
           sentAt: inbound.timestamp
             ? new Date(Number(inbound.timestamp) * 1000)
@@ -433,8 +531,16 @@ export class MetaWhatsAppService {
             increment: 1,
           },
           lastMessageAt: new Date(),
-          lastMessagePreview: inbound.body,
+          lastMessagePreview:
+            inbound.body || this.buildMediaPlaceholder(inbound.messageType),
         },
+      });
+
+      this.inboxEventsService.emit({
+        workspaceId: inboundInstance.workspaceId,
+        conversationId: conversation.id,
+        type: 'conversation.message.created',
+        direction: 'INBOUND',
       });
     }
 
@@ -476,6 +582,13 @@ export class MetaWhatsAppService {
           payload: status as Prisma.InputJsonValue,
         },
       });
+
+      this.inboxEventsService.emit({
+        workspaceId: message.workspaceId,
+        conversationId: message.conversationId,
+        type: 'conversation.message.status.updated',
+        direction: 'OUTBOUND',
+      });
     }
 
     await this.prisma.whatsAppWebhookEvent.update({
@@ -489,6 +602,54 @@ export class MetaWhatsAppService {
       success: true,
       processedMessages: parsed.messages.length,
       processedStatuses: parsed.statuses.length,
+    };
+  }
+
+  async getMessageMedia(
+    workspaceId: string,
+    messageId: string,
+  ): Promise<{
+    buffer: Buffer;
+    mimeType?: string | null;
+    fileName?: string | null;
+    contentLength?: number | null;
+  }> {
+    const message = await this.prisma.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        workspaceId,
+      },
+      include: {
+        conversation: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Mensagem nao encontrada.');
+    }
+
+    const metadata = this.readMessageMetadata(message.metadata);
+    const mediaId = metadata.mediaId;
+
+    if (!mediaId) {
+      throw new BadRequestException('A mensagem nao possui midia anexada.');
+    }
+
+    const instanceId = message.instanceId ?? message.conversation.instanceId;
+
+    if (!instanceId) {
+      throw new BadRequestException(
+        'A mensagem nao possui uma instancia associada para baixar a midia.',
+      );
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const download = await this.provider.downloadMedia(config, mediaId);
+
+    return {
+      ...download,
+      mimeType: download.mimeType ?? metadata.mimeType ?? null,
+      fileName: download.fileName ?? metadata.fileName ?? null,
     };
   }
 
@@ -618,6 +779,8 @@ export class MetaWhatsAppService {
       externalMessageId: string;
       simulated: boolean;
       raw: Record<string, unknown>;
+      messageType?: string;
+      metadata?: Record<string, unknown>;
     };
   }) {
     const message = await this.prisma.conversationMessage.create({
@@ -628,7 +791,11 @@ export class MetaWhatsAppService {
         instanceId: payload.instanceId,
         externalMessageId: payload.providerResult.externalMessageId,
         direction: MessageDirection.OUTBOUND,
+        messageType: payload.providerResult.messageType ?? 'text',
         content: payload.content,
+        metadata: payload.providerResult.metadata as
+          | Prisma.InputJsonValue
+          | undefined,
         status: payload.providerResult.simulated
           ? MessageStatus.DELIVERED
           : MessageStatus.SENT,
@@ -656,9 +823,18 @@ export class MetaWhatsAppService {
       data: {
         instanceId: payload.instanceId,
         lastMessageAt: new Date(),
-        lastMessagePreview: payload.content,
+        lastMessagePreview:
+          payload.content ||
+          this.buildMediaPlaceholder(payload.providerResult.messageType),
         updatedAt: new Date(),
       },
+    });
+
+    this.inboxEventsService.emit({
+      workspaceId: payload.workspaceId,
+      conversationId: payload.conversationId,
+      type: 'conversation.message.created',
+      direction: 'OUTBOUND',
     });
 
     return message;
@@ -738,5 +914,82 @@ export class MetaWhatsAppService {
     if (status === 'delivered') return MessageStatus.DELIVERED;
     if (status === 'failed') return MessageStatus.FAILED;
     return MessageStatus.SENT;
+  }
+
+  private buildSubscribePayload(
+    config: MessagingInstanceConfig,
+    payload?: {
+      overrideCallbackUri?: string;
+      verifyToken?: string;
+    },
+  ) {
+    const backendPublicUrl = this.normalizeBaseUrl(
+      this.configService.get<string>('BACKEND_PUBLIC_URL'),
+    );
+    const envVerifyToken = this.configService.get<string>(
+      'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+    );
+
+    const overrideCallbackUri =
+      payload?.overrideCallbackUri ??
+      (backendPublicUrl
+        ? `${backendPublicUrl}/api/webhooks/meta/whatsapp`
+        : undefined);
+    const verifyToken =
+      payload?.verifyToken ?? config.verifyToken ?? envVerifyToken;
+
+    if (!overrideCallbackUri && !verifyToken) {
+      return undefined;
+    }
+
+    return {
+      overrideCallbackUri,
+      verifyToken,
+    };
+  }
+
+  private normalizeBaseUrl(value?: string | null) {
+    const normalized = value?.trim();
+    return normalized ? normalized.replace(/\/+$/, '') : null;
+  }
+
+  private resolveOutboundMediaType(mimeType: string) {
+    if (mimeType === 'image/webp') return 'sticker';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('video/')) return 'video';
+    return 'document';
+  }
+
+  private buildMediaPlaceholder(
+    messageType?: string,
+    fileName?: string | null,
+  ) {
+    if (messageType === 'image') return 'Imagem';
+    if (messageType === 'audio') return 'Audio';
+    if (messageType === 'video') return 'Video';
+    if (messageType === 'sticker') return 'Figurinha';
+    if (messageType === 'document')
+      return fileName ? `Documento: ${fileName}` : 'Documento';
+    if (messageType === 'template') return 'Template enviado';
+    return 'Mensagem';
+  }
+
+  private readMessageMetadata(metadata: Prisma.JsonValue | null): {
+    mediaId?: string;
+    mimeType?: string | null;
+    fileName?: string | null;
+  } {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return {};
+    }
+
+    const value = metadata as Record<string, Prisma.JsonValue>;
+
+    return {
+      mediaId: typeof value.mediaId === 'string' ? value.mediaId : undefined,
+      mimeType: typeof value.mimeType === 'string' ? value.mimeType : null,
+      fileName: typeof value.fileName === 'string' ? value.fileName : null,
+    };
   }
 }

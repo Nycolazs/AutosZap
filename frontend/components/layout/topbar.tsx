@@ -37,10 +37,10 @@ export function Topbar({
       </Button>
       <div className="flex items-center gap-3 rounded-xl border border-border bg-white/[0.03] px-3 py-2">
         <Avatar>
-          <AvatarFallback>{userName?.slice(0, 2).toUpperCase() ?? 'AZ'}</AvatarFallback>
+          <AvatarFallback>{userName?.slice(0, 2).toUpperCase() ?? 'AS'}</AvatarFallback>
         </Avatar>
         <div className="hidden md:block">
-          <p className="text-sm font-medium">{userName ?? 'AutoZap Demo'}</p>
+          <p className="text-sm font-medium">{userName ?? 'AutosZap'}</p>
           <p className="text-xs text-muted-foreground">{userRole ?? 'Administrador'}</p>
         </div>
         <Button

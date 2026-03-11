@@ -27,7 +27,7 @@ export default function LoginPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      email: 'admin@autozap.com',
+      email: 'admin@autoszap.com',
       password: '123456',
     },
   });
@@ -43,7 +43,7 @@ export default function LoginPage() {
         <CardHeader className="p-6 pb-2">
           <CardTitle className="text-3xl">Bem-vindo de volta</CardTitle>
           <CardDescription className="text-base">
-            Entre com sua conta para continuar no AutoZap.
+            Entre com sua conta para continuar no AutosZap.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6 pt-5">

@@ -12,13 +12,21 @@ async function forwardRequest(request: NextRequest, path: string[], token?: stri
   const body =
     request.method === 'GET' || request.method === 'HEAD'
       ? undefined
-      : await request.text();
+      : Buffer.from(await request.arrayBuffer());
 
   return fetch(backendUrl, {
     method: request.method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body ? { 'Content-Type': request.headers.get('content-type') ?? 'application/json' } : {}),
+      ...(request.headers.get('accept')
+        ? { Accept: request.headers.get('accept') as string }
+        : {}),
+      ...(request.headers.get('last-event-id')
+        ? { 'Last-Event-ID': request.headers.get('last-event-id') as string }
+        : {}),
+      ...(body
+        ? { 'Content-Type': request.headers.get('content-type') ?? 'application/json' }
+        : {}),
     },
     body,
   });
@@ -57,12 +65,43 @@ async function handler(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const text = await response.text();
-  const proxyResponse = new NextResponse(text, {
+  const contentType = response.headers.get('content-type') ?? 'application/json';
+  const isEventStream = contentType.includes('text/event-stream');
+  const responseHeaders = new Headers({
+    'Content-Type': contentType,
+  });
+
+  const cacheControl = response.headers.get('cache-control');
+  const contentDisposition = response.headers.get('content-disposition');
+  const contentLength = response.headers.get('content-length');
+
+  if (cacheControl) {
+    responseHeaders.set('Cache-Control', cacheControl);
+  }
+
+  if (contentDisposition) {
+    responseHeaders.set('Content-Disposition', contentDisposition);
+  }
+
+  if (contentLength) {
+    responseHeaders.set('Content-Length', contentLength);
+  }
+
+  if (isEventStream) {
+    responseHeaders.set(
+      'Cache-Control',
+      cacheControl ?? 'no-cache, no-transform',
+    );
+    responseHeaders.set(
+      'Connection',
+      response.headers.get('connection') ?? 'keep-alive',
+    );
+    responseHeaders.set('X-Accel-Buffering', 'no');
+  }
+
+  const proxyResponse = new NextResponse(response.body, {
     status: response.status,
-    headers: {
-      'Content-Type': response.headers.get('content-type') ?? 'application/json',
-    },
+    headers: responseHeaders,
   });
 
   if (nextAccessToken) {

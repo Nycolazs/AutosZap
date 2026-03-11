@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { Bot, BriefcaseBusiness, MessageSquareText } from 'lucide-react';
+import { BriefcaseBusiness, MessageSquareText, Workflow } from 'lucide-react';
 
 const bullets = [
   { icon: MessageSquareText, text: 'Inbox multi-atendente com historico unificado' },
   { icon: BriefcaseBusiness, text: 'CRM com pipeline, listas, tags e campanhas' },
-  { icon: Bot, text: 'Camada pronta para IA e integracao oficial com a Meta' },
+  { icon: Workflow, text: 'Camada pronta para automacao e integracao oficial com a Meta' },
 ];
 
 export function AuthShell({
@@ -30,7 +30,7 @@ export function AuthShell({
               <MessageSquareText className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-heading text-xl font-semibold">AutoZap</p>
+              <p className="font-heading text-xl font-semibold">AutosZap</p>
               <p className="text-xs text-muted-foreground">Atendimento, CRM e automacao para WhatsApp</p>
             </div>
           </Link>
@@ -63,11 +63,11 @@ export function AuthShell({
             </p>
             <div className="mt-5 flex items-center gap-3.5">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-base font-semibold text-primary">
-                AZ
+                AS
               </div>
               <div>
-                <p className="font-medium">Equipe AutoZap Labs</p>
-                <p className="text-xs text-muted-foreground">Setup local completo com backend real e seed demo</p>
+                <p className="font-medium">Equipe AutosZap</p>
+                <p className="text-xs text-muted-foreground">Setup local completo com backend real para desenvolvimento</p>
               </div>
             </div>
           </div>

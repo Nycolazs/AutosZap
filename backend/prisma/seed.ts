@@ -67,9 +67,9 @@ async function main() {
 
   const workspace = await prisma.workspace.create({
     data: {
-      name: 'AutoZap Demo',
-      slug: 'autozap-demo',
-      companyName: 'AutoZap Labs',
+      name: 'AutosZap',
+      slug: 'autoszap',
+      companyName: 'AutosZap',
       settings: {
         locale: 'pt-BR',
         timezone: 'America/Fortaleza',
@@ -81,8 +81,8 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       workspaceId: workspace.id,
-      name: 'Admin AutoZap',
-      email: 'admin@autozap.com',
+      name: 'Admin AutosZap',
+      email: 'admin@autoszap.com',
       passwordHash,
       role: Role.ADMIN,
       status: UserStatus.ACTIVE,
@@ -94,7 +94,7 @@ async function main() {
     data: {
       workspaceId: workspace.id,
       name: 'Ana Bezerra',
-      email: 'ana@autozap.com',
+      email: 'ana@autoszap.com',
       passwordHash,
       role: Role.MANAGER,
       status: UserStatus.ACTIVE,
@@ -106,7 +106,7 @@ async function main() {
     data: {
       workspaceId: workspace.id,
       name: 'Leonardo Alves',
-      email: 'leo@autozap.com',
+      email: 'leo@autoszap.com',
       passwordHash,
       role: Role.AGENT,
       status: UserStatus.ACTIVE,
@@ -150,11 +150,11 @@ async function main() {
         workspaceId: workspace.id,
         invitedById: admin.id,
         name: 'Camila Torres',
-        email: 'camila@autozap.com',
+        email: 'camila@autoszap.com',
         title: 'Analista de Growth',
         role: Role.AGENT,
         status: UserStatus.PENDING,
-        inviteToken: 'invite-camila-autozap',
+        inviteToken: 'invite-camila-autoszap',
       },
     ],
   });
@@ -488,7 +488,7 @@ async function main() {
         description: 'Fluxo para novos contatos adicionados pela equipe',
         audienceType: CampaignAudienceType.LIST,
         targetConfig: { listIds: [lists[0]!.id] },
-        message: 'Ola! Aqui e a AutoZap. Queremos te mostrar como reduzir tempo de resposta no WhatsApp.',
+        message: 'Ola! Aqui e a AutosZap. Queremos te mostrar como reduzir tempo de resposta no WhatsApp.',
         status: CampaignStatus.SENT,
       },
       {
@@ -635,7 +635,7 @@ async function main() {
         name: 'Onboarding IA',
         description: 'Auxilia setup e boas praticas de implantacao',
         objective: 'Acelerar ativacao e reduzir chamados repetitivos',
-        systemPrompt: 'Explique implantacao e melhores praticas do AutoZap de forma objetiva e clara.',
+        systemPrompt: 'Explique implantacao e melhores praticas do AutosZap de forma objetiva e clara.',
         temperature: 0.2,
         model: 'gpt-4.1-mini',
         status: AssistantStatus.ACTIVE,
@@ -757,10 +757,10 @@ async function main() {
         workspaceId: workspace.id,
         actorId: admin.id,
         entityType: 'team_member',
-        entityId: 'camila@autozap.com',
+        entityId: 'camila@autoszap.com',
         action: AuditAction.INVITE,
         metadata: {
-          email: 'camila@autozap.com',
+          email: 'camila@autoszap.com',
         },
       },
     ],
@@ -816,7 +816,7 @@ async function main() {
     ],
   });
 
-  console.log('Seed concluido. Login demo: admin@autozap.com / 123456');
+  console.log('Seed concluido. Login demo: admin@autoszap.com / 123456');
 }
 
 main()

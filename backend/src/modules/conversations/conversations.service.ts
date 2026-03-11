@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { InboxEventsService } from '../../common/realtime/inbox-events.service';
 import {
   getPagination,
   paginatedResponse,
@@ -13,7 +14,12 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metaWhatsAppService: MetaWhatsAppService,
+    private readonly inboxEventsService: InboxEventsService,
   ) {}
+
+  stream(workspaceId: string) {
+    return this.inboxEventsService.stream(workspaceId);
+  }
 
   async list(
     workspaceId: string,
@@ -215,6 +221,12 @@ export class ConversationsService {
       }
     }
 
+    this.inboxEventsService.emit({
+      workspaceId,
+      conversationId: id,
+      type: 'conversation.updated',
+    });
+
     return this.findOne(id, workspaceId);
   }
 
@@ -239,6 +251,12 @@ export class ConversationsService {
         authorId,
         content,
       },
+    });
+
+    this.inboxEventsService.emit({
+      workspaceId,
+      conversationId,
+      type: 'conversation.note.created',
     });
 
     return this.findOne(conversationId, workspaceId);
@@ -276,5 +294,28 @@ export class ConversationsService {
       senderUserId,
       content,
     );
+  }
+
+  async sendMediaMessage(
+    conversationId: string,
+    workspaceId: string,
+    senderUserId: string,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      caption?: string;
+    },
+  ) {
+    return this.metaWhatsAppService.sendConversationMediaMessage(
+      workspaceId,
+      conversationId,
+      senderUserId,
+      payload,
+    );
+  }
+
+  async getMessageMedia(messageId: string, workspaceId: string) {
+    return this.metaWhatsAppService.getMessageMedia(workspaceId, messageId);
   }
 }

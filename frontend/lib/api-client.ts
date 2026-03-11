@@ -12,10 +12,13 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 };
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
+  const isFormData =
+    typeof FormData !== 'undefined' && options.body instanceof FormData;
+
   const response = await fetch(`/api/proxy/${path.replace(/^\//, '')}`, {
     method: options.method ?? 'GET',
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers ?? {}),
     },
     cache: 'no-store',
@@ -23,7 +26,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     body:
       options.body === undefined || options.body === null || options.method === 'GET'
         ? undefined
-        : JSON.stringify(options.body),
+        : isFormData
+          ? (options.body as FormData)
+          : JSON.stringify(options.body),
   });
 
   if (response.status === 401 && typeof window !== 'undefined') {

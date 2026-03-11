@@ -333,7 +333,7 @@ export class AuthService {
       this.jwtService.signAsync(payload, {
         secret:
           this.configService.get<string>('JWT_ACCESS_SECRET') ??
-          'autozap-access-secret',
+          'autoszap-access-secret',
         expiresIn: accessExpiresIn as never,
       }),
       this.prisma.refreshToken.create({

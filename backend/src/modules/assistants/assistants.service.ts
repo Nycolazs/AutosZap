@@ -191,7 +191,7 @@ export class AssistantsService {
     return {
       assistantId: id,
       message,
-      response: `${assistant.name}: ${assistant.objective ?? 'Posso te ajudar com o AutoZap.'} Com base nas referencias "${docs.map((doc) => doc.title).join(', ') || 'sem base vinculada'}", sugiro comecar por inbox, CRM e integracao oficial da Meta.`,
+      response: `${assistant.name}: ${assistant.objective ?? 'Posso te ajudar com o AutosZap.'} Com base nas referencias "${docs.map((doc) => doc.title).join(', ') || 'sem base vinculada'}", sugiro comecar por inbox, CRM e integracao oficial da Meta.`,
       simulated: true,
     };
   }

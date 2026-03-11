@@ -61,6 +61,16 @@ class InstanceDto {
   appSecret?: string;
 }
 
+class SubscribeAppDto {
+  @IsOptional()
+  @IsString()
+  overrideCallbackUri?: string;
+
+  @IsOptional()
+  @IsString()
+  verifyToken?: string;
+}
+
 @Controller('instances')
 export class InstancesController {
   constructor(
@@ -117,8 +127,12 @@ export class InstancesController {
   }
 
   @Post(':id/subscribe-app')
-  subscribeApp(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
-    return this.metaWhatsAppService.subscribeApp(user.workspaceId, id);
+  subscribeApp(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+    @Body() dto: SubscribeAppDto,
+  ) {
+    return this.metaWhatsAppService.subscribeApp(user.workspaceId, id, dto);
   }
 
   @Get(':id/templates')

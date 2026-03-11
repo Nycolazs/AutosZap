@@ -14,7 +14,7 @@ export class CryptoService {
   private getKey() {
     const raw =
       this.configService.get<string>('APP_ENCRYPTION_KEY') ??
-      'autozap-local-encryption-key';
+      'autoszap-local-encryption-key';
     return createHash('sha256').update(raw).digest();
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "0.0.1",
-  "description": "AutoZap backend API",
+  "description": "AutosZap backend API",
   "author": "OpenAI Codex",
   "private": true,
   "license": "UNLICENSED",

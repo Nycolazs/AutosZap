@@ -1,8 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Inbox, Search, SendHorizontal, StickyNote } from 'lucide-react';
+import {
+  FileImage,
+  Inbox,
+  Paperclip,
+  Search,
+  SendHorizontal,
+  StickyNote,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Input } from '@/components/ui/input';
@@ -12,16 +20,26 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
-import { Conversation, PaginatedResponse, Tag, UserSummary } from '@/lib/types';
+import {
+  Conversation,
+  ConversationMessage,
+  PaginatedResponse,
+  Tag,
+  UserSummary,
+} from '@/lib/types';
 import { formatDate } from '@/lib/utils';
+
+const INBOX_REFRESH_INTERVAL = 1500;
 
 export default function InboxPage() {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations', search, statusFilter],
@@ -31,6 +49,10 @@ export default function InboxPage() {
           statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''
         }`,
       ),
+    refetchInterval: INBOX_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 
   const conversations = useMemo(() => conversationsQuery.data?.data ?? [], [conversationsQuery.data]);
@@ -50,6 +72,10 @@ export default function InboxPage() {
     queryKey: ['conversation', activeConversationId],
     enabled: Boolean(activeConversationId),
     queryFn: () => apiRequest<Conversation>(`conversations/${activeConversationId}`),
+    refetchInterval: activeConversationId ? INBOX_REFRESH_INTERVAL : false,
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 
   const usersQuery = useQuery({
@@ -73,6 +99,40 @@ export default function InboxPage() {
       }),
     onSuccess: async () => {
       setMessageDraft('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
+      ]);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const sendMediaMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConversationId || !selectedFile) {
+        throw new Error('Selecione um arquivo para enviar.');
+      }
+
+      const formData = new FormData();
+      formData.append('conversationId', activeConversationId);
+      formData.append('file', selectedFile);
+
+      if (messageDraft.trim()) {
+        formData.append('caption', messageDraft.trim());
+      }
+
+      return apiRequest('messages/media', {
+        method: 'POST',
+        body: formData,
+      });
+    },
+    onSuccess: async () => {
+      setMessageDraft('');
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
@@ -116,6 +176,44 @@ export default function InboxPage() {
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
     [selectedConversation],
   );
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/proxy/conversations/stream');
+
+    const handleInboxEvent = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          conversationId?: string;
+        };
+
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+
+        if (
+          payload.conversationId &&
+          payload.conversationId === activeConversationId
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: ['conversation', activeConversationId],
+          });
+        }
+      } catch {
+        void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      }
+    };
+
+    eventSource.addEventListener(
+      'inbox-event',
+      handleInboxEvent as EventListener,
+    );
+
+    return () => {
+      eventSource.removeEventListener(
+        'inbox-event',
+        handleInboxEvent as EventListener,
+      );
+      eventSource.close();
+    };
+  }, [activeConversationId, queryClient]);
 
   return (
     <div className="grid h-full min-h-0 overflow-hidden gap-4 xl:grid-cols-[296px_minmax(0,1fr)_278px]">
@@ -210,7 +308,7 @@ export default function InboxPage() {
                         : 'bg-white/[0.04] text-foreground'
                     }`}
                   >
-                    <p>{message.content}</p>
+                    <MessageBubbleContent message={message} />
                     <p className={`mt-2 text-[11px] ${message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'}`}>
                       {formatDate(message.createdAt)} • {message.status}
                     </p>
@@ -220,19 +318,68 @@ export default function InboxPage() {
 
               <div className="shrink-0 border-t border-border p-4">
                 <div className="rounded-[20px] border border-border bg-white/[0.03] p-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  />
+                  {selectedFile ? (
+                    <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-border bg-background-panel px-3 py-2 text-sm">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileImage className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="truncate">
+                          {selectedFile.name}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-full p-1 text-muted-foreground transition hover:bg-white/5 hover:text-foreground"
+                        onClick={() => {
+                          setSelectedFile(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                          }
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : null}
                   <Textarea
                     value={messageDraft}
                     onChange={(event) => setMessageDraft(event.target.value)}
-                    placeholder="Digite uma resposta para enviar pelo canal selecionado..."
+                    placeholder={
+                      selectedFile
+                        ? 'Adicione uma legenda opcional para a midia...'
+                        : 'Digite uma resposta para enviar pelo canal selecionado...'
+                    }
                     className="min-h-20 border-none bg-transparent p-0"
                   />
-                  <div className="mt-2.5 flex justify-end">
+                  <div className="mt-2.5 flex items-center justify-between gap-3">
                     <Button
-                      onClick={() => sendMutation.mutate()}
-                      disabled={!messageDraft.trim() || !activeConversationId}
+                      type="button"
+                      variant="secondary"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!activeConversationId}
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      Anexar
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        selectedFile ? sendMediaMutation.mutate() : sendMutation.mutate()
+                      }
+                      disabled={
+                        (!messageDraft.trim() && !selectedFile) ||
+                        !activeConversationId ||
+                        sendMutation.isPending ||
+                        sendMediaMutation.isPending
+                      }
                     >
                       <SendHorizontal className="h-4 w-4" />
-                      Enviar
+                      {selectedFile ? 'Enviar midia' : 'Enviar'}
                     </Button>
                   </div>
                 </div>
@@ -353,4 +500,63 @@ export default function InboxPage() {
       </Card>
     </div>
   );
+}
+
+function MessageBubbleContent({
+  message,
+}: {
+  message: ConversationMessage;
+}) {
+  const mediaUrl = `/api/proxy/messages/${message.id}/media`;
+
+  if (message.messageType === 'image' || message.messageType === 'sticker') {
+    return (
+      <div className="space-y-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={mediaUrl}
+          alt={message.messageType === 'sticker' ? 'Figurinha' : 'Imagem'}
+          className={message.messageType === 'sticker' ? 'max-h-40 max-w-[160px]' : 'max-h-72 rounded-2xl object-cover'}
+        />
+        {message.content ? <p>{message.content}</p> : null}
+      </div>
+    );
+  }
+
+  if (message.messageType === 'audio') {
+    return (
+      <div className="space-y-2">
+        <audio controls className="max-w-full" src={mediaUrl} />
+        {message.content ? <p>{message.content}</p> : null}
+      </div>
+    );
+  }
+
+  if (message.messageType === 'video') {
+    return (
+      <div className="space-y-2">
+        <video controls className="max-h-72 rounded-2xl" src={mediaUrl} />
+        {message.content ? <p>{message.content}</p> : null}
+      </div>
+    );
+  }
+
+  if (message.messageType === 'document') {
+    return (
+      <div className="space-y-2">
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm underline-offset-4 hover:underline"
+        >
+          <Paperclip className="h-4 w-4" />
+          {message.metadata?.fileName ?? 'Abrir documento'}
+        </a>
+        {message.content ? <p>{message.content}</p> : null}
+      </div>
+    );
+  }
+
+  return <p>{message.content}</p>;
 }

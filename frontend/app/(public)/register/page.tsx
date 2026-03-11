@@ -46,7 +46,7 @@ export default function RegisterPage() {
     <AuthShell
       eyebrow="WORKSPACE NOVA"
       title="Estruture sua operacao com"
-      accent="AutoZap"
+      accent="AutosZap"
       description="Crie sua workspace inicial, adicione sua equipe e comece com uma base pronta para integracao oficial com WhatsApp Business Platform."
     >
       <Card className="w-full max-w-[560px] p-0">

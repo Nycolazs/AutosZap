@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Code2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -147,6 +149,30 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground">Exibir cards de acesso rapido no painel inicial.</p>
               </div>
               <Switch checked />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Desenvolvimento</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Gerencie frontend local, backend local, túnel público e o roteamento do webhook oficial da Meta.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
+              Use esta área para apontar temporariamente o WhatsApp para seu localhost e depois devolver o callback para produção.
+            </div>
+            <div className="flex justify-end">
+              <Button asChild variant="secondary">
+                <Link href="/app/desenvolvimento">
+                  <Code2 className="h-4 w-4" />
+                  Abrir desenvolvimento
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>

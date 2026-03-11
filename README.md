@@ -1,4 +1,4 @@
-# AutoZap
+# AutosZap
 
 SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp Business Platform. O projeto foi estruturado em `frontend/` com Next.js App Router e `backend/` com NestJS, Prisma, PostgreSQL e Redis.
 
@@ -59,9 +59,21 @@ npm run dev
 - Backend API: [http://localhost:4000/api](http://localhost:4000/api)
 - Swagger: [http://localhost:4000/docs](http://localhost:4000/docs)
 
+## Área de desenvolvimento no app
+
+Depois de autenticar, use [http://localhost:3000/app/desenvolvimento](http://localhost:3000/app/desenvolvimento) para:
+
+- salvar a URL local do frontend e backend
+- registrar a URL pública do túnel do backend local
+- copiar o `verify token`
+- apontar o webhook oficial da Meta para `local` ou `produção`
+- testar a instância, sincronizar a WABA e validar rapidamente se o canal está pronto
+
+Essa tela foi pensada para evitar edição manual toda vez que você alternar entre localhost e produção.
+
 ## Credenciais demo
 
-- Email: `admin@autozap.com`
+- Email: `admin@autoszap.com`
 - Senha: `123456`
 
 ## Seed inicial incluída
@@ -88,6 +100,30 @@ npm run dev
 - Se as credenciais Meta não estiverem preenchidas, envios e testes usam fallback controlado.
 - O backend persiste mensagens outbound, status e eventos normalmente, mas sem chamada externa.
 
+### Desenvolvimento local com envio e recebimento reais
+
+Se você quer testar o app inteiro no localhost, inclusive receber e responder mensagens reais do WhatsApp:
+
+1. No `backend/.env`, preencha as credenciais reais da Meta.
+2. Defina:
+
+```env
+META_MODE=PRODUCTION
+BACKEND_PUBLIC_URL=https://SEU-TUNEL.trycloudflare.com
+```
+
+3. Mantenha a instância em `/app/instancias` com `mode=PRODUCTION`.
+4. Suba o backend local e o frontend local.
+5. Exponha o backend com um túnel público, por exemplo:
+
+```bash
+cloudflared tunnel --url http://localhost:4000
+```
+
+6. Abra `/app/desenvolvimento`, salve a URL do túnel e clique em `Apontar Meta para local`.
+
+Com isso, a Meta passa a enviar webhooks para seu backend local. Quando terminar os testes, volte na mesma tela e clique em `Apontar Meta para produção`.
+
 ### Produção / ambiente real
 
 Preencha no backend:
@@ -99,6 +135,7 @@ Preencha no backend:
 - `META_APP_SECRET`
 - `META_GRAPH_API_VERSION`
 - `META_MODE=PRODUCTION`
+- `BACKEND_PUBLIC_URL=https://api.seudominio.com`
 
 Além disso:
 
@@ -117,7 +154,8 @@ Além disso:
 1. Copie `.env.production.example` para `.env.production`.
 2. Preencha `FRONTEND_URL`, segredos JWT, `APP_ENCRYPTION_KEY` e variáveis da Meta.
 3. Defina `AUTOZAP_BACKEND_HOST` com um host HTTPS que resolva para a VPS. Exemplo sem domínio próprio: `178-156-252-137.sslip.io`.
-4. Suba com:
+4. Defina `BACKEND_PUBLIC_URL` com a URL pública definitiva da API. Exemplo: `https://api.autoszap.com`.
+5. Suba com:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
@@ -133,7 +171,7 @@ No projeto `frontend/`, publique com `BACKEND_URL` apontando para o backend HTTP
 ```bash
 vercel deploy --prod --yes \
   -e BACKEND_URL=https://178-156-252-137.sslip.io \
-  -e NEXT_PUBLIC_APP_NAME=AutoZap
+  -e NEXT_PUBLIC_APP_NAME=AutosZap
 ```
 
 Depois copie a URL final do Vercel e atualize `FRONTEND_URL` no `.env.production` da VPS com essa URL.

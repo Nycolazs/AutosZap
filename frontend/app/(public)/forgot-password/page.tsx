@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
     <AuthShell
       eyebrow="RECUPERACAO SEGURA"
       title="Recupere seu acesso ao"
-      accent="AutoZap"
+      accent="AutosZap"
       description="Solicite um token de redefinicao. Em ambiente local, o token tambem fica visivel para agilizar testes."
     >
       <Card className="w-full max-w-[520px] p-0">

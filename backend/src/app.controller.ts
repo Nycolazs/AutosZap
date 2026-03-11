@@ -8,7 +8,7 @@ export class AppController {
   getHealth() {
     return {
       status: 'ok',
-      service: 'autozap-backend',
+      service: 'autoszap-backend',
       timestamp: new Date().toISOString(),
     };
   }
