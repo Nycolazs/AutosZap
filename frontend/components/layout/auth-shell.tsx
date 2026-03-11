@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { BriefcaseBusiness, MessageSquareText, Workflow } from 'lucide-react';
+import { BrandMark } from '@/components/branding/brand-mark';
 
 const bullets = [
   { icon: MessageSquareText, text: 'Inbox multi-atendente com historico unificado' },
@@ -26,8 +27,8 @@ export function AuthShell({
       <div className="relative grid min-h-[calc(100vh-3rem)] grid-cols-1 gap-6 lg:grid-cols-[1.06fr_0.94fr] lg:items-center">
         <section className="flex flex-col justify-center px-2 lg:px-8">
           <Link href="/login" className="mb-10 flex items-center gap-3">
-            <div className="rounded-2xl bg-primary p-2.5 text-white shadow-[0_16px_42px_rgba(50,151,255,0.28)]">
-              <MessageSquareText className="h-5 w-5" />
+            <div className="rounded-2xl border border-white/8 bg-white/5 p-1.5 shadow-[0_16px_42px_rgba(8,26,54,0.32)]">
+              <BrandMark className="h-11 w-11" />
             </div>
             <div>
               <p className="font-heading text-xl font-semibold">AutosZap</p>

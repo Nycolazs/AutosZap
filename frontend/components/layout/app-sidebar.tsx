@@ -16,6 +16,7 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
+import { BrandMark } from '@/components/branding/brand-mark';
 import { cn } from '@/lib/utils';
 
 const sections = [
@@ -58,8 +59,8 @@ export function AppSidebar() {
   return (
     <aside className="hidden h-screen w-[244px] shrink-0 overflow-hidden border-r border-border bg-background-elevated px-3 py-5 lg:flex lg:flex-col">
       <div className="mb-6 flex items-center gap-3 px-2">
-        <div className="rounded-2xl bg-primary p-2.5 text-white shadow-[0_16px_40px_rgba(50,151,255,0.26)]">
-          <MessageSquareText className="h-5 w-5" />
+        <div className="rounded-2xl border border-white/8 bg-white/5 p-1.5 shadow-[0_16px_40px_rgba(8,26,54,0.3)]">
+          <BrandMark className="h-10 w-10" />
         </div>
         <div>
           <p className="font-heading text-lg font-semibold">AutosZap</p>
