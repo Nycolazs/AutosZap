@@ -17,9 +17,9 @@ export const metadata: Metadata = {
   title: 'AutosZap',
   description: 'Inbox, CRM e automacao premium para WhatsApp Business Platform.',
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: '/brand/autoszap-mark.png',
+    shortcut: '/brand/autoszap-mark.png',
+    apple: '/brand/autoszap-mark.png',
   },
 };
 

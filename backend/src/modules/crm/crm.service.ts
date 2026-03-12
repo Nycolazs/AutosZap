@@ -34,31 +34,16 @@ export class CrmService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getPipeline(workspaceId: string) {
-    const pipeline = await this.prisma.pipeline.findFirst({
-      where: {
-        workspaceId,
-        deletedAt: null,
-      },
-      include: {
-        stages: {
-          where: { deletedAt: null },
-          orderBy: { order: 'asc' },
-        },
-      },
-    });
-
-    if (!pipeline) {
-      throw new NotFoundException('Pipeline nao encontrado.');
-    }
-
-    return pipeline;
+    return this.ensureDefaultPipeline(workspaceId);
   }
 
   async createStage(workspaceId: string, payload: StagePayload) {
+    const pipeline = await this.ensureDefaultPipeline(workspaceId);
+
     return this.prisma.pipelineStage.create({
       data: {
         workspaceId,
-        pipelineId: payload.pipelineId,
+        pipelineId: payload.pipelineId || pipeline.id,
         name: payload.name,
         color: payload.color,
         order: payload.order,
@@ -203,11 +188,18 @@ export class CrmService {
   }
 
   async createLead(workspaceId: string, payload: LeadPayload) {
+    const pipeline = await this.ensureDefaultPipeline(workspaceId);
+    const stageId = payload.stageId || pipeline.stages[0]?.id;
+
+    if (!stageId) {
+      throw new NotFoundException('Etapa nao encontrada.');
+    }
+
     const lead = await this.prisma.lead.create({
       data: {
         workspaceId,
-        pipelineId: payload.pipelineId,
-        stageId: payload.stageId,
+        pipelineId: payload.pipelineId || pipeline.id,
+        stageId,
         contactId: payload.contactId,
         assignedToId: payload.assignedToId,
         name: payload.name,
@@ -323,5 +315,74 @@ export class CrmService {
         skipDuplicates: true,
       });
     }
+  }
+
+  private async ensureDefaultPipeline(workspaceId: string) {
+    let pipeline = await this.prisma.pipeline.findFirst({
+      where: {
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        stages: {
+          where: { deletedAt: null },
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+
+    if (!pipeline) {
+      pipeline = await this.prisma.pipeline.create({
+        data: {
+          workspaceId,
+          name: 'Pipeline principal',
+          stages: {
+            create: this.defaultStages().map((stage) => ({
+              workspaceId,
+              ...stage,
+            })),
+          },
+        },
+        include: {
+          stages: {
+            where: { deletedAt: null },
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
+
+      return pipeline;
+    }
+
+    if (!pipeline.stages.length) {
+      await this.prisma.pipelineStage.createMany({
+        data: this.defaultStages().map((stage) => ({
+          workspaceId,
+          pipelineId: pipeline!.id,
+          ...stage,
+        })),
+      });
+
+      pipeline = await this.prisma.pipeline.findUniqueOrThrow({
+        where: { id: pipeline.id },
+        include: {
+          stages: {
+            where: { deletedAt: null },
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
+    }
+
+    return pipeline;
+  }
+
+  private defaultStages() {
+    return [
+      { name: 'Entrada', color: '#3297ff', order: 1, probability: 10 },
+      { name: 'Qualificacao', color: '#2b79e3', order: 2, probability: 35 },
+      { name: 'Proposta', color: '#18a7c9', order: 3, probability: 65 },
+      { name: 'Fechamento', color: '#59b6ff', order: 4, probability: 90 },
+    ];
   }
 }

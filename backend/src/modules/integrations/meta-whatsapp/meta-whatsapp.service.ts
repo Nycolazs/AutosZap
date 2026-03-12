@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -16,6 +17,10 @@ import {
 } from '@prisma/client';
 import { CryptoService } from '../../../common/crypto/crypto.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import {
+  buildEquivalentContactPhones,
+  normalizeContactPhone,
+} from '../../../common/utils/phone';
 import { MetaWhatsAppProvider } from './meta-whatsapp.provider';
 import {
   MessagingInstanceConfig,
@@ -27,6 +32,8 @@ import { InboxEventsService } from '../../../common/realtime/inbox-events.servic
 
 @Injectable()
 export class MetaWhatsAppService {
+  private readonly logger = new Logger(MetaWhatsAppService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
@@ -91,6 +98,118 @@ export class MetaWhatsAppService {
   ): Promise<ProviderTemplateSummary[]> {
     const config = await this.getInstanceConfig(instanceId, workspaceId);
     return this.provider.listTemplates(config);
+  }
+
+  async getBusinessProfile(workspaceId: string, instanceId: string) {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+
+    try {
+      return await this.provider.getBusinessProfile(config);
+    } catch (error) {
+      throw this.buildFriendlyProfileError(
+        'Nao foi possivel carregar o perfil do WhatsApp.',
+        error,
+      );
+    }
+  }
+
+  async updateBusinessProfile(
+    workspaceId: string,
+    instanceId: string,
+    payload: {
+      about?: string;
+      description?: string;
+      email?: string;
+      websites?: string[];
+      address?: string;
+      vertical?: string;
+    },
+  ) {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const sanitizedPayload = {
+      about: payload.about?.trim() || undefined,
+      description: payload.description?.trim() || undefined,
+      email: payload.email?.trim() || undefined,
+      websites: payload.websites?.map((item) => item.trim()).filter(Boolean),
+      address: payload.address?.trim() || undefined,
+      vertical: payload.vertical?.trim() || undefined,
+    };
+
+    if (
+      !sanitizedPayload.about &&
+      !sanitizedPayload.description &&
+      !sanitizedPayload.email &&
+      !sanitizedPayload.websites?.length &&
+      !sanitizedPayload.address &&
+      !sanitizedPayload.vertical
+    ) {
+      throw new BadRequestException(
+        'Informe ao menos um campo do perfil para atualizar.',
+      );
+    }
+
+    try {
+      const result = await this.provider.updateBusinessProfile(
+        config,
+        sanitizedPayload,
+      );
+
+      await this.prisma.instance.update({
+        where: { id: instanceId },
+        data: {
+          lastSyncAt: new Date(),
+        },
+      });
+
+      return result;
+    } catch (error) {
+      throw this.buildFriendlyProfileError(
+        'Nao foi possivel atualizar o perfil do WhatsApp.',
+        error,
+      );
+    }
+  }
+
+  async updateProfilePicture(
+    workspaceId: string,
+    instanceId: string,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      contentLength: number;
+    },
+  ) {
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
+
+    if (!allowedMimeTypes.has(payload.mimeType)) {
+      throw new BadRequestException(
+        'Use uma imagem PNG ou JPG para atualizar a foto do WhatsApp.',
+      );
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+
+    try {
+      const result = await this.provider.updateBusinessProfilePicture(
+        config,
+        payload,
+      );
+
+      await this.prisma.instance.update({
+        where: { id: instanceId },
+        data: {
+          lastSyncAt: new Date(),
+        },
+      });
+
+      return result;
+    } catch (error) {
+      throw this.buildFriendlyProfileError(
+        'Nao foi possivel atualizar a foto do WhatsApp.',
+        error,
+      );
+    }
   }
 
   async sendDirectMessage(
@@ -232,6 +351,7 @@ export class MetaWhatsAppService {
       fileName: string;
       mimeType: string;
       caption?: string;
+      voice?: boolean;
     },
   ) {
     const conversation = await this.prisma.conversation.findFirst({
@@ -311,6 +431,7 @@ export class MetaWhatsAppService {
           mimeType: payload.mimeType,
           fileName: payload.fileName,
           caption: payload.caption,
+          voice: payload.voice ?? false,
         },
       },
     });
@@ -674,6 +795,7 @@ export class MetaWhatsAppService {
       workspaceId: instance.workspaceId,
       provider: 'META_WHATSAPP',
       mode: instance.mode,
+      appId: instance.appId ?? this.configService.get<string>('META_APP_ID'),
       phoneNumber: instance.phoneNumber,
       phoneNumberId: instance.phoneNumberId,
       businessAccountId: instance.businessAccountId,
@@ -852,11 +974,14 @@ export class MetaWhatsAppService {
     phone: string,
     name?: string,
   ) {
-    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+    const normalizedPhone = normalizeContactPhone(phone);
+    const equivalentPhones = buildEquivalentContactPhones(phone);
     const existing = await this.prisma.contact.findFirst({
       where: {
         workspaceId,
-        phone: normalizedPhone,
+        phone: {
+          in: equivalentPhones.length ? equivalentPhones : [normalizedPhone],
+        },
         deletedAt: null,
       },
     });
@@ -896,17 +1021,42 @@ export class MetaWhatsAppService {
       return existing;
     }
 
-    return this.prisma.conversation.create({
-      data: {
-        workspaceId,
-        contactId,
-        instanceId,
-        assignedUserId: assignedUserId ?? undefined,
-        ownership: assignedUserId
-          ? ConversationOwnership.MINE
-          : ConversationOwnership.UNASSIGNED,
-      },
-    });
+    try {
+      return await this.prisma.conversation.create({
+        data: {
+          workspaceId,
+          contactId,
+          instanceId,
+          assignedUserId: assignedUserId ?? undefined,
+          ownership: assignedUserId
+            ? ConversationOwnership.MINE
+            : ConversationOwnership.UNASSIGNED,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const duplicateConversation = await this.prisma.conversation.findFirst({
+          where: {
+            workspaceId,
+            contactId,
+            instanceId,
+            deletedAt: null,
+          },
+          orderBy: {
+            updatedAt: 'desc',
+          },
+        });
+
+        if (duplicateConversation) {
+          return duplicateConversation;
+        }
+      }
+
+      throw error;
+    }
   }
 
   private mapMetaStatus(status: string) {
@@ -946,6 +1096,17 @@ export class MetaWhatsAppService {
       overrideCallbackUri,
       verifyToken,
     };
+  }
+
+  private buildFriendlyProfileError(message: string, error: unknown) {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : 'Erro inesperado na integracao com a Meta.';
+
+    this.logger.error(`${message} ${detail}`);
+
+    return new BadRequestException(`${message} ${detail}`);
   }
 
   private normalizeBaseUrl(value?: string | null) {

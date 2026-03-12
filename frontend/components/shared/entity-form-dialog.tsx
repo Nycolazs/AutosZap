@@ -13,6 +13,7 @@ import {
 } from 'react-hook-form';
 import { ZodSchema } from 'zod';
 import { Button } from '@/components/ui/button';
+import { MultiOptionSelector } from '@/components/shared/multi-option-selector';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 type FieldOption = {
   label: string;
   value: string;
+  color?: string;
 };
 
 type FieldConfig<TFormValues extends FieldValues> = {
@@ -35,7 +37,7 @@ type FieldConfig<TFormValues extends FieldValues> = {
   label: string;
   type?: 'text' | 'textarea' | 'number' | 'email' | 'password' | 'color' | 'select' | 'multiselect';
   placeholder?: string;
-  options?: FieldOption[];
+  options?: FieldOption[] | ((values: TFormValues) => FieldOption[]);
 };
 
 export function EntityFormDialog<TFormValues extends FieldValues>({
@@ -92,6 +94,10 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
             {fields.map((field) => {
               const error = form.formState.errors[field.name]?.message as string | undefined;
               const value = watchedValues[field.name as keyof typeof watchedValues];
+              const resolvedOptions =
+                typeof field.options === 'function'
+                  ? field.options(watchedValues as TFormValues)
+                  : (field.options ?? []);
 
               return (
                 <div key={field.name} className="space-y-2">
@@ -105,31 +111,18 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
                       {...form.register(field.name)}
                     >
                       <option value="">Selecione</option>
-                      {field.options?.map((option) => (
+                      {resolvedOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
                   ) : field.type === 'multiselect' ? (
-                    <select
-                      id={field.name}
-                      multiple
+                    <MultiOptionSelector
+                      options={resolvedOptions}
                       value={(value as string[] | undefined) ?? []}
-                      className="min-h-32 w-full rounded-2xl border border-border bg-background-panel px-4 py-3 text-sm text-foreground"
-                      onChange={(event) =>
-                        form.setValue(
-                          field.name,
-                          Array.from(event.target.selectedOptions).map((option) => option.value) as never,
-                        )
-                      }
-                    >
-                      {field.options?.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => form.setValue(field.name, next as never, { shouldDirty: true })}
+                    />
                   ) : (
                     <Input
                       id={field.name}

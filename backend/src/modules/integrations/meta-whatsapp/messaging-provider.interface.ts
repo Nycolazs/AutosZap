@@ -4,6 +4,7 @@ export interface MessagingInstanceConfig {
   id: string;
   workspaceId: string;
   mode: InstanceMode;
+  appId?: string | null;
   phoneNumber?: string | null;
   phoneNumberId?: string | null;
   businessAccountId?: string | null;
@@ -70,6 +71,39 @@ export interface ProviderHealthResult {
   healthy: boolean;
   simulated: boolean;
   detail: string;
+  raw?: Record<string, unknown>;
+}
+
+export interface ProviderBusinessProfile {
+  about?: string | null;
+  description?: string | null;
+  email?: string | null;
+  websites?: string[];
+  address?: string | null;
+  vertical?: string | null;
+  profilePictureUrl?: string | null;
+}
+
+export interface ProviderProfileUpdateResult {
+  simulated: boolean;
+  detail: string;
+  phoneNumber?: {
+    id?: string | null;
+    displayPhoneNumber?: string | null;
+    verifiedName?: string | null;
+    qualityRating?: string | null;
+    codeVerificationStatus?: string | null;
+    nameStatus?: string | null;
+  };
+  businessProfile?: {
+    about?: string | null;
+    description?: string | null;
+    email?: string | null;
+    websites?: string[];
+    address?: string | null;
+    vertical?: string | null;
+    profilePictureUrl?: string | null;
+  } | null;
   raw?: Record<string, unknown>;
 }
 
@@ -153,6 +187,29 @@ export interface MessagingProvider {
   getInstanceDiagnostics(
     config: MessagingInstanceConfig,
   ): Promise<ProviderInstanceDiagnostics>;
+  getBusinessProfile(
+    config: MessagingInstanceConfig,
+  ): Promise<ProviderProfileUpdateResult>;
+  updateBusinessProfile(
+    config: MessagingInstanceConfig,
+    payload: {
+      about?: string;
+      description?: string;
+      email?: string;
+      websites?: string[];
+      address?: string;
+      vertical?: string;
+    },
+  ): Promise<ProviderProfileUpdateResult>;
+  updateBusinessProfilePicture(
+    config: MessagingInstanceConfig,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      contentLength: number;
+    },
+  ): Promise<ProviderProfileUpdateResult>;
   subscribeApp(
     config: MessagingInstanceConfig,
     payload?: {

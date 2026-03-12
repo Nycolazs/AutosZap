@@ -7,6 +7,11 @@ import { ContactSource, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
+  buildEquivalentContactPhones,
+  normalizeContactPhone,
+  normalizeSearchPhone,
+} from '../../common/utils/phone';
+import {
   getPagination,
   paginatedResponse,
 } from '../../common/utils/pagination';
@@ -31,6 +36,7 @@ export class ContactsService {
     query: PaginationQueryDto & { tagId?: string },
   ) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const searchPhoneVariants = normalizeSearchPhone(query.search);
 
     const where: Prisma.ContactWhereInput = {
       workspaceId,
@@ -39,7 +45,11 @@ export class ContactsService {
         ? {
             OR: [
               { name: { contains: query.search, mode: 'insensitive' } },
-              { phone: { contains: query.search, mode: 'insensitive' } },
+              ...(searchPhoneVariants.length
+                ? searchPhoneVariants.map((phone) => ({
+                    phone: { contains: phone },
+                  }))
+                : []),
               { email: { contains: query.search, mode: 'insensitive' } },
               { company: { contains: query.search, mode: 'insensitive' } },
             ],
@@ -159,10 +169,14 @@ export class ContactsService {
   }
 
   async create(workspaceId: string, payload: ContactPayload) {
+    const normalizedPhone = normalizeContactPhone(payload.phone);
+    const equivalentPhones = buildEquivalentContactPhones(payload.phone);
     const existing = await this.prisma.contact.findFirst({
       where: {
         workspaceId,
-        phone: payload.phone,
+        phone: {
+          in: equivalentPhones.length ? equivalentPhones : [normalizedPhone],
+        },
         deletedAt: null,
       },
     });
@@ -175,7 +189,7 @@ export class ContactsService {
       data: {
         workspaceId,
         name: payload.name,
-        phone: payload.phone,
+        phone: normalizedPhone,
         email: payload.email,
         company: payload.company,
         jobTitle: payload.jobTitle,
@@ -204,11 +218,39 @@ export class ContactsService {
       throw new NotFoundException('Contato nao encontrado.');
     }
 
+    const normalizedPhone = payload.phone
+      ? normalizeContactPhone(payload.phone)
+      : contact.phone;
+    const equivalentPhones = payload.phone
+      ? buildEquivalentContactPhones(payload.phone)
+      : [contact.phone];
+
+    if (normalizedPhone !== contact.phone) {
+      const existing = await this.prisma.contact.findFirst({
+        where: {
+          workspaceId,
+          phone: {
+            in: equivalentPhones.length ? equivalentPhones : [normalizedPhone],
+          },
+          deletedAt: null,
+          NOT: {
+            id,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException(
+          'Ja existe um contato com este telefone.',
+        );
+      }
+    }
+
     await this.prisma.contact.update({
       where: { id },
       data: {
         name: payload.name ?? contact.name,
-        phone: payload.phone ?? contact.phone,
+        phone: normalizedPhone,
         email: payload.email ?? contact.email,
         company: payload.company ?? contact.company,
         jobTitle: payload.jobTitle ?? contact.jobTitle,

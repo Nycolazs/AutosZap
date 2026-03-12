@@ -1,6 +1,6 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { BriefcaseBusiness, MessageSquareText, Workflow } from 'lucide-react';
-import { BrandMark } from '@/components/branding/brand-mark';
 
 const bullets = [
   { icon: MessageSquareText, text: 'Inbox multi-atendente com historico unificado' },
@@ -26,13 +26,18 @@ export function AuthShell({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(50,151,255,0.2),transparent_30%),radial-gradient(circle_at_85%_80%,rgba(25,183,215,0.18),transparent_20%)]" />
       <div className="relative grid min-h-[calc(100vh-3rem)] grid-cols-1 gap-6 lg:grid-cols-[1.06fr_0.94fr] lg:items-center">
         <section className="flex flex-col justify-center px-2 lg:px-8">
-          <Link href="/login" className="mb-10 flex items-center gap-3">
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-1.5 shadow-[0_16px_42px_rgba(8,26,54,0.32)]">
-              <BrandMark className="h-11 w-11" />
-            </div>
+          <Link href="/login" className="mb-10 flex w-fit items-center gap-4">
+            <Image
+              src="/brand/autoszap-mark.png"
+              alt="AutosZap"
+              width={84}
+              height={84}
+              className="h-16 w-16 shrink-0 object-contain lg:h-20 lg:w-20"
+              priority
+            />
             <div>
-              <p className="font-heading text-xl font-semibold">AutosZap</p>
-              <p className="text-xs text-muted-foreground">Atendimento, CRM e automacao para WhatsApp</p>
+              <p className="font-heading text-[30px] font-semibold tracking-tight text-foreground lg:text-[36px]">AutosZap</p>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Atendimento & CRM</p>
             </div>
           </Link>
 

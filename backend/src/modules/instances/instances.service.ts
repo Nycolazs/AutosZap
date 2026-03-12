@@ -12,6 +12,7 @@ type InstancePayload = {
   provider?: InstanceProvider;
   status?: InstanceStatus;
   mode?: InstanceMode;
+  appId?: string;
   phoneNumber?: string;
   businessAccountId?: string;
   phoneNumberId?: string;
@@ -95,6 +96,7 @@ export class InstancesService {
         provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
         status: payload.status ?? InstanceStatus.DISCONNECTED,
         mode: payload.mode ?? InstanceMode.DEV,
+        appId: payload.appId,
         phoneNumber: payload.phoneNumber,
         businessAccountId: payload.businessAccountId,
         phoneNumberId: payload.phoneNumberId,
@@ -129,6 +131,7 @@ export class InstancesService {
         provider: payload.provider ?? instance.provider,
         status: payload.status ?? instance.status,
         mode: payload.mode ?? instance.mode,
+        appId: payload.appId ?? instance.appId,
         phoneNumber: payload.phoneNumber ?? instance.phoneNumber,
         businessAccountId:
           payload.businessAccountId ?? instance.businessAccountId,

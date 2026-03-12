@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -44,6 +45,10 @@ class SendMediaDto {
   @IsOptional()
   @IsString()
   caption?: string;
+
+  @IsOptional()
+  @IsString()
+  isVoiceNote?: string;
 }
 
 @Controller('messages')
@@ -94,6 +99,7 @@ export class MessagesController {
         fileName: file.originalname,
         mimeType: file.mimetype,
         caption: dto.caption,
+        voice: dto.isVoiceNote === 'true',
       },
     );
   }
@@ -103,7 +109,7 @@ export class MessagesController {
     @CurrentUser() user: CurrentAuthUser,
     @Param('id') id: string,
     @Res({ passthrough: true }) response: Response,
-  ) {
+  ): Promise<StreamableFile> {
     const media = await this.conversationsService.getMessageMedia(
       id,
       user.workspaceId,
@@ -126,6 +132,6 @@ export class MessagesController {
       );
     }
 
-    return media.buffer;
+    return new StreamableFile(media.buffer);
   }
 }

@@ -132,6 +132,7 @@ Preencha no backend:
 - `META_WHATSAPP_PHONE_NUMBER_ID`
 - `META_WHATSAPP_BUSINESS_ACCOUNT_ID`
 - `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `META_APP_ID`
 - `META_APP_SECRET`
 - `META_GRAPH_API_VERSION`
 - `META_MODE=PRODUCTION`
@@ -144,6 +145,7 @@ Além disso:
 - Use o `webhook verify token` correspondente à instância.
 - O backend valida `X-Hub-Signature-256` quando houver `app secret` configurado.
 - Use a tela de instâncias para executar `Testar`, `Sync Meta`, `Subscribe` e `Templates`.
+- A troca da foto do perfil do WhatsApp Business usa o `App ID` da instância ou `META_APP_ID` no ambiente.
 - O endpoint `POST /api/integrations/meta/whatsapp/send-template` já está pronto para envio com template aprovado.
 - Em produção, mensagens de texto livres respeitam a janela de atendimento de 24 horas; fora dela, use template.
 

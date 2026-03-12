@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Code2 } from 'lucide-react';
+import { Camera, Code2, RadioTower } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -69,6 +69,14 @@ export default function SettingsPage() {
       <PageHeader
         title="Configuracoes"
         description="Atualize perfil, dados da empresa, preferências simples e seguranca da conta."
+        action={
+          <Button asChild variant="secondary">
+            <Link href="/app/instancias">
+              <Camera className="h-4 w-4" />
+              Perfil do WhatsApp
+            </Link>
+          </Button>
+        }
       />
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -149,6 +157,52 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground">Exibir cards de acesso rapido no painel inicial.</p>
               </div>
               <Switch checked />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Perfil do WhatsApp</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Troque a foto do numero, atualize sobre, descricao, links e categoria oficial da Meta.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
+              Essa configuracao fica vinculada a cada instancia conectada. Abra a instancia desejada e use a acao
+              <span className="mx-1 font-medium text-foreground">Perfil WhatsApp</span>
+              para editar a foto e os dados oficiais do numero.
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[20px] border border-border bg-white/[0.03] p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Camera className="h-4 w-4 text-primary" />
+                  Foto do perfil
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Upload com preview antes de salvar e envio real para a Meta.
+                </p>
+              </div>
+              <div className="rounded-[20px] border border-border bg-white/[0.03] p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <RadioTower className="h-4 w-4 text-primary" />
+                  Dados oficiais
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Sobre, descricao, email, websites, endereco e vertical do WhatsApp Business.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button asChild>
+                <Link href="/app/instancias">
+                  <Camera className="h-4 w-4" />
+                  Abrir instancias
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>

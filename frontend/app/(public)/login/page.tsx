@@ -27,8 +27,8 @@ export default function LoginPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      email: 'admin@autoszap.com',
-      password: '123456',
+      email: '',
+      password: '',
     },
   });
 
@@ -49,6 +49,7 @@ export default function LoginPage() {
         <CardContent className="p-6 pt-5">
           <form
             className="space-y-4"
+            autoComplete="off"
             onSubmit={form.handleSubmit(async (values) => {
               try {
                 const response = await fetch('/api/auth/login', {
@@ -72,7 +73,7 @@ export default function LoginPage() {
           >
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...form.register('email')} />
+              <Input id="email" type="email" autoComplete="off" {...form.register('email')} />
               <p className="text-xs text-danger">{form.formState.errors.email?.message}</p>
             </div>
             <div className="space-y-2">
@@ -83,7 +84,7 @@ export default function LoginPage() {
                 </Link>
               </div>
               <div className="relative">
-                <Input id="password" type={showPassword ? 'text' : 'password'} {...form.register('password')} />
+                <Input id="password" type={showPassword ? 'text' : 'password'} autoComplete="off" {...form.register('password')} />
                 <button
                   type="button"
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"

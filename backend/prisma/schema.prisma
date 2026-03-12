@@ -408,6 +408,7 @@ model Conversation {
   assignments        ConversationAssignment[]
   tags               ConversationTag[]
 
+  @@unique([workspaceId, contactId, instanceId])
   @@index([workspaceId, status, lastMessageAt])
   @@index([contactId])
 }
@@ -717,6 +718,7 @@ model Instance {
   provider                    InstanceProvider        @default(META_WHATSAPP)
   status                      InstanceStatus          @default(DISCONNECTED)
   mode                        InstanceMode            @default(DEV)
+  appId                       String?
   phoneNumber                 String?
   businessAccountId           String?
   phoneNumberId               String?

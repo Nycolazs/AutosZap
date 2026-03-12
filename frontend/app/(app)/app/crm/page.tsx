@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { KanbanBoard } from '@/components/crm/kanban-board';
 import { FilterBar } from '@/components/shared/filter-bar';
+import { MultiOptionSelector } from '@/components/shared/multi-option-selector';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -262,23 +263,16 @@ export default function CrmPage() {
             </div>
             <div className="space-y-2">
               <Label>Tags</Label>
-              <select
-                multiple
-                className="min-h-28 rounded-2xl border border-border bg-background-panel px-4 py-3"
+              <MultiOptionSelector
+                options={(tagsQuery.data ?? []).map((tag) => ({
+                  label: tag.name,
+                  value: tag.id,
+                  color: tag.color,
+                }))}
                 value={selectedTagIds ?? []}
-                onChange={(event) =>
-                  form.setValue(
-                    'tagIds',
-                    Array.from(event.target.selectedOptions).map((option) => option.value),
-                  )
-                }
-              >
-                {tagsQuery.data?.map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => form.setValue('tagIds', next, { shouldDirty: true })}
+                emptyMessage="Nenhuma tag cadastrada ainda."
+              />
             </div>
             <div className="space-y-2">
               <Label>Notas</Label>

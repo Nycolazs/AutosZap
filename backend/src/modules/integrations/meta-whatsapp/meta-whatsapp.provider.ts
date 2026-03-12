@@ -7,8 +7,10 @@ import {
   MessagingInstanceConfig,
   MessagingProvider,
   ParsedWebhookPayload,
+  ProviderBusinessProfile,
   ProviderHealthResult,
   ProviderInstanceDiagnostics,
+  ProviderProfileUpdateResult,
   ProviderSendResult,
   ProviderSubscribedApp,
   ProviderTemplateSummary,
@@ -31,6 +33,14 @@ type MetaMediaObjectResponse = {
   file_size?: number;
 };
 
+type MetaUploadSessionResponse = {
+  id?: string;
+};
+
+type MetaUploadBinaryResponse = {
+  h?: string;
+};
+
 type MetaPhoneNumberResponse = {
   id?: string;
   display_phone_number?: string;
@@ -47,8 +57,14 @@ type MetaBusinessProfileResponse = {
     email?: string;
     profile_picture_url?: string;
     websites?: string[];
+    address?: string;
+    vertical?: string;
   }>;
 };
+
+type MetaBusinessProfile = NonNullable<
+  MetaBusinessProfileResponse['data']
+>[number];
 
 type MetaTemplatesResponse = {
   data?: Array<{
@@ -206,12 +222,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     form.append('messaging_product', 'whatsapp');
     form.append(
       'file',
-      new Blob(
-        [
-          Uint8Array.from(payload.buffer),
-        ],
-        { type: payload.mimeType },
-      ),
+      new Blob([Uint8Array.from(payload.buffer)], { type: payload.mimeType }),
       payload.fileName,
     );
 
@@ -455,16 +466,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
           phoneNumberResult.code_verification_status ?? null,
         nameStatus: phoneNumberResult.name_status ?? null,
       },
-      businessProfile: businessProfileResult.data?.[0]
-        ? {
-            about: businessProfileResult.data[0].about ?? null,
-            description: businessProfileResult.data[0].description ?? null,
-            email: businessProfileResult.data[0].email ?? null,
-            websites: businessProfileResult.data[0].websites ?? [],
-            profilePictureUrl:
-              businessProfileResult.data[0].profile_picture_url ?? null,
-          }
-        : null,
+      businessProfile: this.mapBusinessProfile(businessProfileResult.data?.[0]),
       subscribedApps,
       templates,
       raw: {
@@ -472,6 +474,215 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         businessProfile: businessProfileResult,
         templates: templatesResult,
         subscribedApps: subscribedAppsResult,
+      },
+    };
+  }
+
+  async getBusinessProfile(
+    config: MessagingInstanceConfig,
+  ): Promise<ProviderProfileUpdateResult> {
+    if (!this.shouldUseRealMode(config)) {
+      return {
+        simulated: true,
+        detail:
+          'Modo de desenvolvimento ativo; perfil do WhatsApp carregado sem chamada real.',
+        phoneNumber: {
+          id: config.phoneNumberId,
+          displayPhoneNumber: config.phoneNumber,
+        },
+        businessProfile: null,
+        raw: {
+          mode: 'dev',
+        },
+      };
+    }
+
+    const [phoneNumberResult, businessProfileResult] = await Promise.all([
+      this.get<MetaPhoneNumberResponse>(
+        config,
+        `${config.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status`,
+      ),
+      this.get<MetaBusinessProfileResponse>(
+        config,
+        `${config.phoneNumberId}/whatsapp_business_profile?fields=about,description,email,profile_picture_url,websites,address,vertical`,
+      ),
+    ]);
+
+    return {
+      simulated: false,
+      detail: 'Perfil do WhatsApp carregado com sucesso.',
+      phoneNumber: this.mapPhoneNumber(phoneNumberResult, config),
+      businessProfile: this.mapBusinessProfile(businessProfileResult.data?.[0]),
+      raw: {
+        phoneNumber: phoneNumberResult,
+        businessProfile: businessProfileResult,
+      },
+    };
+  }
+
+  async updateBusinessProfile(
+    config: MessagingInstanceConfig,
+    payload: {
+      about?: string;
+      description?: string;
+      email?: string;
+      websites?: string[];
+      address?: string;
+      vertical?: string;
+    },
+  ): Promise<ProviderProfileUpdateResult> {
+    if (!this.shouldUseRealMode(config)) {
+      return {
+        simulated: true,
+        detail:
+          'Modo de desenvolvimento ativo; atualizacao do perfil simulada.',
+        phoneNumber: {
+          id: config.phoneNumberId,
+          displayPhoneNumber: config.phoneNumber,
+        },
+        businessProfile: {
+          about: payload.about ?? null,
+          description: payload.description ?? null,
+          email: payload.email ?? null,
+          websites: payload.websites ?? [],
+          address: payload.address ?? null,
+          vertical: payload.vertical ?? null,
+          profilePictureUrl: null,
+        },
+        raw: {
+          mode: 'dev',
+          payload,
+        },
+      };
+    }
+
+    const requestBody = {
+      messaging_product: 'whatsapp',
+      ...(payload.about !== undefined ? { about: payload.about } : {}),
+      ...(payload.description !== undefined
+        ? { description: payload.description }
+        : {}),
+      ...(payload.email !== undefined ? { email: payload.email } : {}),
+      ...(payload.websites !== undefined ? { websites: payload.websites } : {}),
+      ...(payload.address !== undefined ? { address: payload.address } : {}),
+      ...(payload.vertical !== undefined ? { vertical: payload.vertical } : {}),
+    };
+
+    await this.post<Record<string, unknown>>(
+      config,
+      `${config.phoneNumberId}/whatsapp_business_profile`,
+      requestBody,
+    );
+
+    const refreshedProfile = await this.getBusinessProfile(config);
+
+    return {
+      ...refreshedProfile,
+      detail: 'Perfil do WhatsApp atualizado com sucesso.',
+    };
+  }
+
+  async updateBusinessProfilePicture(
+    config: MessagingInstanceConfig,
+    payload: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      contentLength: number;
+    },
+  ): Promise<ProviderProfileUpdateResult> {
+    if (!this.shouldUseRealMode(config)) {
+      return {
+        simulated: true,
+        detail:
+          'Modo de desenvolvimento ativo; atualizacao da foto de perfil simulada.',
+        businessProfile: {
+          profilePictureUrl: null,
+        },
+        raw: {
+          mode: 'dev',
+          fileName: payload.fileName,
+          mimeType: payload.mimeType,
+          contentLength: payload.contentLength,
+        },
+      };
+    }
+
+    if (!config.appId) {
+      throw new Error(
+        'App ID obrigatorio para atualizar a foto do perfil via API da Meta.',
+      );
+    }
+
+    if (!config.phoneNumberId) {
+      throw new Error(
+        'Phone Number ID obrigatorio para atualizar a foto do perfil.',
+      );
+    }
+
+    const uploadSession = await axios.post<MetaUploadSessionResponse>(
+      this.buildGraphUrl(`${config.appId}/uploads`),
+      null,
+      {
+        params: {
+          file_name: payload.fileName,
+          file_length: payload.contentLength,
+          file_type: payload.mimeType,
+        },
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+        },
+      },
+    );
+
+    const uploadSessionId = uploadSession.data.id;
+
+    if (!uploadSessionId) {
+      throw new Error('A Meta nao retornou o upload session id da imagem.');
+    }
+
+    const uploadResponse = await axios.post<MetaUploadBinaryResponse>(
+      this.buildGraphUrl(uploadSessionId),
+      payload.buffer,
+      {
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': payload.mimeType,
+          file_offset: '0',
+        },
+        maxBodyLength: Infinity,
+      },
+    );
+
+    const profilePictureHandle = uploadResponse.data.h;
+
+    if (!profilePictureHandle) {
+      throw new Error(
+        'A Meta nao retornou o profile_picture_handle da imagem.',
+      );
+    }
+
+    const updateResponse = await this.post<Record<string, unknown>>(
+      config,
+      `${config.phoneNumberId}/whatsapp_business_profile`,
+      {
+        messaging_product: 'whatsapp',
+        profile_picture_handle: profilePictureHandle,
+      },
+    );
+
+    const businessProfileOverview = await this.getBusinessProfile(config);
+
+    return {
+      simulated: false,
+      detail: 'Foto do perfil do WhatsApp Business atualizada com sucesso.',
+      phoneNumber: businessProfileOverview.phoneNumber,
+      businessProfile: businessProfileOverview.businessProfile,
+      raw: {
+        uploadSession: uploadSession.data,
+        uploadBinary: uploadResponse.data,
+        updateProfile: updateResponse,
+        profile: businessProfileOverview.raw,
       },
     };
   }
@@ -699,6 +910,40 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     });
 
     return response.data;
+  }
+
+  private mapPhoneNumber(
+    phoneNumberResult: MetaPhoneNumberResponse,
+    config: MessagingInstanceConfig,
+  ) {
+    return {
+      id: phoneNumberResult.id ?? config.phoneNumberId,
+      displayPhoneNumber:
+        phoneNumberResult.display_phone_number ?? config.phoneNumber,
+      verifiedName: phoneNumberResult.verified_name ?? null,
+      qualityRating: phoneNumberResult.quality_rating ?? null,
+      codeVerificationStatus:
+        phoneNumberResult.code_verification_status ?? null,
+      nameStatus: phoneNumberResult.name_status ?? null,
+    };
+  }
+
+  private mapBusinessProfile(
+    profile?: MetaBusinessProfile,
+  ): ProviderBusinessProfile | null {
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      about: profile.about ?? null,
+      description: profile.description ?? null,
+      email: profile.email ?? null,
+      websites: profile.websites ?? [],
+      address: profile.address ?? null,
+      vertical: profile.vertical ?? null,
+      profilePictureUrl: profile.profile_picture_url ?? null,
+    };
   }
 
   private async post<T>(

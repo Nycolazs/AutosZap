@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -16,7 +17,6 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
-import { BrandMark } from '@/components/branding/brand-mark';
 import { cn } from '@/lib/utils';
 
 const sections = [
@@ -58,15 +58,20 @@ export function AppSidebar() {
 
   return (
     <aside className="hidden h-screen w-[244px] shrink-0 overflow-hidden border-r border-border bg-background-elevated px-3 py-5 lg:flex lg:flex-col">
-      <div className="mb-6 flex items-center gap-3 px-2">
-        <div className="rounded-2xl border border-white/8 bg-white/5 p-1.5 shadow-[0_16px_40px_rgba(8,26,54,0.3)]">
-          <BrandMark className="h-10 w-10" />
+      <Link href="/app" className="mb-6 flex items-center gap-3 px-2">
+        <Image
+          src="/brand/autoszap-mark.png"
+          alt="AutosZap"
+          width={56}
+          height={56}
+          className="h-12 w-12 shrink-0 object-contain"
+          priority
+        />
+        <div className="min-w-0">
+          <p className="font-heading text-[24px] font-semibold tracking-tight text-foreground">AutosZap</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Atendimento & CRM</p>
         </div>
-        <div>
-          <p className="font-heading text-lg font-semibold">AutosZap</p>
-          <p className="text-xs text-muted-foreground">SaaS premium para WhatsApp</p>
-        </div>
-      </div>
+      </Link>
 
       <div className="space-y-5 overflow-y-auto pr-1">
         {sections.map((section) => (

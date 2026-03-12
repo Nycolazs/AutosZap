@@ -219,6 +219,12 @@ export class CampaignsService {
       campaign.targetConfig as Record<string, unknown>,
     );
 
+    if (!recipientIds.length) {
+      throw new BadRequestException(
+        'Nenhum destinatario encontrado para este publico. Selecione contatos, listas, tags ou grupos com contatos vinculados.',
+      );
+    }
+
     await this.prisma.campaignRecipient.deleteMany({
       where: { campaignId: id },
     });
@@ -231,6 +237,12 @@ export class CampaignsService {
         deletedAt: null,
       },
     });
+
+    if (!contacts.length) {
+      throw new BadRequestException(
+        'Nenhum contato valido foi encontrado para esta campanha.',
+      );
+    }
 
     let sentCount = 0;
     let failedCount = 0;

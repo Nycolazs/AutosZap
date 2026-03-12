@@ -123,6 +123,7 @@ export interface Instance {
   provider: string;
   status: string;
   mode: string;
+  appId?: string | null;
   phoneNumber?: string | null;
   businessAccountId?: string | null;
   phoneNumberId?: string | null;
@@ -198,6 +199,15 @@ export interface WhatsAppInstanceDiagnostics {
     codeVerificationStatus?: string | null;
     nameStatus?: string | null;
   };
+  businessProfile?: {
+    about?: string | null;
+    description?: string | null;
+    email?: string | null;
+    websites?: string[];
+    address?: string | null;
+    vertical?: string | null;
+    profilePictureUrl?: string | null;
+  } | null;
   subscribedApps: Array<{
     appId?: string;
     appName?: string;
@@ -205,6 +215,23 @@ export interface WhatsAppInstanceDiagnostics {
   }>;
   templates: WhatsAppTemplateSummary[];
 }
+
+export interface WhatsAppProfilePictureUpdateResult {
+  simulated: boolean;
+  detail: string;
+  phoneNumber?: {
+    id?: string | null;
+    displayPhoneNumber?: string | null;
+    verifiedName?: string | null;
+    qualityRating?: string | null;
+    codeVerificationStatus?: string | null;
+    nameStatus?: string | null;
+  };
+  businessProfile?: WhatsAppInstanceDiagnostics['businessProfile'];
+  raw?: Record<string, unknown>;
+}
+
+export type WhatsAppBusinessProfileOverview = WhatsAppProfilePictureUpdateResult;
 
 export interface DashboardOverview {
   metrics: {

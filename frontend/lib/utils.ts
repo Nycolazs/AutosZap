@@ -25,7 +25,17 @@ export function formatDate(value?: string | Date | null) {
 }
 
 export function normalizePhone(value?: string | null) {
-  return (value ?? '').replace(/\D/g, '');
+  const digits = (value ?? '').replace(/\D/g, '');
+  const nationalDigits =
+    digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+      ? digits.slice(2)
+      : digits;
+
+  if (nationalDigits.length === 10 && /^[6-9]$/.test(nationalDigits.charAt(2))) {
+    return `${nationalDigits.slice(0, 2)}9${nationalDigits.slice(2)}`;
+  }
+
+  return nationalDigits;
 }
 
 export function formatBrazilPhone(value?: string | null) {

@@ -27,7 +27,9 @@ type FormField<TFormValues extends FieldValues> = {
   label: string;
   type?: 'text' | 'textarea' | 'number' | 'email' | 'password' | 'color' | 'select' | 'multiselect';
   placeholder?: string;
-  options?: Array<{ label: string; value: string }>;
+  options?:
+    | Array<{ label: string; value: string; color?: string }>
+    | ((values: TFormValues) => Array<{ label: string; value: string; color?: string }>);
 };
 
 type CrudPageProps<TItem extends EntityWithId, TFormValues extends FieldValues> = {

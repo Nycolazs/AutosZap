@@ -7,6 +7,7 @@ import {
   getPagination,
   paginatedResponse,
 } from '../../common/utils/pagination';
+import { normalizeSearchPhone } from '../../common/utils/phone';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 
 @Injectable()
@@ -31,6 +32,33 @@ export class ConversationsService {
     },
   ) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const searchPhoneVariants = normalizeSearchPhone(query.search);
+
+    const searchFilters: Prisma.ConversationWhereInput[] = query.search
+      ? [
+          {
+            contact: {
+              name: { contains: query.search, mode: 'insensitive' },
+            },
+          },
+          {
+            contact: {
+              phone: { contains: query.search },
+            },
+          },
+          ...searchPhoneVariants.map((phone) => ({
+            contact: {
+              phone: { contains: phone },
+            },
+          })),
+          {
+            lastMessagePreview: {
+              contains: query.search,
+              mode: 'insensitive',
+            },
+          },
+        ]
+      : [];
 
     const where: Prisma.ConversationWhereInput = {
       workspaceId,
@@ -39,26 +67,9 @@ export class ConversationsService {
       ...(query.ownership ? { ownership: query.ownership as never } : {}),
       ...(query.assignedUserId ? { assignedUserId: query.assignedUserId } : {}),
       ...(query.tagId ? { tags: { some: { tagId: query.tagId } } } : {}),
-      ...(query.search
+      ...(searchFilters.length
         ? {
-            OR: [
-              {
-                contact: {
-                  name: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-              {
-                contact: {
-                  phone: { contains: query.search, mode: 'insensitive' },
-                },
-              },
-              {
-                lastMessagePreview: {
-                  contains: query.search,
-                  mode: 'insensitive',
-                },
-              },
-            ],
+            OR: searchFilters,
           }
         : {}),
     };
@@ -305,6 +316,7 @@ export class ConversationsService {
       fileName: string;
       mimeType: string;
       caption?: string;
+      voice?: boolean;
     },
   ) {
     return this.metaWhatsAppService.sendConversationMediaMessage(
