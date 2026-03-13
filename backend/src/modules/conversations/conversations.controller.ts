@@ -66,6 +66,14 @@ export class ConversationsController {
     return this.conversationsService.list(user, query);
   }
 
+  @Get('summary')
+  summary(
+    @CurrentUser() user: CurrentAuthUser,
+    @Query() query: ConversationsQueryDto,
+  ) {
+    return this.conversationsService.summary(user, query);
+  }
+
   @Sse('stream')
   stream(@CurrentUser() user: CurrentAuthUser) {
     return this.conversationsService.stream(user);

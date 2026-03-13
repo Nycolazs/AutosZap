@@ -225,6 +225,7 @@ export interface MessagingProvider {
   listTemplates(
     config: MessagingInstanceConfig,
   ): Promise<ProviderTemplateSummary[]>;
+  canUseRealTransport(config: MessagingInstanceConfig): boolean;
   validateWebhookSignature(
     rawBody: Buffer,
     signature: string,

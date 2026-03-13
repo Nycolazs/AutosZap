@@ -31,6 +31,7 @@ describe('MetaWhatsAppService automatic replies', () => {
     };
     const provider = {
       isProductionMode: jest.fn(),
+      canUseRealTransport: jest.fn(),
       sendTextMessage: jest.fn(),
       sendTemplateMessage: jest.fn(),
     };
@@ -46,6 +47,8 @@ describe('MetaWhatsAppService automatic replies', () => {
       new ConfigService(),
       {} as never,
       workspaceSettings as never,
+      {} as never,
+      {} as never,
     );
 
     return {
@@ -146,7 +149,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       },
     });
     prisma.conversationMessage.findFirst.mockResolvedValue(null);
-    provider.isProductionMode.mockReturnValue(true);
+    provider.canUseRealTransport.mockReturnValue(true);
     workspaceSettingsService.getConversationSettings.mockResolvedValue({
       sendWindowClosedTemplateReply: true,
       windowClosedTemplateName: 'retomada_atendimento_autozap',

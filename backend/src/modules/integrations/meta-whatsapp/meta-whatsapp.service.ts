@@ -14,7 +14,11 @@ import {
   InstanceStatus,
   MessageDirection,
   MessageStatus,
+  NotificationType,
+  PermissionKey,
   Prisma,
+  Role,
+  UserStatus,
   WebhookEventType,
 } from '@prisma/client';
 import { CryptoService } from '../../../common/crypto/crypto.service';
@@ -32,6 +36,10 @@ import {
 } from './messaging-provider.interface';
 import { ConversationWorkflowService } from '../../conversations/conversation-workflow.service';
 import { WorkspaceSettingsService } from '../../workspace-settings/workspace-settings.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { AccessControlService } from '../../access-control/access-control.service';
+import { normalizeRole } from '../../access-control/permissions.constants';
+import { normalizeConversationStatus } from '../../conversations/conversation-workflow.utils';
 
 @Injectable()
 export class MetaWhatsAppService {
@@ -44,6 +52,8 @@ export class MetaWhatsAppService {
     private readonly configService: ConfigService,
     private readonly conversationWorkflowService: ConversationWorkflowService,
     private readonly workspaceSettingsService: WorkspaceSettingsService,
+    private readonly notificationsService: NotificationsService,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   async testConnection(workspaceId: string, instanceId: string) {
@@ -741,6 +751,13 @@ export class MetaWhatsAppService {
         conversation.id,
         inboundInstance.workspaceId,
       );
+      await this.notifyConversationRecipientsAboutInboundMessage({
+        workspaceId: inboundInstance.workspaceId,
+        conversationId: conversation.id,
+        contactName: contact.name,
+        preview:
+          inbound.body || this.buildMediaPlaceholder(inbound.messageType),
+      });
       await this.conversationWorkflowService.emitConversationRealtimeEvent(
         inboundInstance.workspaceId,
         conversation.id,
@@ -1026,7 +1043,7 @@ export class MetaWhatsAppService {
     workspaceId: string,
     config: MessagingInstanceConfig,
   ) {
-    if (!this.provider.isProductionMode(config)) {
+    if (!this.provider.canUseRealTransport(config)) {
       return {
         isOpen: true,
         latestInboundAt: null,
@@ -1408,5 +1425,134 @@ export class MetaWhatsAppService {
       mimeType: typeof value.mimeType === 'string' ? value.mimeType : null,
       fileName: typeof value.fileName === 'string' ? value.fileName : null,
     };
+  }
+
+  private async notifyConversationRecipientsAboutInboundMessage(payload: {
+    workspaceId: string;
+    conversationId: string;
+    contactName: string;
+    preview: string;
+  }) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: payload.conversationId,
+        workspaceId: payload.workspaceId,
+      },
+      select: {
+        status: true,
+        assignedUserId: true,
+        resolvedById: true,
+        closedById: true,
+      },
+    });
+
+    if (!conversation) {
+      return;
+    }
+
+    const recipientIds = await this.resolveNotificationRecipients(
+      payload.workspaceId,
+      {
+        status: conversation.status,
+        assignedUserId: conversation.assignedUserId,
+        resolvedById: conversation.resolvedById,
+        closedById: conversation.closedById,
+      },
+    );
+
+    if (!recipientIds.length) {
+      return;
+    }
+
+    await this.notificationsService.createForUsers({
+      workspaceId: payload.workspaceId,
+      userIds: recipientIds,
+      title: `Nova mensagem: ${payload.contactName}`,
+      body: payload.preview.slice(0, 180),
+      type: NotificationType.INFO,
+      entityType: 'conversation',
+      entityId: payload.conversationId,
+      linkHref: `/app/inbox?conversationId=${payload.conversationId}`,
+      metadata: {
+        conversationId: payload.conversationId,
+        contactName: payload.contactName,
+        preview: payload.preview,
+        source: 'customer_message',
+      },
+    });
+  }
+
+  private async resolveNotificationRecipients(
+    workspaceId: string,
+    conversation: {
+      status: ConversationStatus;
+      assignedUserId: string | null;
+      resolvedById: string | null;
+      closedById: string | null;
+    },
+  ) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        workspaceId,
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+      },
+      select: {
+        id: true,
+        role: true,
+      },
+    });
+
+    const normalizedStatus = normalizeConversationStatus(
+      conversation.status,
+      conversation.assignedUserId,
+    );
+    const recipientIds: string[] = [];
+
+    for (const user of users) {
+      if (normalizeRole(user.role) === Role.ADMIN) {
+        recipientIds.push(user.id);
+        continue;
+      }
+
+      const permissions = await this.accessControlService.getUserPermissions(
+        user.id,
+        workspaceId,
+      );
+
+      if (!permissions.permissionMap[PermissionKey.INBOX_VIEW]) {
+        continue;
+      }
+
+      if (
+        normalizedStatus === ConversationStatus.NEW ||
+        normalizedStatus === ConversationStatus.WAITING
+      ) {
+        recipientIds.push(user.id);
+        continue;
+      }
+
+      if (
+        normalizedStatus === ConversationStatus.IN_PROGRESS &&
+        conversation.assignedUserId === user.id
+      ) {
+        recipientIds.push(user.id);
+        continue;
+      }
+
+      if (
+        (normalizedStatus === ConversationStatus.RESOLVED ||
+          normalizedStatus === ConversationStatus.CLOSED) &&
+        [
+          conversation.assignedUserId,
+          conversation.resolvedById,
+          conversation.closedById,
+        ].includes(user.id)
+      ) {
+        recipientIds.push(user.id);
+      }
+    }
+
+    return recipientIds;
   }
 }

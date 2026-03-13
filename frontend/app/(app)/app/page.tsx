@@ -65,7 +65,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-24 w-full" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {Array.from({ length: 5 }).map((_, index) => (
             <Skeleton key={index} className="h-36" />
           ))}
@@ -88,7 +88,7 @@ export default function DashboardPage() {
         description="Acompanhe a operação em tempo real e compare a performance dos vendedores por conversas resolvidas."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard title="Conversas ativas" value={overview.metrics.activeConversations} helper="Novas, em atendimento e aguardando" icon={MessageSquareText} />
         <StatCard title="Contatos totais" value={overview.metrics.totalContacts} helper="Base disponível na empresa" icon={Users} />
         <StatCard title="Taxa de resposta" value={`${overview.metrics.responseRate}%`} helper="Mensagens entregues ou lidas" icon={Activity} />
@@ -97,12 +97,12 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <CardHeader className="gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <CardTitle>Performance de vendedores</CardTitle>
             <CardDescription>Compare resoluções, encerramentos, assunções e tempos médios por período.</CardDescription>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">De</p>
               <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
@@ -131,7 +131,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard title="Resolvidos" value={performance.totals.resolvedCount} helper="Conversas concluídas com sucesso" icon={Trophy} />
               <StatCard title="Encerrados" value={performance.totals.closedCount} helper="Atendimentos encerrados sem conversão" icon={MessageSquareText} />
               <StatCard title="Assumidos" value={performance.totals.assignedCount} helper="Total de conversas assumidas" icon={Users} />
@@ -241,18 +241,20 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-6 pt-0">
-            <div className="grid grid-cols-7 gap-3">
-              {overview.chart.map((point) => (
-                <div key={point.label} className="flex flex-col items-center gap-3">
-                  <div className="flex h-48 w-full items-end rounded-[22px] bg-white/[0.03] p-3">
-                    <div
-                      className="w-full rounded-2xl bg-gradient-to-t from-primary to-secondary"
-                      style={{ height: `${Math.max(point.value * 12, 18)}px` }}
-                    />
+            <div className="-mx-1 overflow-x-auto px-1">
+              <div className="grid min-w-[520px] grid-cols-7 gap-3">
+                {overview.chart.map((point) => (
+                  <div key={point.label} className="flex flex-col items-center gap-3">
+                    <div className="flex h-44 w-full items-end rounded-[22px] bg-white/[0.03] p-3 sm:h-48">
+                      <div
+                        className="w-full rounded-2xl bg-gradient-to-t from-primary to-secondary"
+                        style={{ height: `${Math.max(point.value * 12, 18)}px` }}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">{point.label}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{point.label}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>

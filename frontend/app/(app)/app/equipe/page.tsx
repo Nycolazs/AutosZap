@@ -299,6 +299,20 @@ export default function TeamPage() {
             <CardTitle>Resumo de acesso</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Total</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{members.length}</p>
+              </div>
+              <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Admins</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{members.filter((member) => member.normalizedRole === 'ADMIN').length}</p>
+              </div>
+              <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Ativos</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{members.filter((member) => member.status === 'ACTIVE').length}</p>
+              </div>
+            </div>
             <div className="rounded-[22px] border border-border bg-white/[0.03] p-4">
               <div className="mb-2 flex items-center gap-2 text-foreground">
                 <ShieldCheck className="h-4 w-4 text-primary" />
@@ -375,7 +389,7 @@ export default function TeamPage() {
                 ))}
               </div>
 
-              <div className="flex justify-end gap-3">
+              <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
                 <Button variant="secondary" onClick={() => setPermissionsMember(null)}>
                   Cancelar
                 </Button>

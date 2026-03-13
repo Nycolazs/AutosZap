@@ -96,7 +96,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     to: string,
     body: string,
   ): Promise<ProviderSendResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         externalMessageId: `dev-${randomUUID()}`,
         status: 'delivered',
@@ -142,7 +142,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       bodyParameters?: TemplateParameter[];
     },
   ): Promise<ProviderSendResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         externalMessageId: `dev-${randomUUID()}`,
         status: 'delivered',
@@ -205,7 +205,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       mimeType: string;
     },
   ) {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         mediaId: `dev-media-${randomUUID()}`,
         mimeType: payload.mimeType,
@@ -261,7 +261,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       fileName?: string;
     },
   ): Promise<ProviderSendResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         externalMessageId: `dev-${randomUUID()}`,
         status: 'delivered',
@@ -385,7 +385,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
   async getInstanceDiagnostics(
     config: MessagingInstanceConfig,
   ): Promise<ProviderInstanceDiagnostics> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         healthy: true,
         simulated: true,
@@ -481,7 +481,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
   async getBusinessProfile(
     config: MessagingInstanceConfig,
   ): Promise<ProviderProfileUpdateResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         simulated: true,
         detail:
@@ -531,7 +531,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       vertical?: string;
     },
   ): Promise<ProviderProfileUpdateResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         simulated: true,
         detail:
@@ -591,7 +591,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       contentLength: number;
     },
   ): Promise<ProviderProfileUpdateResult> {
-    if (!this.shouldUseRealMode(config)) {
+    if (!this.canUseRealTransport(config)) {
       return {
         simulated: true,
         detail:
@@ -694,22 +694,21 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       verifyToken?: string;
     },
   ) {
-    if (!this.shouldUseRealMode(config)) {
-      return {
-        healthy: true,
-        simulated: true,
-        detail:
-          'Modo de desenvolvimento ativo; subscribe do app simulado com sucesso.',
-        raw: {
-          mode: 'dev',
-          payload,
-        },
-      };
+    const missingRequirements: string[] = [];
+
+    if (!config.accessToken) {
+      missingRequirements.push('Access Token');
     }
 
     if (!config.businessAccountId) {
+      missingRequirements.push('Business Account ID');
+    }
+
+    if (missingRequirements.length > 0) {
       throw new Error(
-        'Business Account ID obrigatorio para subscribing do app na WABA.',
+        `Nao foi possivel atualizar o callback da Meta. Configure ${missingRequirements.join(
+          ' e ',
+        )} na instancia antes de assinar o app na WABA.`,
       );
     }
 
@@ -893,7 +892,11 @@ export class MetaWhatsAppProvider implements MessagingProvider {
   }
 
   isProductionMode(config: MessagingInstanceConfig) {
-    return this.shouldUseRealMode(config);
+    return this.shouldUseStrictProductionMode(config);
+  }
+
+  canUseRealTransport(config: MessagingInstanceConfig) {
+    return !!config.accessToken && !!config.phoneNumberId;
   }
 
   private async get<T>(
@@ -1115,7 +1118,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     }
   }
 
-  private shouldUseRealMode(config: MessagingInstanceConfig) {
+  private shouldUseStrictProductionMode(config: MessagingInstanceConfig) {
     const envMode = (
       this.configService.get<string>('META_MODE') ?? 'DEV'
     ).toUpperCase();
@@ -1124,8 +1127,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     return (
       envMode === 'PRODUCTION' &&
       instanceMode === InstanceMode.PRODUCTION &&
-      !!config.accessToken &&
-      !!config.phoneNumberId
+      this.canUseRealTransport(config)
     );
   }
 }

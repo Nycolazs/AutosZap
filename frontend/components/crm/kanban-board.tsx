@@ -52,7 +52,10 @@ function Column({
   });
 
   return (
-    <div ref={setNodeRef} className="flex min-w-[280px] flex-1 flex-col rounded-[24px] border border-border bg-white/[0.03] p-3.5">
+    <div
+      ref={setNodeRef}
+      className="flex min-w-[264px] snap-start flex-1 flex-col rounded-[24px] border border-border bg-white/[0.03] p-3.5 sm:min-w-[280px]"
+    >
       <div className="mb-3.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="h-3 w-3 rounded-full" style={{ backgroundColor: stage.color }} />
@@ -82,7 +85,7 @@ function KanbanCard({ lead, onClick }: { lead: KanbanLead; onClick: () => void }
   return (
     <Card
       ref={setNodeRef as never}
-      className="cursor-grab rounded-[20px] border-white/6 bg-background-panel p-3.5"
+      className="cursor-grab rounded-[20px] border-white/6 bg-background-panel p-3.5 shadow-[0_12px_26px_rgba(2,10,22,0.16)]"
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onClick}
       {...attributes}
@@ -143,7 +146,7 @@ export function KanbanBoard({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
-      <div className="flex gap-3.5 overflow-x-auto pb-2">
+      <div className="-mx-1 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-1 pb-2">
         {grouped.map(({ stage, leads: stageLeads }) => (
           <Column key={stage.id} stage={stage} leads={stageLeads} onCardClick={onCardClick} />
         ))}

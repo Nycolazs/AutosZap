@@ -4,17 +4,13 @@ import type { KeyboardEvent, MutableRefObject } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CheckCircle2,
   ChevronLeft,
-  Clock3,
-  Pencil,
   FileImage,
   Inbox,
   Mic,
   Pause,
   Paperclip,
   Play,
-  Plus,
   Search,
   SendHorizontal,
   SlidersHorizontal,
@@ -25,14 +21,23 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
+import { WhatsAppFormattedText } from '@/components/shared/whatsapp-formatted-text';
+import {
+  ConversationRemindersPanel,
+  DEFAULT_REMINDER_FORM,
+  type ReminderFormState,
+} from '@/components/inbox/conversation-reminders-panel';
+import {
+  ConversationStatusFilter,
+  type ConversationStatusFilterValue,
+} from '@/components/inbox/conversation-status-filter';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect } from '@/components/ui/select';
 import { apiRequest } from '@/lib/api-client';
 import { formatManualMessageContent } from '@/lib/message-formatting';
 import { canAccess, getRoleLabel } from '@/lib/permissions';
@@ -41,6 +46,7 @@ import {
   Conversation,
   ConversationMessage,
   ConversationReminder,
+  ConversationStatusSummary,
   PaginatedResponse,
   Tag,
   UserSummary,
@@ -51,7 +57,13 @@ import { useSearchParams } from 'next/navigation';
 const INBOX_REFRESH_INTERVAL = 1500;
 const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 18, 14, 24, 18, 28, 20, 16, 24, 14, 18, 12, 8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14];
 const HIDDEN_MEDIA_LABELS = new Set(['Imagem', 'Audio', 'Video', 'Figurinha', 'Documento anexado']);
-const STATUS_OPTIONS = ['ALL', 'NEW', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'] as const;
+const MESSAGE_STATUS_LABELS: Record<string, string> = {
+  READ: 'Lida',
+  DELIVERED: 'Entregue',
+  SENT: 'Enviada',
+  FAILED: 'Falhou',
+  QUEUED: 'Na fila',
+};
 
 const STATUS_LABELS: Record<string, string> = {
   ALL: 'Todas',
@@ -61,24 +73,18 @@ const STATUS_LABELS: Record<string, string> = {
   RESOLVED: 'Resolvido',
   CLOSED: 'Encerrado',
 };
+const DEFAULT_CONVERSATION_STATUS_SUMMARY: ConversationStatusSummary = {
+  ALL: 0,
+  NEW: 0,
+  IN_PROGRESS: 0,
+  WAITING: 0,
+  RESOLVED: 0,
+  CLOSED: 0,
+};
 
 type RecordingMimeConfig = {
   mimeType: string;
   extension: string;
-};
-
-type ReminderFormState = {
-  messageToSend: string;
-  internalDescription: string;
-  date: string;
-  time: string;
-};
-
-const DEFAULT_REMINDER_FORM: ReminderFormState = {
-  messageToSend: '',
-  internalDescription: '',
-  date: '',
-  time: '',
 };
 
 function InboxPageContent() {
@@ -92,7 +98,8 @@ function InboxPageContent() {
   const recordingMimeConfigRef = useRef<RecordingMimeConfig | null>(null);
   const requestedConversationId = searchParams.get('conversationId');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] =
+    useState<ConversationStatusFilterValue>('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
@@ -121,6 +128,17 @@ function InboxPageContent() {
   const meQuery = useQuery({
     queryKey: ['auth-me'],
     queryFn: () => apiRequest<AuthMeResponse>('auth/me'),
+  });
+  const conversationSummaryQuery = useQuery({
+    queryKey: ['conversations-summary', search],
+    queryFn: () =>
+      apiRequest<ConversationStatusSummary>(
+        `conversations/summary${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+      ),
+    refetchInterval: INBOX_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 
   const conversations = useMemo(() => conversationsQuery.data?.data ?? [], [conversationsQuery.data]);
@@ -183,6 +201,7 @@ function InboxPageContent() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
       ]);
     },
@@ -228,6 +247,7 @@ function InboxPageContent() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
       ]);
     },
@@ -342,6 +362,7 @@ function InboxPageContent() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
       ]);
       toast.success('Conversa atualizada.');
@@ -356,6 +377,7 @@ function InboxPageContent() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-performance'] }),
       ]);
@@ -371,6 +393,7 @@ function InboxPageContent() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-performance'] }),
       ]);
@@ -386,6 +409,7 @@ function InboxPageContent() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
       ]);
       toast.success('Conversa reaberta.');
@@ -667,7 +691,7 @@ function InboxPageContent() {
   };
 
   return (
-    <div className="grid h-full min-h-0 overflow-hidden gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px]">
+    <div className="grid h-full min-h-0 overflow-hidden gap-3 xl:gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px]">
       <Card
         className={cn(
           'h-full min-h-0 overflow-hidden p-0',
@@ -675,17 +699,17 @@ function InboxPageContent() {
         )}
       >
         <CardContent className="flex h-full min-h-0 flex-col p-0">
-          <div className="shrink-0 border-b border-border p-4">
-            <h1 className="font-heading text-[22px] font-semibold">Conversas</h1>
-            <Tabs defaultValue="ALL" value={statusFilter} onValueChange={setStatusFilter} className="mt-3">
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
-                {STATUS_OPTIONS.map((status) => (
-                  <TabsTrigger key={status} value={status}>
-                    {STATUS_LABELS[status]}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+          <div className="shrink-0 border-b border-border p-3.5 sm:p-4">
+            <ConversationStatusFilter
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              counts={
+                conversationSummaryQuery.data ?? {
+                  ...DEFAULT_CONVERSATION_STATUS_SUMMARY,
+                  ALL: conversationsQuery.data?.meta.total ?? conversations.length,
+                }
+              }
+            />
             <div className="relative mt-3">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -703,7 +727,7 @@ function InboxPageContent() {
                 {conversations.map((conversation) => (
                   <button
                     key={conversation.id}
-                    className={`w-full rounded-[20px] border px-3.5 py-3 text-left transition ${
+                    className={`w-full rounded-[22px] border px-3.5 py-3.5 text-left transition ${
                       activeConversationId === conversation.id
                         ? 'border-primary/40 bg-primary-soft'
                         : 'border-transparent bg-white/[0.03] hover:border-border'
@@ -727,7 +751,7 @@ function InboxPageContent() {
                     <p className="mt-2.5 line-clamp-2 text-sm text-foreground/78">
                       {conversation.lastMessagePreview ?? 'Sem mensagens recentes'}
                     </p>
-                    <div className="mt-2.5 flex items-center justify-between gap-3">
+                    <div className="mt-2.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex flex-wrap gap-2">
                         {conversation.tags.slice(0, 2).map((tag) => (
                           <Badge key={tag.id} variant="secondary">
@@ -735,7 +759,7 @@ function InboxPageContent() {
                           </Badge>
                         ))}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {conversation.assignedUser ? (
                           <span className="text-[11px] text-muted-foreground">
                             {conversation.status === 'WAITING'
@@ -765,7 +789,7 @@ function InboxPageContent() {
         <CardContent className="flex h-full min-h-0 flex-col p-0">
           {selectedConversation ? (
             <>
-              <div className="shrink-0 border-b border-border px-5 py-4">
+              <div className="shrink-0 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <Button
@@ -777,9 +801,8 @@ function InboxPageContent() {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <h2 className="font-heading text-[22px] font-semibold">{selectedConversation.contact.name}</h2>
                     <div className="min-w-0">
-                      <h2 className="font-heading text-[22px] font-semibold">{selectedConversation.contact.name}</h2>
+                      <h2 className="font-heading text-[20px] font-semibold sm:text-[22px]">{selectedConversation.contact.name}</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {selectedConversation.contact.company ?? selectedConversation.contact.phone}
                       </p>
@@ -794,7 +817,7 @@ function InboxPageContent() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
                       type="button"
                       variant="secondary"
@@ -809,31 +832,31 @@ function InboxPageContent() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-5 py-4">
+              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3.5 py-4 sm:px-5">
                 {selectedConversation.messages?.map((message) => (
                   <div
                     key={message.id}
-                    className={`w-fit max-w-[86%] rounded-[18px] px-3 py-2 text-[14px] leading-5 sm:max-w-[min(68%,32rem)] ${
+                    className={`w-fit max-w-[92%] rounded-[22px] px-4 py-3 text-[14px] leading-6 shadow-[0_16px_36px_rgba(2,10,22,0.16)] sm:max-w-[min(68%,34rem)] ${
                       message.direction === 'OUTBOUND'
-                        ? 'ml-auto bg-primary text-white'
+                        ? 'ml-auto bg-[linear-gradient(180deg,#45a0ff,#3a8eed)] text-white'
                         : message.direction === 'SYSTEM'
                           ? 'mx-auto border border-primary/15 bg-primary/10 text-foreground'
-                          : 'bg-white/[0.04] text-foreground'
+                          : 'border border-white/6 bg-white/[0.045] text-foreground'
                     }`}
                   >
                     <MessageBubbleContent message={message} />
                     <p
-                      className={`mt-1.5 text-[10px] ${
+                      className={`mt-2 text-[10px] ${
                         message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'
                       }`}
                     >
-                      {formatDate(message.createdAt)} • {message.status}
+                      {formatDate(message.createdAt)} • {getMessageStatusLabel(message.status)}
                     </p>
                   </div>
                 ))}
               </div>
 
-              <div className="shrink-0 border-t border-border p-4">
+              <div className="safe-bottom-pad shrink-0 border-t border-border p-3.5 sm:p-4">
                 <div className="rounded-[18px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-2.5 shadow-[0_16px_36px_rgba(2,10,22,0.24)]">
                   <input
                     ref={fileInputRef}
@@ -1029,7 +1052,7 @@ function InboxPageContent() {
             editingReminderId={editingReminderId}
             onEditReminder={startReminderEdit}
             onClearReminderEditor={clearReminderEditor}
-            onSaveReminder={() => saveReminderMutation.mutate()}
+            onSaveReminder={() => saveReminderMutation.mutateAsync()}
             onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
             onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
             remindersBusy={
@@ -1042,7 +1065,7 @@ function InboxPageContent() {
       </Card>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="w-[min(94vw,680px)] p-0 xl:hidden">
+        <DialogContent className="w-full p-0 xl:hidden sm:w-[min(94vw,680px)]">
           <div className="max-h-[85vh] overflow-y-auto">
             <ConversationSidebar
               selectedConversation={selectedConversation}
@@ -1066,7 +1089,7 @@ function InboxPageContent() {
               editingReminderId={editingReminderId}
               onEditReminder={startReminderEdit}
               onClearReminderEditor={clearReminderEditor}
-              onSaveReminder={() => saveReminderMutation.mutate()}
+              onSaveReminder={() => saveReminderMutation.mutateAsync()}
               onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
               onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
               remindersBusy={
@@ -1143,21 +1166,11 @@ function ConversationSidebar({
   editingReminderId: string | null;
   onEditReminder: (reminder: ConversationReminder) => void;
   onClearReminderEditor: () => void;
-  onSaveReminder: () => void;
+  onSaveReminder: () => Promise<unknown>;
   onCompleteReminder: (reminderId: string) => void;
   onCancelReminder: (reminderId: string) => void;
   remindersBusy: boolean;
 }) {
-  const applyReminderChange = (
-    field: keyof ReminderFormState,
-    value: string,
-  ) => {
-    onReminderFormChange((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  };
-
   if (!selectedConversation) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
@@ -1217,8 +1230,8 @@ function ConversationSidebar({
               Reabrir
             </Button>
           </div>
-          <select
-            className="h-10 w-full rounded-xl border border-border bg-background-panel px-3.5 text-sm"
+          <NativeSelect
+            className="h-10 rounded-xl px-3.5 text-sm"
             value={selectedConversation.assignedUser?.id ?? ''}
             onChange={(event) =>
               onUpdateConversation({
@@ -1233,7 +1246,7 @@ function ConversationSidebar({
                 {user.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {!canTransferConversation ? (
             <p className="text-xs text-muted-foreground">
               Transferência de conversa não liberada para seu usuário.
@@ -1278,151 +1291,18 @@ function ConversationSidebar({
           )}
         </div>
 
-        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-primary" />
-              <p className="font-medium">Lembrete de mensagem</p>
-            </div>
-            <Button
-              variant={editingReminderId ? 'ghost' : 'secondary'}
-              size="sm"
-              onClick={editingReminderId ? onClearReminderEditor : () => onClearReminderEditor()}
-            >
-              {editingReminderId ? (
-                <>
-                  <X className="h-4 w-4" />
-                  Cancelar edição
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Novo lembrete
-                </>
-              )}
-            </Button>
-          </div>
-
-          <div className="grid gap-3 rounded-[20px] border border-border bg-background-panel/55 p-4">
-            <div className="space-y-2">
-              <Label>Descrição interna</Label>
-              <Input
-                value={reminderForm.internalDescription}
-                onChange={(event) =>
-                  applyReminderChange('internalDescription', event.target.value)
-                }
-                placeholder="Ex.: Retornar com proposta final"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Mensagem prevista para o cliente</Label>
-              <Textarea
-                value={reminderForm.messageToSend}
-                onChange={(event) =>
-                  applyReminderChange('messageToSend', event.target.value)
-                }
-                placeholder="Escreva o que a equipe deverá enviar quando o lembrete vencer."
-                className="min-h-24"
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Data</Label>
-                <Input
-                  type="date"
-                  value={reminderForm.date}
-                  onChange={(event) => applyReminderChange('date', event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Hora</Label>
-                <Input
-                  type="time"
-                  value={reminderForm.time}
-                  onChange={(event) => applyReminderChange('time', event.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              {editingReminderId ? (
-                <Button variant="ghost" onClick={onClearReminderEditor}>
-                  Limpar formulário
-                </Button>
-              ) : null}
-              <Button onClick={onSaveReminder} disabled={remindersBusy}>
-                {editingReminderId ? 'Salvar lembrete' : 'Criar lembrete'}
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {selectedConversation.reminders?.length ? (
-              selectedConversation.reminders.map((reminder) => (
-                <div
-                  key={reminder.id}
-                  className="rounded-[22px] border border-border bg-background-panel p-3.5"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium">
-                        {reminder.internalDescription || 'Lembrete sem descrição'}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDate(reminder.remindAt)}
-                      </p>
-                    </div>
-                    <ReminderStatusBadge status={reminder.status} />
-                  </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm text-foreground/84">
-                    {reminder.messageToSend}
-                  </p>
-                  <p className="mt-3 text-[11px] text-muted-foreground">
-                    Criado por {reminder.createdBy.name}
-                    {reminder.completedBy
-                      ? ` • concluído por ${reminder.completedBy.name}`
-                      : ''}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {reminder.status !== 'COMPLETED' &&
-                    reminder.status !== 'CANCELED' ? (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onEditReminder(reminder)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => onCompleteReminder(reminder.id)}
-                          disabled={remindersBusy}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                          Concluir
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onCancelReminder(reminder.id)}
-                          disabled={remindersBusy}
-                        >
-                          Cancelar
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-4 text-sm text-muted-foreground">
-                Nenhum lembrete criado para esta conversa até agora.
-              </div>
-            )}
-          </div>
-        </div>
+        <ConversationRemindersPanel
+          reminders={selectedConversation.reminders ?? []}
+          reminderForm={reminderForm}
+          onReminderFormChange={onReminderFormChange}
+          editingReminderId={editingReminderId}
+          onEditReminder={onEditReminder}
+          onClearReminderEditor={onClearReminderEditor}
+          onSaveReminder={onSaveReminder}
+          onCompleteReminder={onCompleteReminder}
+          onCancelReminder={onCancelReminder}
+          remindersBusy={remindersBusy}
+        />
 
         <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
           <div className="flex items-center gap-2">
@@ -1468,6 +1348,12 @@ function MessageBubbleContent({
 }) {
   const mediaUrl = `/api/proxy/messages/${message.id}/media`;
   const messageCaption = getMessageCaption(message);
+  const tone =
+    message.direction === 'OUTBOUND'
+      ? 'outgoing'
+      : message.direction === 'SYSTEM'
+        ? 'system'
+        : 'incoming';
 
   if (message.messageType === 'image' || message.messageType === 'sticker') {
     return (
@@ -1477,7 +1363,7 @@ function MessageBubbleContent({
           alt={message.messageType === 'sticker' ? 'Figurinha' : 'Imagem'}
           isSticker={message.messageType === 'sticker'}
         />
-        {messageCaption ? <p>{messageCaption}</p> : null}
+        {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
@@ -1490,7 +1376,7 @@ function MessageBubbleContent({
           isVoiceMessage={Boolean(message.metadata?.voice)}
           outgoing={message.direction === 'OUTBOUND'}
         />
-        {messageCaption ? <p>{messageCaption}</p> : null}
+        {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
@@ -1505,7 +1391,7 @@ function MessageBubbleContent({
           className="max-h-64 w-full max-w-[280px] rounded-[16px] border border-white/10 bg-black/25 object-cover"
           src={mediaUrl}
         />
-        {messageCaption ? <p>{messageCaption}</p> : null}
+        {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
@@ -1522,7 +1408,7 @@ function MessageBubbleContent({
           <Paperclip className="h-4 w-4" />
           {message.metadata?.fileName ?? 'Abrir documento'}
         </a>
-        {messageCaption ? <p>{messageCaption}</p> : null}
+        {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
@@ -1535,12 +1421,39 @@ function MessageBubbleContent({
             ? `Template automatico: ${message.metadata?.templateName ?? 'aprovado'}`
             : `Template: ${message.metadata?.templateName ?? 'aprovado'}`}
         </div>
-        <p>{message.content}</p>
+        <FormattedMessageText content={message.content} tone={tone} />
       </div>
     );
   }
 
-  return <p>{message.content}</p>;
+  return <FormattedMessageText content={message.content} tone={tone} />;
+}
+
+function FormattedMessageText({
+  content,
+  tone,
+}: {
+  content?: string | null;
+  tone: 'outgoing' | 'incoming' | 'system';
+}) {
+  if (!content?.trim()) {
+    return null;
+  }
+
+  return (
+    <WhatsAppFormattedText
+      content={content}
+      tone={tone === 'outgoing' ? 'outgoing' : 'incoming'}
+    />
+  );
+}
+
+function getMessageStatusLabel(status?: string | null) {
+  if (!status) {
+    return 'Sem status';
+  }
+
+  return MESSAGE_STATUS_LABELS[status] ?? status;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1558,35 +1471,6 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium', badgeClassName)}>
       {STATUS_LABELS[status] ?? status}
-    </span>
-  );
-}
-
-function ReminderStatusBadge({ status }: { status: ConversationReminder['status'] }) {
-  const labelMap: Record<ConversationReminder['status'], string> = {
-    PENDING: 'Pendente',
-    NOTIFIED: 'Vencido',
-    COMPLETED: 'Concluído',
-    CANCELED: 'Cancelado',
-  };
-
-  const badgeClassName =
-    status === 'PENDING'
-      ? 'border-transparent bg-primary/18 text-primary'
-      : status === 'NOTIFIED'
-        ? 'border-transparent bg-amber-500/16 text-amber-300'
-        : status === 'COMPLETED'
-          ? 'border-transparent bg-emerald-500/16 text-emerald-300'
-          : 'border-transparent bg-rose-500/16 text-rose-300';
-
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium',
-        badgeClassName,
-      )}
-    >
-      {labelMap[status]}
     </span>
   );
 }

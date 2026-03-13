@@ -24,6 +24,7 @@ import { GroupsModule } from './modules/groups/groups.module';
 import { MetaWhatsAppModule } from './modules/integrations/meta-whatsapp/meta-whatsapp.module';
 import { InstancesModule } from './modules/instances/instances.module';
 import { ListsModule } from './modules/lists/lists.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TeamModule } from './modules/team/team.module';
 import { UsersModule } from './modules/users/users.module';
@@ -48,6 +49,7 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     ListsModule,
     GroupsModule,
     MetaWhatsAppModule,
+    PlatformModule,
     DevelopmentModule,
     InstancesModule,
     ConversationWorkflowModule,

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { NotificationEventsService } from '../../common/realtime/notification-events.service';
+import { PushNotificationsService } from './push-notifications.service';
 
 type CreateNotificationsInput = {
   workspaceId: string;
@@ -17,7 +19,15 @@ type CreateNotificationsInput = {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationEventsService: NotificationEventsService,
+    private readonly pushNotificationsService: PushNotificationsService,
+  ) {}
+
+  stream(user: CurrentAuthUser) {
+    return this.notificationEventsService.stream(user);
+  }
 
   async listForUser(
     user: CurrentAuthUser,
@@ -69,6 +79,22 @@ export class NotificationsService {
       },
     });
 
+    const unreadCount = await this.prisma.notification.count({
+      where: {
+        workspaceId: user.workspaceId,
+        userId: user.sub,
+        readAt: null,
+      },
+    });
+
+    this.notificationEventsService.emit({
+      workspaceId: user.workspaceId,
+      userId: user.sub,
+      type: 'notification.read',
+      notificationId,
+      unreadCount,
+    });
+
     return { success: true };
   }
 
@@ -84,6 +110,13 @@ export class NotificationsService {
       },
     });
 
+    this.notificationEventsService.emit({
+      workspaceId: user.workspaceId,
+      userId: user.sub,
+      type: 'notification.read-all',
+      unreadCount: 0,
+    });
+
     return { success: true };
   }
 
@@ -94,10 +127,10 @@ export class NotificationsService {
       return { createdCount: 0 };
     }
 
-    await this.prisma.notification.createMany({
-      data: userIds.map(
-        (userId) =>
-          ({
+    const createdItems = await this.prisma.$transaction(
+      userIds.map((userId) =>
+        this.prisma.notification.create({
+          data: {
             workspaceId: input.workspaceId,
             userId,
             title: input.title,
@@ -107,8 +140,54 @@ export class NotificationsService {
             entityId: input.entityId,
             linkHref: input.linkHref,
             metadata: input.metadata as Prisma.InputJsonValue | undefined,
-          }) satisfies Prisma.NotificationCreateManyInput,
+          },
+        }),
       ),
+    );
+
+    const unreadCounts = await this.prisma.notification.groupBy({
+      by: ['userId'],
+      where: {
+        workspaceId: input.workspaceId,
+        userId: {
+          in: userIds,
+        },
+        readAt: null,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const unreadCountMap = Object.fromEntries(
+      unreadCounts.map((item) => [item.userId, item._count._all]),
+    );
+
+    for (const item of createdItems) {
+      this.notificationEventsService.emit({
+        workspaceId: item.workspaceId,
+        userId: item.userId,
+        type: 'notification.created',
+        notificationId: item.id,
+        unreadCount: unreadCountMap[item.userId] ?? 0,
+        payload: {
+          title: item.title,
+          body: item.body,
+          type: item.type,
+          linkHref: item.linkHref,
+          metadata: item.metadata as Record<string, unknown> | null,
+          createdAt: item.createdAt.toISOString(),
+        },
+      });
+    }
+
+    await this.pushNotificationsService.sendToUsers({
+      workspaceId: input.workspaceId,
+      userIds,
+      title: input.title,
+      body: input.body,
+      linkHref: input.linkHref,
+      metadata: input.metadata,
     });
 
     return {

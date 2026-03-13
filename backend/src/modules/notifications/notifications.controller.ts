@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Sse } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
@@ -17,6 +17,11 @@ export class NotificationsController {
       limit: limit ? Number(limit) : undefined,
       unreadOnly: unreadOnly === 'true',
     });
+  }
+
+  @Sse('stream')
+  stream(@CurrentUser() user: CurrentAuthUser) {
+    return this.notificationsService.stream(user);
   }
 
   @Post(':id/read')

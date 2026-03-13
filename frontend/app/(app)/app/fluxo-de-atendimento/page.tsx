@@ -25,6 +25,78 @@ const weekdayLabels = [
   'Sabado',
 ];
 
+type WorkspaceConversationSettingsPayload = {
+  inactivityTimeoutMinutes: number;
+  timezone: string;
+  sendBusinessHoursAutoReply: boolean;
+  businessHoursAutoReply?: string | null;
+  sendOutOfHoursAutoReply: boolean;
+  outOfHoursAutoReply?: string | null;
+  sendWindowClosedTemplateReply: boolean;
+  windowClosedTemplateName?: string | null;
+  windowClosedTemplateLanguageCode?: string | null;
+  businessHours: Array<{
+    weekday: number;
+    isOpen: boolean;
+    startTime?: string | null;
+    endTime?: string | null;
+  }>;
+};
+
+function sanitizeWorkspaceConversationSettings(
+  settings: WorkspaceConversationSettings,
+): WorkspaceConversationSettings {
+  return {
+    id: settings.id,
+    workspaceId: settings.workspaceId,
+    inactivityTimeoutMinutes: settings.inactivityTimeoutMinutes,
+    timezone: settings.timezone,
+    autoReplyCooldownMinutes: settings.autoReplyCooldownMinutes,
+    sendBusinessHoursAutoReply: settings.sendBusinessHoursAutoReply,
+    businessHoursAutoReply: settings.businessHoursAutoReply ?? null,
+    sendOutOfHoursAutoReply: settings.sendOutOfHoursAutoReply,
+    outOfHoursAutoReply: settings.outOfHoursAutoReply ?? null,
+    sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
+    windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
+    windowClosedTemplateLanguageCode:
+      settings.windowClosedTemplateLanguageCode ?? null,
+    businessHours: [...settings.businessHours]
+      .sort((left, right) => left.weekday - right.weekday)
+      .map((businessHour) => ({
+        id: businessHour.id,
+        weekday: businessHour.weekday,
+        isOpen: businessHour.isOpen,
+        startTime: businessHour.startTime ?? null,
+        endTime: businessHour.endTime ?? null,
+      })),
+  };
+}
+
+function toWorkspaceConversationSettingsPayload(
+  settings: WorkspaceConversationSettings,
+): WorkspaceConversationSettingsPayload {
+  return {
+    inactivityTimeoutMinutes: settings.inactivityTimeoutMinutes,
+    timezone: settings.timezone,
+    sendBusinessHoursAutoReply: settings.sendBusinessHoursAutoReply,
+    businessHoursAutoReply: settings.businessHoursAutoReply ?? null,
+    sendOutOfHoursAutoReply: settings.sendOutOfHoursAutoReply,
+    outOfHoursAutoReply: settings.outOfHoursAutoReply ?? null,
+    sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
+    windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
+    windowClosedTemplateLanguageCode:
+      settings.windowClosedTemplateLanguageCode ?? null,
+    businessHours: settings.businessHours.map((businessHour) => ({
+      weekday: businessHour.weekday,
+      isOpen: businessHour.isOpen,
+      startTime: businessHour.isOpen
+        ? businessHour.startTime ?? '08:00'
+        : null,
+      endTime: businessHour.isOpen ? businessHour.endTime ?? '18:00' : null,
+    })),
+  };
+}
+
 export default function ConversationFlowPage() {
   const queryClient = useQueryClient();
   const [conversationSettingsDraft, setConversationSettingsDraft] =
@@ -36,7 +108,9 @@ export default function ConversationFlowPage() {
   const conversationSettingsQuery = useQuery({
     queryKey: ['workspace-conversation-settings'],
     queryFn: () =>
-      apiRequest<WorkspaceConversationSettings>('workspace-settings'),
+      apiRequest<WorkspaceConversationSettings>('workspace-settings').then(
+        sanitizeWorkspaceConversationSettings,
+      ),
   });
 
   const conversationSettings =
@@ -61,11 +135,13 @@ export default function ConversationFlowPage() {
 
       return apiRequest<WorkspaceConversationSettings>('workspace-settings', {
         method: 'PATCH',
-        body: conversationSettings,
+        body: toWorkspaceConversationSettingsPayload(conversationSettings),
       });
     },
     onSuccess: async (updatedSettings) => {
-      setConversationSettingsDraft(updatedSettings);
+      setConversationSettingsDraft(
+        sanitizeWorkspaceConversationSettings(updatedSettings),
+      );
       toast.success('Horários e automações salvos.');
       await queryClient.invalidateQueries({
         queryKey: ['workspace-conversation-settings'],
@@ -152,7 +228,7 @@ export default function ConversationFlowPage() {
                     </p>
                   </div>
 
-                  <div className="space-y-2">
+                  {/* <div className="space-y-2">
                     <Label htmlFor="workspace-timezone">
                       Timezone da empresa
                     </Label>
@@ -176,7 +252,7 @@ export default function ConversationFlowPage() {
                       {' '}
                       <code>America/Sao_Paulo</code>.
                     </p>
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className="space-y-4 rounded-[24px] border border-border bg-white/[0.03] p-4">

@@ -129,6 +129,15 @@ export interface Conversation {
   closedAt?: string | null;
 }
 
+export interface ConversationStatusSummary {
+  ALL: number;
+  NEW: number;
+  IN_PROGRESS: number;
+  WAITING: number;
+  RESOLVED: number;
+  CLOSED: number;
+}
+
 export interface Lead {
   id: string;
   name: string;

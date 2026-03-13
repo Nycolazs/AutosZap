@@ -1,0 +1,37 @@
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import {
+  PlatformReleasesQueryDto,
+  RegisterDeviceDto,
+  UnregisterDeviceDto,
+} from './platform.dto';
+import { PlatformService } from './platform.service';
+
+@Controller('platform')
+export class PlatformController {
+  constructor(private readonly platformService: PlatformService) {}
+
+  @Post('devices/register')
+  registerDevice(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: RegisterDeviceDto,
+  ) {
+    return this.platformService.registerDevice(user, dto);
+  }
+
+  @Post('devices/unregister')
+  unregisterDevice(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: UnregisterDeviceDto,
+  ) {
+    return this.platformService.unregisterDevice(user, dto.installationId);
+  }
+
+  @Public()
+  @Get('releases')
+  listReleases(@Query() query: PlatformReleasesQueryDto) {
+    return this.platformService.listReleases(query);
+  }
+}

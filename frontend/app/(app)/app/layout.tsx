@@ -38,16 +38,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!meQuery.isLoading && me && !hasAccess && pathname !== '/app') {
     return (
-      <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <div className="flex h-dvh min-h-dvh overflow-hidden bg-background text-foreground">
         <AppSidebar permissionMap={me.permissionMap} />
-        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
           <Topbar
             userName={me.name}
             userRole={me.normalizedRole}
             permissionMap={me.permissionMap}
           />
           <main className="min-h-0 flex-1 overflow-auto">
-            <div className="h-full p-4 lg:p-5">
+            <div className="h-full px-3 py-3 sm:p-4 lg:p-5">
               <AccessDenied fallbackHref={fallbackHref} />
             </div>
           </main>
@@ -57,9 +57,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh min-h-dvh overflow-hidden bg-background text-foreground">
       <AppSidebar permissionMap={me?.permissionMap} />
-      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar
           userName={me?.name}
           userRole={me?.normalizedRole}
@@ -71,7 +71,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             isInboxRoute ? 'overflow-hidden' : 'overflow-auto',
           )}
         >
-          <div className={cn('h-full p-4 lg:p-5', isInboxRoute && 'overflow-hidden')}>{children}</div>
+          <div
+            className={cn(
+              'h-full px-3 py-3 sm:p-4 lg:p-5',
+              isInboxRoute && 'overflow-hidden',
+            )}
+          >
+            {children}
+          </div>
         </main>
       </div>
     </div>

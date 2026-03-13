@@ -248,7 +248,7 @@ function DevelopmentWorkspace({ overview }: { overview: DevelopmentOverview }) {
             <div>
               <CardTitle>Checklist de execução</CardTitle>
               <CardDescription>
-                Para envio e recebimento reais no local, o webhook precisa apontar para o túnel e a Meta deve estar em modo real.
+                Para receber mensagens reais no local, o webhook precisa apontar para o túnel e a instância precisa ter credenciais válidas da Meta.
               </CardDescription>
             </div>
           </CardHeader>
@@ -259,11 +259,11 @@ function DevelopmentWorkspace({ overview }: { overview: DevelopmentOverview }) {
             <ChecklistItem label="URL pública de produção configurada" ok={overview?.checklist.hasProductionUrl} />
             <ChecklistItem label="URL pública local configurada" ok={overview?.checklist.hasTunnel} />
             <ChecklistItem
-              label={`META_MODE=${overview?.environment.metaMode ?? 'DEV'}`}
-              ok={overview?.environment.metaMode === 'PRODUCTION'}
+              label={`Modo atual da integração: ${overview?.environment.metaMode ?? 'DEV'}`}
+              ok
             />
             <div className="rounded-2xl border border-primary/20 bg-primary/8 p-4 text-sm text-muted-foreground">
-              Quando você apontar para o ambiente local, a produção deixa de receber webhooks até você reverter o callback.
+              Em `DEV`, o envio manual continua simulado para testes, mas o callback da Meta pode apontar para o túnel local e trazer mensagens reais do cliente. Quando você apontar para o ambiente local, a produção deixa de receber webhooks até você reverter o callback.
             </div>
           </CardContent>
         </Card>

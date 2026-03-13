@@ -202,6 +202,20 @@ enum ReminderStatus {
   CANCELED
 }
 
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WINDOWS
+  MACOS
+  WEB
+}
+
+enum DeviceProvider {
+  EXPO
+  DESKTOP_LOCAL
+  WEB
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -255,6 +269,7 @@ model Workspace {
   conversationSettings WorkspaceConversationSettings?
   userPermissions      UserPermission[]
   conversationEvents   ConversationEvent[]
+  clientDevices        ClientDevice[]
 }
 
 model User {
@@ -293,8 +308,33 @@ model User {
   conversationEvents  ConversationEvent[]       @relation("ConversationEventActor")
   createdReminders    ConversationReminder[]    @relation("ConversationReminderCreator")
   completedReminders  ConversationReminder[]    @relation("ConversationReminderCompleter")
+  clientDevices       ClientDevice[]
 
   @@index([workspaceId, role])
+}
+
+model ClientDevice {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  userId         String
+  installationId String
+  platform       DevicePlatform
+  provider       DeviceProvider
+  pushToken      String?
+  deviceName     String?
+  osVersion      String?
+  appVersion     String?
+  buildNumber    String?
+  lastSeenAt     DateTime       @default(now())
+  revokedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id])
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, installationId])
+  @@index([workspaceId, userId, revokedAt])
+  @@index([workspaceId, pushToken])
 }
 
 model RefreshToken {

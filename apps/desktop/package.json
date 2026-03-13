@@ -1,0 +1,35 @@
+{
+  "name": "@autoszap/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch\" \"wait-on dist-electron/main.js tcp:5173 && electron .\"",
+    "build": "vite build && tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron",
+    "lint": "tsc --noEmit",
+    "package": "npm run build && electron-builder --config electron-builder.yml",
+    "package:mac": "npm run build && electron-builder --config electron-builder.yml --mac",
+    "package:win": "npm run build && electron-builder --config electron-builder.yml --win"
+  },
+  "dependencies": {
+    "@autoszap/platform-client": "*",
+    "@autoszap/platform-types": "*",
+    "@tanstack/react-query": "^5.90.21",
+    "electron-updater": "^6.8.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0",
+    "wait-on": "^9.0.4"
+  }
+}

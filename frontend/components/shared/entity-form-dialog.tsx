@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
 type FieldOption = {
@@ -78,7 +79,7 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-      <DialogContent>
+      <DialogContent className="sm:max-w-[680px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
@@ -90,7 +91,7 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
             onOpenChange(false);
           })}
         >
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 sm:pr-2">
             {fields.map((field) => {
               const error = form.formState.errors[field.name]?.message as string | undefined;
               const value = watchedValues[field.name as keyof typeof watchedValues];
@@ -105,18 +106,14 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
                   {field.type === 'textarea' ? (
                     <Textarea id={field.name} placeholder={field.placeholder} {...form.register(field.name)} />
                   ) : field.type === 'select' ? (
-                    <select
-                      id={field.name}
-                      className="h-12 w-full rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground"
-                      {...form.register(field.name)}
-                    >
+                    <NativeSelect id={field.name} {...form.register(field.name)}>
                       <option value="">Selecione</option>
                       {resolvedOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   ) : field.type === 'multiselect' ? (
                     <MultiOptionSelector
                       options={resolvedOptions}
@@ -136,7 +133,7 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
               );
             })}
           </div>
-          <div className="mt-4 flex shrink-0 justify-end gap-3 border-t border-border pt-4">
+          <div className="mt-4 flex shrink-0 flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>

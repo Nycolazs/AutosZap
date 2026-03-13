@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { apiRequest } from '@/lib/api-client';
 import {
   PermissionMap,
@@ -41,6 +42,7 @@ export function Topbar({
   const previousUnreadIdsRef = useRef<string[]>([]);
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const visibleSections = useMemo(
@@ -119,9 +121,20 @@ export function Topbar({
     setNotificationsOpen(false);
   }
 
+  function submitSearch() {
+    const normalizedQuery = query.trim();
+
+    if (!normalizedQuery) {
+      return;
+    }
+
+    router.push(`/app/contatos?search=${encodeURIComponent(normalizedQuery)}`);
+    setSearchOpen(false);
+  }
+
   return (
     <>
-      <div className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-3 md:px-4">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background/72 px-3 py-3 backdrop-blur-xl md:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           <Button
             variant="secondary"
@@ -132,28 +145,36 @@ export function Topbar({
             <Menu className="h-4 w-4" />
           </Button>
           <div className="min-w-0 lg:hidden">
-            <p className="truncate text-sm font-semibold">{currentLabel}</p>
+            <p className="truncate text-[15px] font-semibold">{currentLabel}</p>
             <p className="text-[11px] text-muted-foreground">
               {userName ?? 'AutosZap'}
             </p>
           </div>
           <div className="relative hidden flex-1 md:block">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
-                  router.push(`/app/contatos?search=${encodeURIComponent(query)}`);
+                  submitSearch();
                 }
               }}
               placeholder="Buscar por contato, conversa ou lead"
-              className="h-10 w-full rounded-xl border border-border bg-background-panel pl-11 pr-4 text-sm text-foreground"
+              className="pl-11"
             />
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2 md:gap-3">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setSearchOpen(true)}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
           <Button
             variant="secondary"
             size="icon"
@@ -168,7 +189,7 @@ export function Topbar({
             ) : null}
           </Button>
 
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-white/[0.03] px-2.5 py-2 md:gap-3 md:px-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-2 md:gap-3 md:px-3">
             <Avatar>
               <AvatarFallback>
                 {userName?.slice(0, 2).toUpperCase() ?? 'AS'}
@@ -195,7 +216,7 @@ export function Topbar({
       </div>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent className="left-0 top-0 h-screen max-h-screen w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-r border-border bg-background-elevated p-4">
+        <DialogContent className="left-0 right-auto top-0 bottom-auto h-dvh max-h-dvh w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-r border-border bg-background-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-none sm:border-r">
           <DialogHeader>
             <DialogTitle>Navegação</DialogTitle>
             <DialogDescription>
@@ -239,16 +260,56 @@ export function Topbar({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Buscar no sistema</DialogTitle>
+            <DialogDescription>
+              Localize contatos, conversas e leads sem sair da tela atual.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    submitSearch();
+                  }
+                }}
+                placeholder="Buscar por contato, conversa ou lead"
+                className="pl-11"
+              />
+            </div>
+            <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setSearchOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" onClick={submitSearch}>
+                Buscar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
-        <DialogContent className="w-[min(560px,calc(100vw-1rem))] p-0">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <DialogContent className="w-full p-0 sm:w-[min(560px,calc(100vw-1rem))]">
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <h2 className="font-heading text-lg font-semibold">Notificações</h2>
               <p className="text-sm text-muted-foreground">
                 Alertas do sistema e lembretes da operação.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {unreadCount > 0 ? (
                 <Badge>{unreadCount} não lidas</Badge>
               ) : null}
@@ -263,7 +324,7 @@ export function Topbar({
             </div>
           </div>
 
-          <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
+          <div className="max-h-[70vh] overflow-y-auto px-4 py-4 sm:max-h-[70vh]">
             {notificationsQuery.data?.items.length ? (
               <div className="space-y-3">
                 {notificationsQuery.data.items.map((notification) => (

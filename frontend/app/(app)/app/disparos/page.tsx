@@ -15,11 +15,13 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { MultiOptionSelector } from '@/components/shared/multi-option-selector';
 import { PageHeader } from '@/components/shared/page-header';
+import { WhatsAppFormattedText } from '@/components/shared/whatsapp-formatted-text';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import { Campaign, Contact } from '@/lib/types';
@@ -344,8 +346,8 @@ export default function CampaignsPage() {
       />
 
       <div className="grid gap-5 xl:grid-cols-[1.12fr_0.88fr]">
-        <Card className="p-0">
-          <CardHeader className="p-6 pb-4">
+        <Card className="order-2 p-0 xl:order-1">
+          <CardHeader className="p-4 pb-4 sm:p-6 sm:pb-4">
             <CardTitle>
               {editingCampaign ? 'Editar campanha' : 'Montar campanha'}
             </CardTitle>
@@ -353,7 +355,7 @@ export default function CampaignsPage() {
               Organize o conteúdo, público, agendamento e mídia da campanha em um único fluxo.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 p-6 pt-0">
+          <CardContent className="space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
             <div className="grid gap-4 lg:grid-cols-2">
               <Field
                 label="Nome"
@@ -375,8 +377,7 @@ export default function CampaignsPage() {
               <Field
                 label="Status"
                 input={
-                  <select
-                    className="h-12 w-full rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground"
+                  <NativeSelect
                     value={formValues.status}
                     onChange={(event) =>
                       setFormValues((current) => ({
@@ -390,7 +391,7 @@ export default function CampaignsPage() {
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 }
               />
             </div>
@@ -416,8 +417,7 @@ export default function CampaignsPage() {
               <Field
                 label="Público"
                 input={
-                  <select
-                    className="h-12 w-full rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground"
+                  <NativeSelect
                     value={formValues.audienceType}
                     onChange={(event) =>
                       setFormValues((current) => ({
@@ -432,7 +432,7 @@ export default function CampaignsPage() {
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 }
               />
 
@@ -440,8 +440,7 @@ export default function CampaignsPage() {
                 label="Instância"
                 error={formErrors.instanceId}
                 input={
-                  <select
-                    className="h-12 w-full rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground"
+                  <NativeSelect
                     value={formValues.instanceId}
                     onChange={(event) =>
                       setFormValues((current) => ({
@@ -456,7 +455,7 @@ export default function CampaignsPage() {
                         {instance.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 }
               />
             </div>
@@ -482,7 +481,7 @@ export default function CampaignsPage() {
             <Field
               label="Mensagem"
               error={formErrors.message}
-              helper="A prévia ao lado acompanha texto, quebras de linha e placeholders como {{nome}}."
+              helper="A prévia interpreta formatação do WhatsApp em tempo real, incluindo *negrito*, _itálico_, ~tachado~, blocos monoespaçados e placeholders como {{nome}}."
               input={
                 <Textarea
                   value={formValues.message}
@@ -601,8 +600,8 @@ export default function CampaignsPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden p-0">
-          <CardHeader className="border-b border-border bg-white/[0.02] p-6 pb-4">
+        <Card className="order-1 overflow-hidden p-0 xl:order-2">
+          <CardHeader className="border-b border-border bg-white/[0.02] p-4 pb-4 sm:p-6 sm:pb-4">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
               <CardTitle>Pré-visualização em tempo real</CardTitle>
@@ -611,9 +610,9 @@ export default function CampaignsPage() {
               Veja como a mensagem ficará para o cliente antes de disparar.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 p-6">
-            <div className="rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(32,114,213,0.18),transparent_42%),linear-gradient(180deg,#071a31,#04111f)] p-4 shadow-[0_26px_60px_rgba(2,10,22,0.36)]">
-              <div className="rounded-[26px] border border-white/10 bg-[#061729] p-4">
+          <CardContent className="space-y-4 p-4 sm:p-6">
+            <div className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(32,114,213,0.18),transparent_42%),linear-gradient(180deg,#071a31,#04111f)] p-3 shadow-[0_26px_60px_rgba(2,10,22,0.36)] sm:rounded-[32px] sm:p-4">
+              <div className="rounded-[24px] border border-white/10 bg-[#061729] p-3 sm:rounded-[26px] sm:p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <p className="font-semibold">Mariana Costa</p>
@@ -638,11 +637,15 @@ export default function CampaignsPage() {
                     </div>
                   ) : null}
 
-                  <div className="max-w-[92%] rounded-[22px] bg-[#DCF8C6] px-4 py-3 text-[15px] leading-6 text-[#102012] shadow-[0_12px_24px_rgba(0,0,0,0.14)]">
-                    <p className="whitespace-pre-wrap break-words">
-                      {buildPreviewMessage(formValues.message) ||
-                        'Sua mensagem aparecerá aqui conforme você digitar.'}
-                    </p>
+                  <div className="max-w-[96%] rounded-[22px] bg-[#DCF8C6] px-4 py-3 text-[15px] leading-6 text-[#102012] shadow-[0_12px_24px_rgba(0,0,0,0.14)] sm:max-w-[92%]">
+                    <WhatsAppFormattedText
+                      content={
+                        buildPreviewMessage(formValues.message) ||
+                        'Sua mensagem aparecerá aqui conforme você digitar.'
+                      }
+                      tone="preview"
+                      className="text-[15px] leading-6"
+                    />
                     <p className="mt-3 text-right text-[11px] text-[#425141]">
                       10:24
                     </p>
@@ -659,13 +662,13 @@ export default function CampaignsPage() {
       </div>
 
       <Card className="p-0">
-        <CardHeader className="p-6 pb-4">
+        <CardHeader className="p-4 pb-4 sm:p-6 sm:pb-4">
           <CardTitle>Campanhas cadastradas</CardTitle>
           <CardDescription>
             Edite, envie ou acompanhe disparos já montados.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 p-6 pt-0 md:grid-cols-2 xl:grid-cols-3">
+        <CardContent className="grid gap-4 p-4 pt-0 sm:p-6 sm:pt-0 md:grid-cols-2 xl:grid-cols-3">
           {campaignsQuery.data?.length ? (
             campaignsQuery.data.map((campaign) => (
               <div

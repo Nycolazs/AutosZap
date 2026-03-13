@@ -39,6 +39,7 @@
 }
 
 html {
+  color-scheme: dark;
   background:
     radial-gradient(circle at top left, rgba(36, 127, 255, 0.16), transparent 34%),
     radial-gradient(circle at bottom right, rgba(21, 118, 194, 0.18), transparent 28%),
@@ -49,6 +50,7 @@ body {
   min-height: 100vh;
   color: var(--foreground);
   font-family: var(--font-plus-jakarta), sans-serif;
+  overscroll-behavior-y: none;
   background:
     radial-gradient(circle at 20% 10%, rgba(33, 123, 255, 0.08), transparent 26%),
     radial-gradient(circle at 90% 80%, rgba(24, 148, 214, 0.08), transparent 18%),
@@ -83,4 +85,8 @@ select {
     0 0 0 1px rgba(74, 170, 255, 0.08),
     0 16px 42px rgba(7, 16, 31, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.safe-bottom-pad {
+  padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
 }

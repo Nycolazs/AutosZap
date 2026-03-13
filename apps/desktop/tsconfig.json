@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "baseUrl": "."
+  },
+  "include": ["src/**/*", "electron/**/*", "vite.config.ts"]
+}

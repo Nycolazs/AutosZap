@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import {
@@ -583,9 +584,8 @@ export default function InstancesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="profile-vertical">Categoria / vertical</Label>
-                  <select
+                  <NativeSelect
                     id="profile-vertical"
-                    className="h-12 w-full rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground"
                     value={profileForm.vertical}
                     onChange={(event) =>
                       setProfileForm((current) => ({
@@ -599,7 +599,7 @@ export default function InstancesPage() {
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="profile-address">Endereco</Label>

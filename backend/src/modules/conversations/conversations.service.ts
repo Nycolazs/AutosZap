@@ -15,6 +15,7 @@ import {
 import { normalizeSearchPhone } from '../../common/utils/phone';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 import { ConversationWorkflowService } from './conversation-workflow.service';
+import { normalizeConversationStatus } from './conversation-workflow.utils';
 
 @Injectable()
 export class ConversationsService {
@@ -39,44 +40,7 @@ export class ConversationsService {
     },
   ) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
-    const searchPhoneVariants = normalizeSearchPhone(query.search);
-    const accessWhere =
-      this.conversationWorkflowService.buildVisibilityWhere(user);
-
-    const searchFilters: Prisma.ConversationWhereInput[] = query.search
-      ? [
-          {
-            contact: {
-              name: { contains: query.search, mode: 'insensitive' },
-            },
-          },
-          {
-            contact: {
-              phone: { contains: query.search },
-            },
-          },
-          ...searchPhoneVariants.map((phone) => ({
-            contact: {
-              phone: { contains: phone },
-            },
-          })),
-          {
-            lastMessagePreview: {
-              contains: query.search,
-              mode: 'insensitive',
-            },
-          },
-        ]
-      : [];
-
-    const where: Prisma.ConversationWhereInput = {
-      ...accessWhere,
-      ...(query.status ? { status: query.status as never } : {}),
-      ...(query.ownership ? { ownership: query.ownership as never } : {}),
-      ...(query.assignedUserId ? { assignedUserId: query.assignedUserId } : {}),
-      ...(query.tagId ? { tags: { some: { tagId: query.tagId } } } : {}),
-      ...(searchFilters.length ? { OR: searchFilters } : {}),
-    };
+    const where = this.buildConversationWhere(user, query);
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
@@ -114,6 +78,53 @@ export class ConversationsService {
       page,
       limit,
     );
+  }
+
+  async summary(
+    user: CurrentAuthUser,
+    query: {
+      search?: string;
+      ownership?: string;
+      assignedUserId?: string;
+      tagId?: string;
+    },
+  ) {
+    const where = this.buildConversationWhere(user, query, {
+      includeStatus: false,
+    });
+
+    const groupedConversations = await this.prisma.conversation.groupBy({
+      by: ['status', 'assignedUserId'],
+      where,
+      _count: {
+        _all: true,
+      },
+    });
+
+    const summary = {
+      ALL: 0,
+      NEW: 0,
+      IN_PROGRESS: 0,
+      WAITING: 0,
+      RESOLVED: 0,
+      CLOSED: 0,
+    } satisfies Record<string, number>;
+
+    for (const group of groupedConversations) {
+      const normalizedStatus = normalizeConversationStatus(
+        group.status,
+        group.assignedUserId,
+      );
+      const count = group._count._all;
+
+      summary.ALL += count;
+
+      if (normalizedStatus in summary) {
+        summary[normalizedStatus] += count;
+      }
+    }
+
+    return summary;
   }
 
   async findOne(id: string, user: CurrentAuthUser) {
@@ -208,6 +219,137 @@ export class ConversationsService {
         tags: conversation.contact.tagLinks.map((item) => item.tag),
       },
     };
+  }
+
+  private buildConversationWhere(
+    user: CurrentAuthUser,
+    query: {
+      search?: string;
+      status?: string;
+      ownership?: string;
+      assignedUserId?: string;
+      tagId?: string;
+    },
+    options?: {
+      includeStatus?: boolean;
+    },
+  ): Prisma.ConversationWhereInput {
+    const searchPhoneVariants = normalizeSearchPhone(query.search);
+    const accessWhere =
+      this.conversationWorkflowService.buildVisibilityWhere(user);
+    const statusWhere =
+      options?.includeStatus === false
+        ? null
+        : this.buildStatusWhere(query.status);
+
+    const searchFilters: Prisma.ConversationWhereInput[] = query.search
+      ? [
+          {
+            contact: {
+              name: { contains: query.search, mode: 'insensitive' },
+            },
+          },
+          {
+            contact: {
+              phone: { contains: query.search },
+            },
+          },
+          ...searchPhoneVariants.map((phone) => ({
+            contact: {
+              phone: { contains: phone },
+            },
+          })),
+          {
+            lastMessagePreview: {
+              contains: query.search,
+              mode: 'insensitive',
+            },
+          },
+        ]
+      : [];
+
+    const conditions: Prisma.ConversationWhereInput[] = [accessWhere];
+
+    if (statusWhere) {
+      conditions.push(statusWhere);
+    }
+
+    if (query.ownership) {
+      conditions.push({
+        ownership: query.ownership as never,
+      });
+    }
+
+    if (query.assignedUserId) {
+      conditions.push({
+        assignedUserId: query.assignedUserId,
+      });
+    }
+
+    if (query.tagId) {
+      conditions.push({
+        tags: {
+          some: {
+            tagId: query.tagId,
+          },
+        },
+      });
+    }
+
+    if (searchFilters.length) {
+      conditions.push({
+        OR: searchFilters,
+      });
+    }
+
+    if (conditions.length === 1) {
+      return conditions[0]!;
+    }
+
+    return {
+      AND: conditions,
+    };
+  }
+
+  private buildStatusWhere(status?: string) {
+    if (!status) {
+      return null;
+    }
+
+    if (status === 'NEW') {
+      return {
+        OR: [
+          { status: 'NEW' as never },
+          { status: 'OPEN' as never, assignedUserId: null },
+        ],
+      } satisfies Prisma.ConversationWhereInput;
+    }
+
+    if (status === 'IN_PROGRESS') {
+      return {
+        OR: [
+          { status: 'IN_PROGRESS' as never },
+          {
+            status: 'OPEN' as never,
+            assignedUserId: {
+              not: null,
+            },
+          },
+        ],
+      } satisfies Prisma.ConversationWhereInput;
+    }
+
+    if (status === 'WAITING') {
+      return {
+        status: {
+          in: ['WAITING', 'PENDING'] as never,
+        },
+      } satisfies Prisma.ConversationWhereInput;
+    }
+
+    return {
+      status: status as never,
+    } satisfies Prisma.ConversationWhereInput;
   }
 
   async update(

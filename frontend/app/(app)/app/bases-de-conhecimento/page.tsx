@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
@@ -222,23 +223,23 @@ function KnowledgeBaseForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Tipo</Label>
-          <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" value={type} onChange={(event) => setType(event.target.value)}>
+          <NativeSelect value={type} onChange={(event) => setType(event.target.value)}>
             <option value="INTERNAL">Internal</option>
             <option value="FAQ">FAQ</option>
             <option value="URL">URL</option>
             <option value="MIXED">Mixed</option>
-          </select>
+          </NativeSelect>
         </div>
         <div className="space-y-2">
           <Label>Status</Label>
-          <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <NativeSelect value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="ACTIVE">Ativa</option>
             <option value="DRAFT">Rascunho</option>
             <option value="INACTIVE">Inativa</option>
-          </select>
+          </NativeSelect>
         </div>
       </div>
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
         <Button type="submit">Salvar</Button>
       </div>
     </form>
@@ -269,11 +270,11 @@ function KnowledgeDocumentForm({
       </div>
       <div className="space-y-2">
         <Label>Tipo</Label>
-        <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" value={type} onChange={(event) => setType(event.target.value)}>
+        <NativeSelect value={type} onChange={(event) => setType(event.target.value)}>
           <option value="TEXT">Texto</option>
           <option value="URL">URL</option>
           <option value="NOTE">Nota</option>
-        </select>
+        </NativeSelect>
       </div>
       <div className="space-y-2">
         <Label>URL fonte</Label>
@@ -283,7 +284,7 @@ function KnowledgeDocumentForm({
         <Label>Conteudo</Label>
         <Textarea value={content} onChange={(event) => setContent(event.target.value)} />
       </div>
-      <div className="flex justify-end">
+      <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end">
         <Button type="submit">Salvar documento</Button>
       </div>
     </form>

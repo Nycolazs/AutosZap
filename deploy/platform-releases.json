@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-03-13T18:00:00.000Z",
+  "supportEmail": "suporte@autoszap.com",
+  "documentationUrl": "https://autoszap.com/instalacao",
+  "artifacts": [
+    {
+      "id": "android-production",
+      "platform": "android",
+      "label": "App Android",
+      "version": "0.1.0",
+      "buildNumber": "1",
+      "channel": "production",
+      "url": "https://downloads.autoszap.com/mobile/autoszap-android-latest.apk",
+      "qrCodeUrl": "https://downloads.autoszap.com/mobile/autoszap-android-qr.png",
+      "notes": "Build Android para vendedores com push e lembretes.",
+      "updatedAt": "2026-03-13T18:00:00.000Z"
+    },
+    {
+      "id": "windows-production",
+      "platform": "windows",
+      "label": "App Windows",
+      "version": "0.1.0",
+      "buildNumber": "1",
+      "channel": "production",
+      "url": "https://downloads.autoszap.com/desktop/autoszap-setup-latest.exe",
+      "notes": "Instalador desktop com notificações e atualização automática.",
+      "updatedAt": "2026-03-13T18:00:00.000Z"
+    },
+    {
+      "id": "macos-production",
+      "platform": "macos",
+      "label": "App macOS",
+      "version": "0.1.0",
+      "buildNumber": "1",
+      "channel": "production",
+      "url": "https://downloads.autoszap.com/desktop/autoszap-latest.dmg",
+      "notes": "Versão macOS com distribuição pronta para atualização via feed.",
+      "updatedAt": "2026-03-13T18:00:00.000Z"
+    }
+  ]
+}

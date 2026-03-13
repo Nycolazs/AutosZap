@@ -16,7 +16,10 @@ export function AlertDialogContent({
     <AlertDialogPrimitive.Portal>
       <AlertDialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
       <AlertDialogPrimitive.Content
-        className={cn('glass-panel fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-[28px] p-6', className)}
+        className={cn(
+          'glass-panel fixed inset-x-0 bottom-0 z-50 w-full rounded-t-[28px] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:left-1/2 sm:top-1/2 sm:w-[min(460px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:p-6',
+          className,
+        )}
         {...props}
       />
     </AlertDialogPrimitive.Portal>
@@ -36,5 +39,13 @@ export function AlertDialogDescription(props: React.HTMLAttributes<HTMLParagraph
 }
 
 export function AlertDialogFooter(props: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('mt-5 flex justify-end gap-3', props.className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        'mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end sm:gap-3',
+        props.className,
+      )}
+      {...props}
+    />
+  );
 }

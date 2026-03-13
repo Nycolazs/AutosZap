@@ -11,7 +11,7 @@ export function FilterBar({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-[22px] border border-border bg-white/[0.03] p-2.5 md:flex-row md:items-center">
+    <div className="flex flex-col gap-3 rounded-[24px] border border-border bg-white/[0.035] p-3 backdrop-blur-sm md:flex-row md:items-center md:p-3.5">
       <div className="relative flex-1">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -21,7 +21,7 @@ export function FilterBar({
           className="pl-11"
         />
       </div>
-      {children ? <div className="flex flex-wrap items-center gap-2">{children}</div> : null}
+      {children ? <div className="flex flex-wrap items-center gap-2 md:justify-end">{children}</div> : null}
     </div>
   );
 }

@@ -171,8 +171,8 @@ export default function SettingsPage() {
             <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
               Essa configuração fica vinculada a cada instância conectada. Abra a instância desejada para editar foto, sobre, descrição e demais dados oficiais do número.
             </div>
-            <div className="flex justify-end">
-              <Button asChild>
+            <div className="flex">
+              <Button asChild className="w-full sm:w-auto">
                 <Link href="/app/instancias">
                   <RadioTower className="h-4 w-4" />
                   Abrir instâncias
@@ -193,8 +193,8 @@ export default function SettingsPage() {
             <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
               Timeout de inatividade, dias de funcionamento e mensagens automáticas agora ficam em uma tela dedicada para facilitar a operação do atendimento.
             </div>
-            <div className="flex justify-end">
-              <Button asChild>
+            <div className="flex">
+              <Button asChild className="w-full sm:w-auto">
                 <Link href="/app/horarios-de-funcionamento">
                   <Clock3 className="h-4 w-4" />
                   Abrir horários de funcionamento
@@ -213,8 +213,8 @@ export default function SettingsPage() {
               <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
                 Use esta área para apontar temporariamente o WhatsApp para seu localhost e depois devolver o callback para produção.
               </div>
-              <div className="flex justify-end">
-                <Button asChild variant="secondary">
+              <div className="flex">
+                <Button asChild variant="secondary" className="w-full sm:w-auto">
                   <Link href="/app/desenvolvimento">
                     <Code2 className="h-4 w-4" />
                     Abrir desenvolvimento
@@ -243,15 +243,15 @@ function SettingsFormCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <Card className="p-0">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </CardHeader>
+      <CardContent className="space-y-4 px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
         {children}
-        <div className="flex justify-end">
-          <Button onClick={onSubmit} disabled={disabled}>
+        <div className="flex">
+          <Button onClick={onSubmit} disabled={disabled} className="w-full sm:w-auto">
             Salvar
           </Button>
         </div>

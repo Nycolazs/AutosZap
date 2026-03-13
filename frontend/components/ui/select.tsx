@@ -7,6 +7,24 @@ import { cn } from '@/lib/utils';
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
 
+export function NativeSelect({
+  className,
+  children,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cn(
+        'h-11 w-full rounded-2xl border border-border bg-background-panel px-4 text-[16px] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/20 sm:h-12 sm:text-sm',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
 export function SelectTrigger({
   className,
   children,
@@ -15,7 +33,7 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'flex h-12 w-full items-center justify-between rounded-2xl border border-border bg-background-panel px-4 text-sm text-foreground',
+        'flex h-11 w-full items-center justify-between rounded-2xl border border-border bg-background-panel px-4 text-[16px] text-foreground sm:h-12 sm:text-sm',
         className,
       )}
       {...props}
@@ -35,7 +53,7 @@ export function SelectContent({
 }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
-      <SelectPrimitive.Content className={cn('glass-panel z-50 rounded-2xl p-2', className)} {...props}>
+      <SelectPrimitive.Content className={cn('glass-panel z-50 rounded-[22px] p-2', className)} {...props}>
         <SelectPrimitive.Viewport>{children}</SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>

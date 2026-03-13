@@ -1,0 +1,29 @@
+{
+  "name": "autoszap-workspace",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace frontend",
+    "dev:backend": "npm run start:dev --workspace backend",
+    "dev:mobile": "npm run start --workspace @autoszap/mobile",
+    "dev:desktop": "npm run dev --workspace @autoszap/desktop",
+    "build:web": "npm run build --workspace frontend",
+    "build:backend": "npm run build --workspace backend",
+    "build:mobile": "npm run doctor --workspace @autoszap/mobile",
+    "build:desktop": "npm run build --workspace @autoszap/desktop",
+    "release:mobile:android": "npm run build:android --workspace @autoszap/mobile",
+    "update:mobile:production": "npm run update:production --workspace @autoszap/mobile",
+    "update:mobile:preview": "npm run update:preview --workspace @autoszap/mobile",
+    "release:desktop:mac": "npm run package:mac --workspace @autoszap/desktop",
+    "release:desktop:win": "npm run package:win --workspace @autoszap/desktop",
+    "lint:web": "npm run lint --workspace frontend",
+    "lint:backend": "npm run lint --workspace backend",
+    "lint:mobile": "npm run lint --workspace @autoszap/mobile",
+    "lint:desktop": "npm run lint --workspace @autoszap/desktop"
+  }
+}

@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import { Lead, PaginatedResponse, PipelineStage, Tag, UserSummary } from '@/lib/types';
@@ -173,6 +174,30 @@ export default function CrmPage() {
 
       <FilterBar search={search} onSearchChange={setSearch} />
 
+      <Card className="p-0">
+        <CardContent className="p-3 sm:p-4">
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1">
+            {stages.map((stage) => (
+              <div
+                key={stage.id}
+                className="min-w-[168px] rounded-[20px] border border-border bg-white/[0.03] p-3.5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                  <p className="text-sm font-semibold">{stage.name}</p>
+                </div>
+                <p className="mt-2 text-[13px] text-muted-foreground">
+                  {leads.filter((lead) => lead.stage.id === stage.id).length} leads
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {stage.probability}% de probabilidade
+                </p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <KanbanBoard
         stages={stages}
         leads={leadsForBoard}
@@ -197,7 +222,7 @@ export default function CrmPage() {
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle>{selectedLead ? 'Editar lead' : 'Novo lead'}</DialogTitle>
             <DialogDescription>Persistência real no banco com alterações refletidas no board.</DialogDescription>
@@ -224,37 +249,37 @@ export default function CrmPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Etapa</Label>
-                <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" {...form.register('stageId')}>
+                <NativeSelect {...form.register('stageId')}>
                   {stages.map((stage) => (
                     <option key={stage.id} value={stage.id}>
                       {stage.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="space-y-2">
                 <Label>Responsavel</Label>
-                <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" {...form.register('assignedToId')}>
+                <NativeSelect {...form.register('assignedToId')}>
                   <option value="">Sem responsavel</option>
                   {usersQuery.data?.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Contato vinculado</Label>
-                <select className="h-12 rounded-2xl border border-border bg-background-panel px-4" {...form.register('contactId')}>
+                <NativeSelect {...form.register('contactId')}>
                   <option value="">Selecionar contato</option>
                   {contactsQuery.data?.data.map((contact) => (
                     <option key={contact.id} value={contact.id}>
                       {contact.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div className="space-y-2">
                 <Label>Valor estimado</Label>
@@ -278,7 +303,7 @@ export default function CrmPage() {
               <Label>Notas</Label>
               <Textarea {...form.register('notes')} />
             </div>
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button variant="secondary" type="button" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
@@ -287,22 +312,6 @@ export default function CrmPage() {
           </form>
         </DialogContent>
       </Dialog>
-
-      <Card>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          {stages.map((stage) => (
-            <div key={stage.id} className="rounded-[22px] border border-border bg-white/[0.03] p-4">
-              <div className="flex items-center justify-between">
-                <p className="font-medium">{stage.name}</p>
-                <span className="text-sm text-primary">{stage.probability}%</span>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {leads.filter((lead) => lead.stage.id === stage.id).length} leads nesta etapa
-              </p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }

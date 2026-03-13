@@ -171,20 +171,26 @@ export default function ContactsPage() {
           </CardContent>
         </Card>
 
-        <Card className="p-0">
-          <CardHeader className="p-5">
+        <Card className="p-0 xl:sticky xl:top-5 xl:self-start">
+          <CardHeader className="p-4 sm:p-5">
             <CardTitle>Detalhe do contato</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 p-5 pt-0">
+          <CardContent className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
             {detail ? (
               <>
-                <div>
-                  <h3 className="font-heading text-2xl font-semibold">{detail.name}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{detail.company ?? 'Sem empresa'}</p>
+                <div className="space-y-2">
+                  <div>
+                    <h3 className="font-heading text-[24px] font-semibold leading-tight">{detail.name}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{detail.company ?? 'Sem empresa'}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">{formatBrazilPhone(detail.phone)}</Badge>
+                    {detail.email ? <Badge variant="secondary">{detail.email}</Badge> : null}
+                  </div>
                 </div>
                 <div className="rounded-[24px] border border-border bg-white/[0.03] p-4">
-                  <p className="text-sm text-muted-foreground">{formatBrazilPhone(detail.phone)}</p>
-                  <p className="text-sm text-muted-foreground">{detail.email ?? 'Sem email cadastrado'}</p>
+                  <p className="text-sm text-muted-foreground">{detail.jobTitle ?? 'Sem cargo informado'}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Última interação: {formatDate(detail.lastInteractionAt)}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {detail.tags?.length ? (
                       detail.tags.map((tag) => (
@@ -309,7 +315,7 @@ export default function ContactsPage() {
               <Label>Notas</Label>
               <Textarea {...form.register('notes')} />
             </div>
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>

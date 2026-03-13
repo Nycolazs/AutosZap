@@ -1,6 +1,12 @@
 # AutosZap
 
-SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp Business Platform. O projeto foi estruturado em `frontend/` com Next.js App Router e `backend/` com NestJS, Prisma, PostgreSQL e Redis.
+SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp Business Platform. O projeto agora foi estruturado como workspace com:
+
+- `frontend/` para a versao web em Next.js
+- `backend/` para a API NestJS
+- `apps/mobile/` para o app Expo + React Native
+- `apps/desktop/` para o app Electron de Windows e macOS
+- `packages/platform-client/` e `packages/platform-types/` para o contrato compartilhado entre as plataformas
 
 ## Stack
 
@@ -11,6 +17,12 @@ SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp
 ## Estrutura
 
 ```text
+apps/
+  mobile/
+  desktop/
+packages/
+  platform-client/
+  platform-types/
 frontend/
   app/
   components/
@@ -20,6 +32,8 @@ backend/
   prisma/
   src/common/
   src/modules/
+deploy/
+  platform-releases.json
 docker-compose.yml
 ```
 
@@ -59,6 +73,42 @@ npm run dev
 - Backend API: [http://localhost:4000/api](http://localhost:4000/api)
 - Swagger: [http://localhost:4000/docs](http://localhost:4000/docs)
 
+## Rodando as novas plataformas
+
+Instale a workspace completa na raiz:
+
+```bash
+npm install
+```
+
+### Web
+
+```bash
+npm run dev:web
+```
+
+### Backend
+
+```bash
+npm run dev:backend
+```
+
+### Mobile Expo
+
+```bash
+npm run dev:mobile
+```
+
+O app mobile usa `EXPO_PUBLIC_API_URL` em `apps/mobile/app.config.ts` e persiste sessao com `expo-secure-store`.
+
+### Desktop Electron
+
+```bash
+npm run dev:desktop
+```
+
+O app desktop persiste sessao no `userData` do Electron, usa notificacoes locais do sistema operacional e consome SSE do backend para atualizacao de inbox e alertas.
+
 ## Área de desenvolvimento no app
 
 Depois de autenticar, use [http://localhost:3000/app/desenvolvimento](http://localhost:3000/app/desenvolvimento) para:
@@ -75,6 +125,63 @@ Essa tela foi pensada para evitar edição manual toda vez que você alternar en
 
 - Email: `admin@autoszap.com`
 - Senha: `123456`
+
+## Distribuicao multiplataforma
+
+### Manifesto publico de releases
+
+- Fonte: `deploy/platform-releases.json`
+- Endpoint publico: `GET /api/platform/releases`
+- A tela de login consome esse manifesto para mostrar Android, Windows e macOS com versao, build e CTA de download.
+
+Para trocar um build publicado, atualize o manifesto com:
+
+- `platform`
+- `version`
+- `buildNumber`
+- `channel`
+- `url`
+- `notes`
+- `qrCodeUrl` quando fizer sentido no Android
+
+### Atualizacoes mobile
+
+O app Expo foi preparado para OTA via EAS Update:
+
+```bash
+npm run update:mobile:preview
+npm run update:mobile:production
+```
+
+Build Android:
+
+```bash
+npm run release:mobile:android
+```
+
+Se a mudanca for somente JS/assets, prefira `eas update`. Se houver mudanca nativa, gere uma nova build.
+
+### Atualizacoes desktop
+
+Builds do Electron:
+
+```bash
+npm run release:desktop:win
+npm run release:desktop:mac
+```
+
+Configure `DESKTOP_UPDATES_BASE_URL` para apontar para o feed HTTP das builds publicadas. O `electron-updater` verifica novas versoes no boot quando o app esta empacotado.
+
+### Notificacoes
+
+O backend agora suporta:
+
+- registro de dispositivos em `POST /api/platform/devices/register`
+- desligamento do dispositivo em `POST /api/platform/devices/unregister`
+- stream em tempo real de notificacoes em `GET /api/notifications/stream`
+- push Expo para lembretes e novas mensagens
+
+Lembretes e mensagens inbound do cliente geram notificacoes para os vendedores elegiveis e abrem a conversa correta quando o usuario toca no alerta.
 
 ## Seed inicial incluída
 
@@ -203,6 +310,18 @@ Exemplo com `sslip.io`:
 
 ## Comandos úteis
 
+Workspace:
+
+```bash
+npm run dev:web
+npm run dev:backend
+npm run dev:mobile
+npm run dev:desktop
+npm run build:web
+npm run build:backend
+npm run build:desktop
+```
+
 Backend:
 
 ```bash
@@ -222,8 +341,27 @@ npm install
 npm run dev
 ```
 
+Mobile:
+
+```bash
+cd apps/mobile
+npx expo-doctor
+npx tsc --noEmit
+```
+
+Desktop:
+
+```bash
+cd apps/desktop
+npm run build
+npm run package
+```
+
 ## Observações
 
 - O container do backend faz `prisma:push` ao subir, mas não executa seed automaticamente para não sobrescrever dados já criados. Rode `npm run seed` manualmente quando quiser resetar o banco com os dados demo.
 - O frontend usa um BFF em rotas `app/api/*` com cookies HTTP-only para guardar access/refresh tokens e fazer proxy seguro ao backend.
+- A tela de login web agora inclui uma area de downloads dinamica baseada no manifesto de releases.
+- O app mobile foi pensado para vendedores com foco em inbox, conversa, lembretes e push.
+- O app desktop foi pensado para operacao continua com inbox em tela grande, conversa lateralizada e notificacoes do sistema.
 - O visual replica a composição das referências em versão dark blue premium, sem reutilizar identidade original.
