@@ -7,9 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { PermissionKey } from '@prisma/client';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ListsService } from './lists.service';
 
 class ListDto {
@@ -26,6 +28,7 @@ class ListDto {
 }
 
 @Controller('lists')
+@Permissions(PermissionKey.LISTS_VIEW)
 export class ListsController {
   constructor(private readonly listsService: ListsService) {}
 

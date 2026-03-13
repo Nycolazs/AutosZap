@@ -20,7 +20,7 @@ const columns: ColumnDef<Tag>[] = [
     header: 'Cor',
     cell: ({ row }) => <Badge style={{ backgroundColor: `${row.original.color}25`, color: row.original.color }}>{row.original.color}</Badge>,
   },
-  { accessorKey: 'description', header: 'Descricao' },
+  { accessorKey: 'description', header: 'Descrição' },
 ];
 
 export default function TagsPage() {
@@ -36,7 +36,7 @@ export default function TagsPage() {
       fields={[
         { name: 'name', label: 'Nome' },
         { name: 'color', label: 'Cor', type: 'color' },
-        { name: 'description', label: 'Descricao', type: 'textarea' },
+        { name: 'description', label: 'Descrição', type: 'textarea' },
       ]}
       icon={Tags}
       createLabel="Nova tag"

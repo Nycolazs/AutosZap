@@ -1,74 +1,116 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Code2, RadioTower } from 'lucide-react';
+import { Camera, Clock3, Code2, RadioTower } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { apiRequest } from '@/lib/api-client';
+import { AuthMeResponse } from '@/lib/types';
+import { isLocalDevelopment } from '@/lib/environment';
 
-type MeResponse = {
+type WorkspaceResponse = {
   id: string;
   name: string;
-  email: string;
-  role: string;
-  title?: string | null;
-  workspace: {
-    id: string;
-    name: string;
-    companyName: string;
-    settings?: Record<string, unknown>;
-  };
+  companyName: string;
+  settings?: Record<string, unknown>;
 };
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const meQuery = useQuery({
     queryKey: ['auth-me'],
-    queryFn: () => apiRequest<MeResponse>('auth/me'),
+    queryFn: () => apiRequest<AuthMeResponse>('auth/me'),
   });
   const workspaceQuery = useQuery({
     queryKey: ['workspace'],
-    queryFn: () => apiRequest<MeResponse['workspace']>('users/workspace'),
+    queryFn: () => apiRequest<WorkspaceResponse>('users/workspace'),
   });
 
+  const [profileValues, setProfileValues] = useState({
+    name: undefined as string | undefined,
+    email: undefined as string | undefined,
+    title: undefined as string | undefined,
+  });
+  const [workspaceValues, setWorkspaceValues] = useState({
+    name: undefined as string | undefined,
+    companyName: undefined as string | undefined,
+  });
+  const [passwordValues, setPasswordValues] = useState({
+    currentPassword: '',
+    newPassword: '',
+  });
+
+  const resolvedProfileValues = useMemo(
+    () => ({
+      name: profileValues.name ?? meQuery.data?.name ?? '',
+      email: profileValues.email ?? meQuery.data?.email ?? '',
+      title: profileValues.title ?? meQuery.data?.title ?? '',
+    }),
+    [meQuery.data?.email, meQuery.data?.name, meQuery.data?.title, profileValues.email, profileValues.name, profileValues.title],
+  );
+  const resolvedWorkspaceValues = useMemo(
+    () => ({
+      name: workspaceValues.name ?? workspaceQuery.data?.name ?? '',
+      companyName: workspaceValues.companyName ?? workspaceQuery.data?.companyName ?? '',
+    }),
+    [workspaceQuery.data?.companyName, workspaceQuery.data?.name, workspaceValues.companyName, workspaceValues.name],
+  );
+
   const updateProfileMutation = useMutation({
-    mutationFn: (payload: { name?: string; title?: string; email?: string }) =>
-      apiRequest('users/profile', { method: 'PATCH', body: payload }),
+    mutationFn: () =>
+      apiRequest('users/profile', { method: 'PATCH', body: resolvedProfileValues }),
     onSuccess: async () => {
       toast.success('Perfil atualizado.');
       await queryClient.invalidateQueries({ queryKey: ['auth-me'] });
     },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const updateWorkspaceMutation = useMutation({
-    mutationFn: (payload: { name?: string; companyName?: string; settings?: Record<string, unknown> }) =>
-      apiRequest('users/workspace', { method: 'PATCH', body: payload }),
+    mutationFn: () =>
+      apiRequest('users/workspace', {
+        method: 'PATCH',
+        body: {
+          ...resolvedWorkspaceValues,
+          settings: {
+            theme: 'dark-blue',
+          },
+        },
+      }),
     onSuccess: async () => {
       toast.success('Workspace atualizada.');
       await queryClient.invalidateQueries({ queryKey: ['workspace'] });
     },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const changePasswordMutation = useMutation({
-    mutationFn: (payload: { currentPassword: string; newPassword: string }) =>
-      apiRequest('users/change-password', { method: 'PATCH', body: payload }),
-    onSuccess: () => toast.success('Senha alterada.'),
+    mutationFn: () =>
+      apiRequest('users/change-password', {
+        method: 'PATCH',
+        body: passwordValues,
+      }),
+    onSuccess: () => {
+      toast.success('Senha alterada.');
+      setPasswordValues({
+        currentPassword: '',
+        newPassword: '',
+      });
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
-
-  const me = meQuery.data;
-  const workspace = workspaceQuery.data;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Configuracoes"
-        description="Atualize perfil, dados da empresa, preferências simples e seguranca da conta."
+        title="Configurações"
+        description="Atualize perfil, dados da empresa, horários de funcionamento e ajustes gerais da operação."
         action={
           <Button asChild variant="secondary">
             <Link href="/app/instancias">
@@ -81,155 +123,107 @@ export default function SettingsPage() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <SettingsFormCard
-          key={`profile-${me?.id ?? 'loading'}-${me?.email ?? ''}`}
           title="Perfil"
-          description="Dados do usuario autenticado."
-          defaultValues={{
-            name: me?.name ?? '',
-            email: me?.email ?? '',
-            title: me?.title ?? '',
-          }}
-          onSubmit={updateProfileMutation.mutate}
-          fields={[
-            { name: 'name', label: 'Nome' },
-            { name: 'email', label: 'Email' },
-            { name: 'title', label: 'Cargo' },
-          ]}
-        />
+          description="Dados do usuário autenticado."
+          onSubmit={() => updateProfileMutation.mutate()}
+          disabled={updateProfileMutation.isPending}
+        >
+          <Field label="Nome" value={resolvedProfileValues.name} onChange={(value) => setProfileValues((current) => ({ ...current, name: value }))} />
+          <Field label="Email" value={resolvedProfileValues.email} onChange={(value) => setProfileValues((current) => ({ ...current, email: value }))} />
+          <Field label="Cargo" value={resolvedProfileValues.title} onChange={(value) => setProfileValues((current) => ({ ...current, title: value }))} />
+        </SettingsFormCard>
 
         <SettingsFormCard
-          key={`workspace-${workspace?.id ?? 'loading'}-${workspace?.companyName ?? ''}`}
           title="Workspace"
-          description="Dados principais da empresa e preferencias."
-          defaultValues={{
-            name: workspace?.name ?? '',
-            companyName: workspace?.companyName ?? '',
-          }}
-          onSubmit={(values) =>
-            updateWorkspaceMutation.mutate({
-              ...values,
-              settings: {
-                theme: 'dark-blue',
-              },
-            })
-          }
-          fields={[
-            { name: 'name', label: 'Nome da workspace' },
-            { name: 'companyName', label: 'Razao social / empresa' },
-          ]}
-        />
+          description="Dados principais da empresa."
+          onSubmit={() => updateWorkspaceMutation.mutate()}
+          disabled={updateWorkspaceMutation.isPending}
+        >
+          <Field label="Nome da workspace" value={resolvedWorkspaceValues.name} onChange={(value) => setWorkspaceValues((current) => ({ ...current, name: value }))} />
+          <Field label="Empresa / razão social" value={resolvedWorkspaceValues.companyName} onChange={(value) => setWorkspaceValues((current) => ({ ...current, companyName: value }))} />
+        </SettingsFormCard>
 
         <SettingsFormCard
-          key="password-card"
-          title="Seguranca"
+          title="Segurança"
           description="Altere sua senha atual."
-          defaultValues={{
-            currentPassword: '',
-            newPassword: '',
-          }}
-          onSubmit={(values) =>
-            changePasswordMutation.mutate({
-              currentPassword: values.currentPassword,
-              newPassword: values.newPassword,
-            })
-          }
-          fields={[
-            { name: 'currentPassword', label: 'Senha atual', type: 'password' },
-            { name: 'newPassword', label: 'Nova senha', type: 'password' },
-          ]}
-        />
+          onSubmit={() => changePasswordMutation.mutate()}
+          disabled={changePasswordMutation.isPending}
+        >
+          <Field
+            label="Senha atual"
+            type="password"
+            value={passwordValues.currentPassword}
+            onChange={(value) => setPasswordValues((current) => ({ ...current, currentPassword: value }))}
+          />
+          <Field
+            label="Nova senha"
+            type="password"
+            value={passwordValues.newPassword}
+            onChange={(value) => setPasswordValues((current) => ({ ...current, newPassword: value }))}
+          />
+        </SettingsFormCard>
 
         <Card>
           <CardHeader>
-            <CardTitle>Preferencias visuais</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex items-center justify-between rounded-[24px] border border-border bg-white/[0.03] p-4">
-              <div>
-                <p className="font-medium">Tema dark blue premium</p>
-                <p className="text-sm text-muted-foreground">Mantem a direcao visual da workspace em tons de azul.</p>
-              </div>
-              <Switch checked />
-            </div>
-            <div className="flex items-center justify-between rounded-[24px] border border-border bg-white/[0.03] p-4">
-              <div>
-                <p className="font-medium">Atalhos na dashboard</p>
-                <p className="text-sm text-muted-foreground">Exibir cards de acesso rapido no painel inicial.</p>
-              </div>
-              <Switch checked />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Perfil do WhatsApp</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Troque a foto do numero, atualize sobre, descricao, links e categoria oficial da Meta.
-              </p>
-            </div>
+            <CardTitle>Perfil do WhatsApp</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
-              Essa configuracao fica vinculada a cada instancia conectada. Abra a instancia desejada e use a acao
-              <span className="mx-1 font-medium text-foreground">Perfil WhatsApp</span>
-              para editar a foto e os dados oficiais do numero.
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[20px] border border-border bg-white/[0.03] p-4">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Camera className="h-4 w-4 text-primary" />
-                  Foto do perfil
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Upload com preview antes de salvar e envio real para a Meta.
-                </p>
-              </div>
-              <div className="rounded-[20px] border border-border bg-white/[0.03] p-4">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-                  <RadioTower className="h-4 w-4 text-primary" />
-                  Dados oficiais
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Sobre, descricao, email, websites, endereco e vertical do WhatsApp Business.
-                </p>
-              </div>
+              Essa configuração fica vinculada a cada instância conectada. Abra a instância desejada para editar foto, sobre, descrição e demais dados oficiais do número.
             </div>
             <div className="flex justify-end">
               <Button asChild>
                 <Link href="/app/instancias">
-                  <Camera className="h-4 w-4" />
-                  Abrir instancias
+                  <RadioTower className="h-4 w-4" />
+                  Abrir instâncias
                 </Link>
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader>
-            <div>
-              <CardTitle>Desenvolvimento</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Gerencie frontend local, backend local, túnel público e o roteamento do webhook oficial da Meta.
-              </p>
+            <div className="flex items-center gap-2">
+              <Clock3 className="h-5 w-5 text-primary" />
+              <CardTitle>Horários de Funcionamento</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
-              Use esta área para apontar temporariamente o WhatsApp para seu localhost e depois devolver o callback para produção.
+              Timeout de inatividade, dias de funcionamento e mensagens automáticas agora ficam em uma tela dedicada para facilitar a operação do atendimento.
             </div>
             <div className="flex justify-end">
-              <Button asChild variant="secondary">
-                <Link href="/app/desenvolvimento">
-                  <Code2 className="h-4 w-4" />
-                  Abrir desenvolvimento
+              <Button asChild>
+                <Link href="/app/horarios-de-funcionamento">
+                  <Clock3 className="h-4 w-4" />
+                  Abrir horários de funcionamento
                 </Link>
               </Button>
             </div>
           </CardContent>
         </Card>
+
+        {isLocalDevelopment ? (
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Desenvolvimento</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-[24px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
+                Use esta área para apontar temporariamente o WhatsApp para seu localhost e depois devolver o callback para produção.
+              </div>
+              <div className="flex justify-end">
+                <Button asChild variant="secondary">
+                  <Link href="/app/desenvolvimento">
+                    <Code2 className="h-4 w-4" />
+                    Abrir desenvolvimento
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
@@ -238,15 +232,15 @@ export default function SettingsPage() {
 function SettingsFormCard({
   title,
   description,
-  defaultValues,
+  disabled,
   onSubmit,
-  fields,
+  children,
 }: {
   title: string;
   description: string;
-  defaultValues: Record<string, string>;
-  onSubmit: (values: Record<string, string>) => void;
-  fields: Array<{ name: string; label: string; type?: string }>;
+  disabled?: boolean;
+  onSubmit: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <Card>
@@ -254,27 +248,33 @@ function SettingsFormCard({
         <CardTitle>{title}</CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
-      <CardContent>
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const formData = new FormData(event.currentTarget);
-            const values = Object.fromEntries(formData.entries()) as Record<string, string>;
-            onSubmit(values);
-          }}
-        >
-          {fields.map((field) => (
-            <div key={field.name} className="space-y-2">
-              <Label>{field.label}</Label>
-              <Input name={field.name} type={field.type ?? 'text'} defaultValue={defaultValues[field.name] ?? ''} />
-            </div>
-          ))}
-          <div className="flex justify-end">
-            <Button type="submit">Salvar</Button>
-          </div>
-        </form>
+      <CardContent className="space-y-4">
+        {children}
+        <div className="flex justify-end">
+          <Button onClick={onSubmit} disabled={disabled}>
+            Salvar
+          </Button>
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
   );
 }

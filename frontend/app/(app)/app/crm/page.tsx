@@ -200,7 +200,7 @@ export default function CrmPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{selectedLead ? 'Editar lead' : 'Novo lead'}</DialogTitle>
-            <DialogDescription>Persistencia real no banco com alteracoes refletidas no board.</DialogDescription>
+            <DialogDescription>Persistência real no banco com alterações refletidas no board.</DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-4"
@@ -282,7 +282,7 @@ export default function CrmPage() {
               <Button variant="secondary" type="button" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">{selectedLead ? 'Salvar alteracoes' : 'Criar lead'}</Button>
+              <Button type="submit">{selectedLead ? 'Salvar alterações' : 'Criar lead'}</Button>
             </div>
           </form>
         </DialogContent>

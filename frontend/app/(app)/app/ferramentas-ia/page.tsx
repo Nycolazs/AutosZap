@@ -43,7 +43,7 @@ export default function AiToolsPage() {
       defaultValues={{ name: '', description: '', type: 'internal', endpoint: '', action: '', status: 'ACTIVE' }}
       fields={[
         { name: 'name', label: 'Nome' },
-        { name: 'description', label: 'Descricao', type: 'textarea' },
+        { name: 'description', label: 'Descrição', type: 'textarea' },
         { name: 'type', label: 'Tipo' },
         { name: 'endpoint', label: 'Endpoint' },
         { name: 'action', label: 'Action' },

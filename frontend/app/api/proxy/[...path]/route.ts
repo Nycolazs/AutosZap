@@ -73,7 +73,6 @@ async function handler(request: NextRequest, context: RouteContext) {
 
   const cacheControl = response.headers.get('cache-control');
   const contentDisposition = response.headers.get('content-disposition');
-  const contentLength = response.headers.get('content-length');
 
   if (cacheControl) {
     responseHeaders.set('Cache-Control', cacheControl);
@@ -81,10 +80,6 @@ async function handler(request: NextRequest, context: RouteContext) {
 
   if (contentDisposition) {
     responseHeaders.set('Content-Disposition', contentDisposition);
-  }
-
-  if (contentLength) {
-    responseHeaders.set('Content-Length', contentLength);
   }
 
   if (isEventStream) {
@@ -99,10 +94,15 @@ async function handler(request: NextRequest, context: RouteContext) {
     responseHeaders.set('X-Accel-Buffering', 'no');
   }
 
-  const proxyResponse = new NextResponse(response.body, {
-    status: response.status,
-    headers: responseHeaders,
-  });
+  const proxyResponse = isEventStream
+    ? new NextResponse(response.body, {
+        status: response.status,
+        headers: responseHeaders,
+      })
+    : new NextResponse(await response.arrayBuffer(), {
+        status: response.status,
+        headers: responseHeaders,
+      });
 
   if (nextAccessToken) {
     proxyResponse.cookies.set(ACCESS_COOKIE, nextAccessToken, {

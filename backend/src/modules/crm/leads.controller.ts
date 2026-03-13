@@ -8,10 +8,11 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { LeadSource } from '@prisma/client';
+import { LeadSource, PermissionKey } from '@prisma/client';
 import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CrmService } from './crm.service';
 
@@ -78,6 +79,7 @@ class ReorderLeadDto {
 }
 
 @Controller('leads')
+@Permissions(PermissionKey.CRM_VIEW)
 export class LeadsController {
   constructor(private readonly crmService: CrmService) {}
 

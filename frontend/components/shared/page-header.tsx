@@ -15,7 +15,7 @@ export function PageHeader({
         <h1 className="font-heading text-[28px] font-semibold tracking-tight text-foreground">{title}</h1>
         {description ? <p className="max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
-      {action ?? <Button className="hidden md:inline-flex">Nova acao</Button>}
+      {action ?? <Button className="hidden md:inline-flex">Nova ação</Button>}
     </div>
   );
 }

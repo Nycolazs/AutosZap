@@ -221,7 +221,7 @@ export default function ContactListsPage() {
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-border bg-white/[0.03] p-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Descricao</p>
+                    <p className="text-sm text-muted-foreground">Descrição</p>
                     <p className="mt-1 text-sm text-foreground/80">
                       {selectedList.description || 'Sem descricao'}
                     </p>
@@ -313,7 +313,7 @@ export default function ContactListsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Descricao</Label>
+              <Label>Descrição</Label>
               <Textarea {...form.register('description')} />
             </div>
 
@@ -339,7 +339,7 @@ export default function ContactListsPage() {
               <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit">{editingList ? 'Salvar alteracoes' : 'Criar lista'}</Button>
+              <Button type="submit">{editingList ? 'Salvar alterações' : 'Criar lista'}</Button>
             </div>
           </form>
         </DialogContent>

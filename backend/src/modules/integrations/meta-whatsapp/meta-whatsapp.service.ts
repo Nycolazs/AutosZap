@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  AutoMessageType,
+  ConversationEventType,
   ConversationOwnership,
   ConversationStatus,
   InstanceStatus,
@@ -28,7 +30,8 @@ import {
   ProviderTemplateSummary,
   TemplateParameter,
 } from './messaging-provider.interface';
-import { InboxEventsService } from '../../../common/realtime/inbox-events.service';
+import { ConversationWorkflowService } from '../../conversations/conversation-workflow.service';
+import { WorkspaceSettingsService } from '../../workspace-settings/workspace-settings.service';
 
 @Injectable()
 export class MetaWhatsAppService {
@@ -39,7 +42,8 @@ export class MetaWhatsAppService {
     private readonly cryptoService: CryptoService,
     private readonly provider: MetaWhatsAppProvider,
     private readonly configService: ConfigService,
-    private readonly inboxEventsService: InboxEventsService,
+    private readonly conversationWorkflowService: ConversationWorkflowService,
+    private readonly workspaceSettingsService: WorkspaceSettingsService,
   ) {}
 
   async testConnection(workspaceId: string, instanceId: string) {
@@ -241,6 +245,46 @@ export class MetaWhatsAppService {
     );
   }
 
+  async sendDirectMediaMessage(
+    workspaceId: string,
+    payload: {
+      instanceId: string;
+      to: string;
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      caption?: string;
+      voice?: boolean;
+      userId?: string;
+      contactName?: string;
+    },
+  ) {
+    const contact = await this.ensureContact(
+      workspaceId,
+      payload.to,
+      payload.contactName,
+    );
+    const conversation = await this.ensureConversation(
+      workspaceId,
+      contact.id,
+      payload.instanceId,
+      payload.userId,
+    );
+
+    return this.sendConversationMediaMessage(
+      workspaceId,
+      conversation.id,
+      payload.userId ?? null,
+      {
+        buffer: payload.buffer,
+        fileName: payload.fileName,
+        mimeType: payload.mimeType,
+        caption: payload.caption,
+        voice: payload.voice,
+      },
+    );
+  }
+
   async sendTemplateDirectMessage(
     workspaceId: string,
     payload: {
@@ -285,6 +329,11 @@ export class MetaWhatsAppService {
     conversationId: string,
     senderUserId: string | null,
     content: string,
+    options?: {
+      direction?: MessageDirection;
+      isAutomated?: boolean;
+      autoMessageType?: AutoMessageType;
+    },
   ) {
     const conversation = await this.prisma.conversation.findFirst({
       where: {
@@ -320,11 +369,30 @@ export class MetaWhatsAppService {
     }
 
     const config = await this.getInstanceConfig(instanceId, workspaceId);
-    await this.assertCustomerServiceWindow(
+    const windowStatus = await this.getCustomerServiceWindowStatus(
       conversation.id,
       workspaceId,
       config,
     );
+
+    if (!windowStatus.isOpen) {
+      const templateFallbackMessage =
+        await this.trySendClosedWindowTemplateReply({
+          workspaceId,
+          conversationId: conversation.id,
+          senderUserId,
+          instanceId,
+          content,
+        });
+
+      if (templateFallbackMessage) {
+        return templateFallbackMessage;
+      }
+
+      throw new BadRequestException(
+        'A janela de atendimento de 24 horas nao esta aberta. Configure um template aprovado para envio automatico fora da janela ou use envio manual por template aprovado.',
+      );
+    }
 
     const providerResult = await this.provider.sendTextMessage(
       config,
@@ -338,6 +406,9 @@ export class MetaWhatsAppService {
       senderUserId,
       instanceId,
       content,
+      direction: options?.direction,
+      isAutomated: options?.isAutomated,
+      autoMessageType: options?.autoMessageType,
       providerResult,
     });
   }
@@ -422,6 +493,8 @@ export class MetaWhatsAppService {
       content:
         payload.caption?.trim() ||
         this.buildMediaPlaceholder(normalizedMessageType, payload.fileName),
+      direction: MessageDirection.OUTBOUND,
+      isAutomated: false,
       providerResult: {
         ...providerResult,
         messageType: normalizedMessageType,
@@ -447,6 +520,8 @@ export class MetaWhatsAppService {
       languageCode: string;
       headerParameters?: string[];
       bodyParameters?: string[];
+      contentPreview?: string;
+      metadata?: Record<string, unknown>;
     },
   ) {
     const conversation = await this.prisma.conversation.findFirst({
@@ -495,7 +570,9 @@ export class MetaWhatsAppService {
       },
     );
 
-    const content = `Template ${payload.templateName} (${payload.languageCode})`;
+    const content =
+      payload.contentPreview?.trim() ||
+      `Template ${payload.templateName} (${payload.languageCode})`;
 
     return this.persistOutboundMessage({
       workspaceId,
@@ -503,7 +580,17 @@ export class MetaWhatsAppService {
       senderUserId,
       instanceId,
       content,
-      providerResult,
+      providerResult: {
+        ...providerResult,
+        metadata: {
+          ...(providerResult.metadata ?? {}),
+          templateName: payload.templateName,
+          languageCode: payload.languageCode,
+          headerParameters: payload.headerParameters ?? [],
+          bodyParameters: payload.bodyParameters ?? [],
+          ...(payload.metadata ?? {}),
+        },
+      },
     });
   }
 
@@ -644,25 +731,26 @@ export class MetaWhatsAppService {
       await this.prisma.conversation.update({
         where: { id: conversation.id },
         data: {
-          status: ConversationStatus.OPEN,
-          ownership: conversation.assignedUserId
-            ? ConversationOwnership.MINE
-            : ConversationOwnership.UNASSIGNED,
-          unreadCount: {
-            increment: 1,
-          },
           lastMessageAt: new Date(),
           lastMessagePreview:
             inbound.body || this.buildMediaPlaceholder(inbound.messageType),
         },
       });
 
-      this.inboxEventsService.emit({
-        workspaceId: inboundInstance.workspaceId,
-        conversationId: conversation.id,
-        type: 'conversation.message.created',
-        direction: 'INBOUND',
-      });
+      await this.conversationWorkflowService.registerInboundActivity(
+        conversation.id,
+        inboundInstance.workspaceId,
+      );
+      await this.conversationWorkflowService.emitConversationRealtimeEvent(
+        inboundInstance.workspaceId,
+        conversation.id,
+        'conversation.message.created',
+        'INBOUND',
+      );
+      await this.maybeSendAutomaticReply(
+        inboundInstance.workspaceId,
+        conversation.id,
+      );
     }
 
     for (const status of parsed.statuses) {
@@ -704,12 +792,12 @@ export class MetaWhatsAppService {
         },
       });
 
-      this.inboxEventsService.emit({
-        workspaceId: message.workspaceId,
-        conversationId: message.conversationId,
-        type: 'conversation.message.status.updated',
-        direction: 'OUTBOUND',
-      });
+      await this.conversationWorkflowService.emitConversationRealtimeEvent(
+        message.workspaceId,
+        message.conversationId,
+        'conversation.message.status.updated',
+        'OUTBOUND',
+      );
     }
 
     await this.prisma.whatsAppWebhookEvent.update({
@@ -772,6 +860,80 @@ export class MetaWhatsAppService {
       mimeType: download.mimeType ?? metadata.mimeType ?? null,
       fileName: download.fileName ?? metadata.fileName ?? null,
     };
+  }
+
+  private async maybeSendAutomaticReply(
+    workspaceId: string,
+    conversationId: string,
+  ) {
+    const context =
+      await this.workspaceSettingsService.getBusinessHoursContext(workspaceId);
+    const autoMessageType = context.isOpen
+      ? AutoMessageType.IN_BUSINESS_HOURS
+      : AutoMessageType.OUT_OF_BUSINESS_HOURS;
+    const enabled = context.isOpen
+      ? context.settings.sendBusinessHoursAutoReply
+      : context.settings.sendOutOfHoursAutoReply;
+    const message = context.isOpen
+      ? context.settings.businessHoursAutoReply?.trim()
+      : context.settings.outOfHoursAutoReply?.trim();
+
+    if (!enabled || !message) {
+      return;
+    }
+
+    const cooldownMs = context.settings.autoReplyCooldownMinutes * 60_000;
+    const [latestSameAutoReply, latestOutboundMessage] = await Promise.all([
+      this.prisma.conversationMessage.findFirst({
+        where: {
+          workspaceId,
+          conversationId,
+          direction: MessageDirection.SYSTEM,
+          autoMessageType,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.conversationMessage.findFirst({
+        where: {
+          workspaceId,
+          conversationId,
+          direction: {
+            in: [MessageDirection.OUTBOUND, MessageDirection.SYSTEM],
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+    ]);
+
+    if (
+      latestSameAutoReply &&
+      Date.now() - latestSameAutoReply.createdAt.getTime() < cooldownMs
+    ) {
+      return;
+    }
+
+    if (
+      latestOutboundMessage &&
+      Date.now() - latestOutboundMessage.createdAt.getTime() < cooldownMs
+    ) {
+      return;
+    }
+
+    await this.sendConversationMessage(
+      workspaceId,
+      conversationId,
+      null,
+      message,
+      {
+        direction: MessageDirection.SYSTEM,
+        isAutomated: true,
+        autoMessageType,
+      },
+    );
   }
 
   private async getInstanceConfig(
@@ -859,13 +1021,16 @@ export class MetaWhatsAppService {
     }
   }
 
-  private async assertCustomerServiceWindow(
+  private async getCustomerServiceWindowStatus(
     conversationId: string,
     workspaceId: string,
     config: MessagingInstanceConfig,
   ) {
     if (!this.provider.isProductionMode(config)) {
-      return;
+      return {
+        isOpen: true,
+        latestInboundAt: null,
+      };
     }
 
     const latestInbound = await this.prisma.conversationMessage.findFirst({
@@ -880,13 +1045,83 @@ export class MetaWhatsAppService {
     });
 
     const serviceWindowMs = 24 * 60 * 60 * 1000;
+    const latestInboundAt = latestInbound?.sentAt ?? null;
 
-    if (
-      !latestInbound?.sentAt ||
-      Date.now() - latestInbound.sentAt.getTime() > serviceWindowMs
-    ) {
+    return {
+      isOpen: latestInboundAt
+        ? Date.now() - latestInboundAt.getTime() <= serviceWindowMs
+        : false,
+      latestInboundAt,
+    };
+  }
+
+  private async assertCustomerServiceWindow(
+    conversationId: string,
+    workspaceId: string,
+    config: MessagingInstanceConfig,
+  ) {
+    const status = await this.getCustomerServiceWindowStatus(
+      conversationId,
+      workspaceId,
+      config,
+    );
+
+    if (!status.isOpen) {
       throw new BadRequestException(
         'A janela de atendimento de 24 horas nao esta aberta. Use envio por template aprovado.',
+      );
+    }
+  }
+
+  private async trySendClosedWindowTemplateReply(payload: {
+    workspaceId: string;
+    conversationId: string;
+    senderUserId: string | null;
+    instanceId: string;
+    content: string;
+  }) {
+    if (!payload.senderUserId) {
+      return null;
+    }
+
+    const settings =
+      await this.workspaceSettingsService.getConversationSettings(
+        payload.workspaceId,
+      );
+
+    if (!settings.sendWindowClosedTemplateReply) {
+      return null;
+    }
+
+    const templateName = settings.windowClosedTemplateName?.trim();
+    const languageCode =
+      settings.windowClosedTemplateLanguageCode?.trim() ?? null;
+
+    if (!templateName || !languageCode) {
+      throw new BadRequestException(
+        'O template automatico para fora da janela de 24 horas nao esta configurado corretamente.',
+      );
+    }
+
+    try {
+      return await this.sendTemplateConversationMessage(
+        payload.workspaceId,
+        payload.conversationId,
+        payload.senderUserId,
+        {
+          instanceId: payload.instanceId,
+          templateName,
+          languageCode,
+          bodyParameters: [payload.content],
+          contentPreview: payload.content,
+          metadata: {
+            windowClosedTemplateReply: true,
+          },
+        },
+      );
+    } catch {
+      throw new BadRequestException(
+        'Nao foi possivel enviar o template aprovado configurado para fora da janela de 24 horas. Revise o nome e o idioma configurados na Meta.',
       );
     }
   }
@@ -897,6 +1132,9 @@ export class MetaWhatsAppService {
     senderUserId: string | null;
     instanceId: string;
     content: string;
+    direction?: MessageDirection;
+    isAutomated?: boolean;
+    autoMessageType?: AutoMessageType;
     providerResult: {
       externalMessageId: string;
       simulated: boolean;
@@ -912,7 +1150,7 @@ export class MetaWhatsAppService {
         senderUserId: payload.senderUserId ?? undefined,
         instanceId: payload.instanceId,
         externalMessageId: payload.providerResult.externalMessageId,
-        direction: MessageDirection.OUTBOUND,
+        direction: payload.direction ?? MessageDirection.OUTBOUND,
         messageType: payload.providerResult.messageType ?? 'text',
         content: payload.content,
         metadata: payload.providerResult.metadata as
@@ -921,6 +1159,8 @@ export class MetaWhatsAppService {
         status: payload.providerResult.simulated
           ? MessageStatus.DELIVERED
           : MessageStatus.SENT,
+        isAutomated: payload.isAutomated ?? false,
+        autoMessageType: payload.autoMessageType,
         sentAt: new Date(),
         deliveredAt: payload.providerResult.simulated ? new Date() : null,
       },
@@ -952,12 +1192,25 @@ export class MetaWhatsAppService {
       },
     });
 
-    this.inboxEventsService.emit({
-      workspaceId: payload.workspaceId,
-      conversationId: payload.conversationId,
-      type: 'conversation.message.created',
-      direction: 'OUTBOUND',
-    });
+    if (payload.autoMessageType) {
+      await this.prisma.conversationEvent.create({
+        data: {
+          workspaceId: payload.workspaceId,
+          conversationId: payload.conversationId,
+          type: ConversationEventType.AUTO_MESSAGE_SENT,
+          metadata: {
+            autoMessageType: payload.autoMessageType,
+          },
+        },
+      });
+    }
+
+    await this.conversationWorkflowService.emitConversationRealtimeEvent(
+      payload.workspaceId,
+      payload.conversationId,
+      'conversation.message.created',
+      'OUTBOUND',
+    );
 
     return message;
   }
@@ -1028,6 +1281,9 @@ export class MetaWhatsAppService {
           contactId,
           instanceId,
           assignedUserId: assignedUserId ?? undefined,
+          status: assignedUserId
+            ? ConversationStatus.IN_PROGRESS
+            : ConversationStatus.NEW,
           ownership: assignedUserId
             ? ConversationOwnership.MINE
             : ConversationOwnership.UNASSIGNED,

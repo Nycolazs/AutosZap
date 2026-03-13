@@ -5,15 +5,18 @@ import { AppController } from './app.controller';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RealtimeModule } from './common/realtime/realtime.module';
 import { RedisModule } from './common/redis/redis.module';
+import { AccessControlModule } from './modules/access-control/access-control.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AssistantsModule } from './modules/assistants/assistants.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
+import { ConversationWorkflowModule } from './modules/conversations/conversation-workflow.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DevelopmentModule } from './modules/development/development.module';
@@ -24,6 +27,7 @@ import { ListsModule } from './modules/lists/lists.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TeamModule } from './modules/team/team.module';
 import { UsersModule } from './modules/users/users.module';
+import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-settings.module';
 
 @Module({
   imports: [
@@ -34,8 +38,10 @@ import { UsersModule } from './modules/users/users.module';
     RedisModule,
     CryptoModule,
     RealtimeModule,
+    AccessControlModule,
     AuthModule,
     UsersModule,
+    WorkspaceSettingsModule,
     TeamModule,
     ContactsModule,
     TagsModule,
@@ -44,6 +50,7 @@ import { UsersModule } from './modules/users/users.module';
     MetaWhatsAppModule,
     DevelopmentModule,
     InstancesModule,
+    ConversationWorkflowModule,
     ConversationsModule,
     CrmModule,
     CampaignsModule,
@@ -59,6 +66,10 @@ import { UsersModule } from './modules/users/users.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
     {
       provide: APP_FILTER,

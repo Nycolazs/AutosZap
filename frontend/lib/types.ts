@@ -22,7 +22,42 @@ export interface UserSummary {
   name: string;
   email?: string;
   role?: string;
+  normalizedRole?: 'ADMIN' | 'SELLER';
   title?: string | null;
+}
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  linkHref?: string | null;
+  metadata?: Record<string, unknown> | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface PermissionCatalogEntry {
+  key: string;
+  label: string;
+  description: string;
+  category: 'Telas' | 'Acoes' | 'Analise' | 'Configuracoes';
+}
+
+export interface TeamMember {
+  id: string;
+  userId?: string | null;
+  name: string;
+  email: string;
+  title?: string | null;
+  role: string;
+  normalizedRole: 'ADMIN' | 'SELLER';
+  status: string;
+  lastLoginAt?: string | null;
+  permissions: Record<string, boolean>;
+  grantedPermissions: string[];
 }
 
 export interface Contact {
@@ -51,9 +86,29 @@ export interface ConversationMessage {
     caption?: string | null;
     animated?: boolean;
     voice?: boolean;
+    templateName?: string | null;
+    languageCode?: string | null;
+    windowClosedTemplateReply?: boolean;
+    headerParameters?: string[];
+    bodyParameters?: string[];
   } | null;
   status: string;
   createdAt: string;
+}
+
+export interface ConversationReminder {
+  id: string;
+  messageToSend: string;
+  internalDescription?: string | null;
+  remindAt: string;
+  status: 'PENDING' | 'NOTIFIED' | 'COMPLETED' | 'CANCELED';
+  notifiedAt?: string | null;
+  completedAt?: string | null;
+  canceledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: UserSummary;
+  completedBy?: UserSummary | null;
 }
 
 export interface Conversation {
@@ -68,6 +123,10 @@ export interface Conversation {
   tags: Tag[];
   messages?: ConversationMessage[];
   notes?: Array<{ id: string; content: string; author: UserSummary; createdAt: string }>;
+  reminders?: ConversationReminder[];
+  waitingSince?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
 }
 
 export interface Lead {
@@ -102,6 +161,8 @@ export interface Campaign {
   recipientCount: number;
   sentCount: number;
   failedCount: number;
+  mediaUrl?: string | null;
+  hasMedia?: boolean;
 }
 
 export interface Assistant {
@@ -243,6 +304,76 @@ export interface DashboardOverview {
   };
   chart: Array<{ label: string; value: number }>;
   recentActivity: Array<{ id: string; entityType: string; action: string; createdAt: string }>;
-  notifications: Array<{ id: string; title: string; body: string; type: string; createdAt: string }>;
+  notifications: NotificationItem[];
   shortcuts: Array<{ title: string; href: string }>;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  unreadCount: number;
+}
+
+export interface DashboardPerformance {
+  period: {
+    from: string;
+    to: string;
+  };
+  totals: {
+    resolvedCount: number;
+    closedCount: number;
+    assignedCount: number;
+    avgFirstResponseMs: number | null;
+    avgResolutionMs: number | null;
+  };
+  chart: Array<{ userId: string; label: string; value: number }>;
+  ranking: Array<{
+    userId: string;
+    name: string;
+    resolvedCount: number;
+    closedCount: number;
+    assignedCount: number;
+    conversionRate: number;
+    avgFirstResponseMs: number | null;
+    avgResolutionMs: number | null;
+  }>;
+}
+
+export interface WorkspaceConversationSettings {
+  id: string;
+  workspaceId: string;
+  inactivityTimeoutMinutes: number;
+  timezone: string;
+  autoReplyCooldownMinutes: number;
+  sendBusinessHoursAutoReply: boolean;
+  businessHoursAutoReply?: string | null;
+  sendOutOfHoursAutoReply: boolean;
+  outOfHoursAutoReply?: string | null;
+  sendWindowClosedTemplateReply: boolean;
+  windowClosedTemplateName?: string | null;
+  windowClosedTemplateLanguageCode?: string | null;
+  businessHours: Array<{
+    id: string;
+    weekday: number;
+    isOpen: boolean;
+    startTime?: string | null;
+    endTime?: string | null;
+  }>;
+}
+
+export interface AuthMeResponse {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  normalizedRole: 'ADMIN' | 'SELLER';
+  title?: string | null;
+  status: string;
+  permissions: string[];
+  permissionMap: Record<string, boolean>;
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+    companyName: string;
+  };
 }

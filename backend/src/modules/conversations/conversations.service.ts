@@ -1,5 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { InboxEventsService } from '../../common/realtime/inbox-events.service';
@@ -9,6 +14,7 @@ import {
 } from '../../common/utils/pagination';
 import { normalizeSearchPhone } from '../../common/utils/phone';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
+import { ConversationWorkflowService } from './conversation-workflow.service';
 
 @Injectable()
 export class ConversationsService {
@@ -16,14 +22,15 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly metaWhatsAppService: MetaWhatsAppService,
     private readonly inboxEventsService: InboxEventsService,
+    private readonly conversationWorkflowService: ConversationWorkflowService,
   ) {}
 
-  stream(workspaceId: string) {
-    return this.inboxEventsService.stream(workspaceId);
+  stream(user: CurrentAuthUser) {
+    return this.inboxEventsService.stream(user);
   }
 
   async list(
-    workspaceId: string,
+    user: CurrentAuthUser,
     query: PaginationQueryDto & {
       status?: string;
       ownership?: string;
@@ -33,6 +40,8 @@ export class ConversationsService {
   ) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const searchPhoneVariants = normalizeSearchPhone(query.search);
+    const accessWhere =
+      this.conversationWorkflowService.buildVisibilityWhere(user);
 
     const searchFilters: Prisma.ConversationWhereInput[] = query.search
       ? [
@@ -61,17 +70,12 @@ export class ConversationsService {
       : [];
 
     const where: Prisma.ConversationWhereInput = {
-      workspaceId,
-      deletedAt: null,
+      ...accessWhere,
       ...(query.status ? { status: query.status as never } : {}),
       ...(query.ownership ? { ownership: query.ownership as never } : {}),
       ...(query.assignedUserId ? { assignedUserId: query.assignedUserId } : {}),
       ...(query.tagId ? { tags: { some: { tagId: query.tagId } } } : {}),
-      ...(searchFilters.length
-        ? {
-            OR: searchFilters,
-          }
-        : {}),
+      ...(searchFilters.length ? { OR: searchFilters } : {}),
     };
 
     const [data, total] = await this.prisma.$transaction([
@@ -83,6 +87,7 @@ export class ConversationsService {
             select: {
               id: true,
               name: true,
+              role: true,
             },
           },
           tags: {
@@ -111,11 +116,17 @@ export class ConversationsService {
     );
   }
 
-  async findOne(id: string, workspaceId: string) {
+  async findOne(id: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.assertConversationAccess(
+      id,
+      user,
+      'visualizar esta conversa',
+    );
+
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id,
-        workspaceId,
+        workspaceId: user.workspaceId,
         deletedAt: null,
       },
       include: {
@@ -158,6 +169,30 @@ export class ConversationsService {
             createdAt: 'desc',
           },
         },
+        reminders: {
+          include: {
+            createdBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            completedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          orderBy: [
+            {
+              remindAt: 'asc',
+            },
+            {
+              createdAt: 'desc',
+            },
+          ],
+        },
       },
     });
 
@@ -177,19 +212,27 @@ export class ConversationsService {
 
   async update(
     id: string,
-    workspaceId: string,
-    actorId: string,
+    user: CurrentAuthUser,
     payload: {
-      status?: string;
       assignedUserId?: string | null;
       tagIds?: string[];
     },
   ) {
+    await this.conversationWorkflowService.assertConversationAccess(
+      id,
+      user,
+      'editar esta conversa',
+    );
+
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id,
-        workspaceId,
+        workspaceId: user.workspaceId,
         deletedAt: null,
+      },
+      select: {
+        id: true,
+        assignedUserId: true,
       },
     });
 
@@ -197,94 +240,81 @@ export class ConversationsService {
       throw new NotFoundException('Conversa nao encontrada.');
     }
 
-    await this.prisma.conversation.update({
-      where: { id },
-      data: {
-        status: (payload.status as never) ?? conversation.status,
-        assignedUserId: payload.assignedUserId ?? conversation.assignedUserId,
-      },
-    });
-
-    if (
-      payload.assignedUserId &&
-      payload.assignedUserId !== conversation.assignedUserId
-    ) {
-      await this.prisma.conversationAssignment.create({
-        data: {
-          workspaceId,
-          conversationId: id,
-          assignedToId: payload.assignedUserId,
-          assignedById: actorId,
-        },
-      });
+    if (payload.assignedUserId) {
+      await this.conversationWorkflowService.transferConversation(
+        id,
+        user.workspaceId,
+        user.sub,
+        payload.assignedUserId,
+      );
     }
 
     if (payload.tagIds) {
       await this.prisma.conversationTag.deleteMany({
-        where: { conversationId: id },
+        where: {
+          conversationId: id,
+        },
       });
 
       if (payload.tagIds.length) {
         await this.prisma.conversationTag.createMany({
-          data: payload.tagIds.map((tagId) => ({ conversationId: id, tagId })),
+          data: payload.tagIds.map((tagId) => ({
+            conversationId: id,
+            tagId,
+          })),
           skipDuplicates: true,
         });
       }
+
+      await this.conversationWorkflowService.emitConversationRealtimeEvent(
+        user.workspaceId,
+        id,
+        'conversation.updated',
+      );
     }
 
-    this.inboxEventsService.emit({
-      workspaceId,
-      conversationId: id,
-      type: 'conversation.updated',
-    });
-
-    return this.findOne(id, workspaceId);
+    return this.findOne(id, user);
   }
 
   async addNote(
     conversationId: string,
-    workspaceId: string,
-    authorId: string,
+    user: CurrentAuthUser,
     content: string,
   ) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, workspaceId, deletedAt: null },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversa nao encontrada.');
-    }
+    await this.conversationWorkflowService.assertConversationAccess(
+      conversationId,
+      user,
+      'registrar uma nota nesta conversa',
+    );
 
     await this.prisma.conversationNote.create({
       data: {
-        workspaceId,
+        workspaceId: user.workspaceId,
         conversationId,
-        authorId,
+        authorId: user.sub,
         content,
       },
     });
 
-    this.inboxEventsService.emit({
-      workspaceId,
+    await this.conversationWorkflowService.emitConversationRealtimeEvent(
+      user.workspaceId,
       conversationId,
-      type: 'conversation.note.created',
-    });
+      'conversation.note.created',
+    );
 
-    return this.findOne(conversationId, workspaceId);
+    return this.findOne(conversationId, user);
   }
 
-  async listMessages(conversationId: string, workspaceId: string) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, workspaceId, deletedAt: null },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversa nao encontrada.');
-    }
+  async listMessages(conversationId: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.assertConversationAccess(
+      conversationId,
+      user,
+      'visualizar as mensagens desta conversa',
+    );
 
     return this.prisma.conversationMessage.findMany({
       where: {
-        workspaceId,
+        workspaceId: user.workspaceId,
         conversationId,
       },
       orderBy: {
@@ -295,22 +325,36 @@ export class ConversationsService {
 
   async sendMessage(
     conversationId: string,
-    workspaceId: string,
-    senderUserId: string,
+    user: CurrentAuthUser,
     content: string,
   ) {
+    if (!content.trim()) {
+      throw new BadRequestException('Digite uma mensagem para enviar.');
+    }
+
+    const preparedReply =
+      await this.conversationWorkflowService.prepareManualReply(
+        conversationId,
+        user.workspaceId,
+        user.sub,
+      );
+    const formattedContent =
+      this.conversationWorkflowService.formatManualMessage(
+        preparedReply.actor.name,
+        content,
+      );
+
     return this.metaWhatsAppService.sendConversationMessage(
-      workspaceId,
+      user.workspaceId,
       conversationId,
-      senderUserId,
-      content,
+      user.sub,
+      formattedContent,
     );
   }
 
   async sendMediaMessage(
     conversationId: string,
-    workspaceId: string,
-    senderUserId: string,
+    user: CurrentAuthUser,
     payload: {
       buffer: Buffer;
       fileName: string;
@@ -319,15 +363,90 @@ export class ConversationsService {
       voice?: boolean;
     },
   ) {
+    const preparedReply =
+      await this.conversationWorkflowService.prepareManualReply(
+        conversationId,
+        user.workspaceId,
+        user.sub,
+      );
+
+    const formattedCaption = payload.caption?.trim()
+      ? this.conversationWorkflowService.formatManualMessage(
+          preparedReply.actor.name,
+          payload.caption,
+        )
+      : undefined;
+
     return this.metaWhatsAppService.sendConversationMediaMessage(
-      workspaceId,
+      user.workspaceId,
       conversationId,
-      senderUserId,
-      payload,
+      user.sub,
+      {
+        ...payload,
+        caption: formattedCaption,
+      },
     );
   }
 
-  async getMessageMedia(messageId: string, workspaceId: string) {
-    return this.metaWhatsAppService.getMessageMedia(workspaceId, messageId);
+  async resolveConversation(id: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.resolveConversation(
+      id,
+      user.workspaceId,
+      user.sub,
+    );
+
+    return this.findOne(id, user);
+  }
+
+  async closeConversation(id: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.closeConversation(
+      id,
+      user.workspaceId,
+      user.sub,
+    );
+
+    return this.findOne(id, user);
+  }
+
+  async reopenConversation(id: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.reopenConversation(
+      id,
+      user.workspaceId,
+      user.sub,
+    );
+
+    return this.findOne(id, user);
+  }
+
+  async reprocessWaitingTimeouts(_user: CurrentAuthUser) {
+    void _user;
+    return this.conversationWorkflowService.processWaitingTimeouts();
+  }
+
+  async getMessageMedia(messageId: string, user: CurrentAuthUser) {
+    const message = await this.prisma.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        workspaceId: user.workspaceId,
+      },
+      select: {
+        conversationId: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Mensagem nao encontrada.');
+    }
+
+    await this.conversationWorkflowService.assertConversationAccess(
+      message.conversationId,
+      user,
+      'baixar a midia desta conversa',
+    );
+
+    return this.metaWhatsAppService.getMessageMedia(
+      user.workspaceId,
+      messageId,
+    );
   }
 }

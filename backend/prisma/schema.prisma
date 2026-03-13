@@ -11,6 +11,7 @@ enum Role {
   ADMIN
   MANAGER
   AGENT
+  SELLER
 }
 
 enum UserStatus {
@@ -31,6 +32,10 @@ enum ConversationStatus {
   OPEN
   PENDING
   CLOSED
+  NEW
+  IN_PROGRESS
+  WAITING
+  RESOLVED
 }
 
 enum ConversationOwnership {
@@ -51,6 +56,62 @@ enum MessageStatus {
   DELIVERED
   READ
   FAILED
+}
+
+enum PermissionKey {
+  DASHBOARD_VIEW
+  REPORTS_VIEW
+  VIEW_METRICS
+  INBOX_VIEW
+  CRM_VIEW
+  CONTACTS_VIEW
+  CONTACTS_EDIT
+  CAMPAIGNS_VIEW
+  CAMPAIGNS_MANAGE
+  LISTS_VIEW
+  GROUPS_VIEW
+  TAGS_VIEW
+  PIPELINE_VIEW
+  ASSISTANTS_VIEW
+  KNOWLEDGE_BASES_VIEW
+  AI_TOOLS_VIEW
+  INTEGRATIONS_VIEW
+  SETTINGS_VIEW
+  TEAM_VIEW
+  EXPORT_DATA
+  TRANSFER_CONVERSATION
+  REOPEN_CONVERSATION
+  RESOLVE_CONVERSATION
+  CLOSE_CONVERSATION
+  CONFIGURE_CONVERSATION_ROUTING
+  CONFIGURE_AUTO_MESSAGES
+  CONFIGURE_BUSINESS_HOURS
+  MANAGE_TEAM
+  MANAGE_USER_ROLES
+  MANAGE_USER_PERMISSIONS
+  DEVELOPMENT_VIEW
+}
+
+enum AutoMessageType {
+  IN_BUSINESS_HOURS
+  OUT_OF_BUSINESS_HOURS
+}
+
+enum ConversationEventType {
+  ASSIGNED
+  TRANSFERRED
+  FIRST_RESPONSE
+  STATUS_CHANGED
+  WAITING_TIMEOUT
+  REOPENED
+  RESOLVED
+  CLOSED
+  AUTO_MESSAGE_SENT
+  REMINDER_CREATED
+  REMINDER_UPDATED
+  REMINDER_COMPLETED
+  REMINDER_CANCELED
+  REMINDER_NOTIFIED
 }
 
 enum CampaignStatus {
@@ -134,6 +195,13 @@ enum NotificationType {
   ERROR
 }
 
+enum ReminderStatus {
+  PENDING
+  NOTIFIED
+  COMPLETED
+  CANCELED
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -152,37 +220,41 @@ enum WebhookEventType {
 }
 
 model Workspace {
-  id                String                  @id @default(cuid())
-  name              String
-  slug              String                  @unique
-  companyName       String
-  settings          Json?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  deletedAt         DateTime?
-  users             User[]
-  refreshTokens     RefreshToken[]
-  teamMembers       TeamMember[]
-  contacts          Contact[]
-  contactLists      ContactList[]
-  groups            Group[]
-  tags              Tag[]
-  conversations     Conversation[]
-  conversationMsgs  ConversationMessage[]
-  conversationNotes ConversationNote[]
-  campaigns         Campaign[]
-  pipelines         Pipeline[]
-  pipelineStages    PipelineStage[]
-  leads             Lead[]
-  assistants        Assistant[]
-  knowledgeBases    KnowledgeBase[]
-  knowledgeDocs     KnowledgeDocument[]
-  aiTools           AiTool[]
-  instances         Instance[]
-  notifications     Notification[]
-  auditLogs         AuditLog[]
-  webhookEvents     WhatsAppWebhookEvent[]
-  messageStatuses   MessageDeliveryStatus[]
+  id                   String                         @id @default(cuid())
+  name                 String
+  slug                 String                         @unique
+  companyName          String
+  settings             Json?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  deletedAt            DateTime?
+  users                User[]
+  refreshTokens        RefreshToken[]
+  teamMembers          TeamMember[]
+  contacts             Contact[]
+  contactLists         ContactList[]
+  groups               Group[]
+  tags                 Tag[]
+  conversations        Conversation[]
+  conversationMsgs     ConversationMessage[]
+  conversationNotes    ConversationNote[]
+  conversationReminders ConversationReminder[]
+  campaigns            Campaign[]
+  pipelines            Pipeline[]
+  pipelineStages       PipelineStage[]
+  leads                Lead[]
+  assistants           Assistant[]
+  knowledgeBases       KnowledgeBase[]
+  knowledgeDocs        KnowledgeDocument[]
+  aiTools              AiTool[]
+  instances            Instance[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  webhookEvents        WhatsAppWebhookEvent[]
+  messageStatuses      MessageDeliveryStatus[]
+  conversationSettings WorkspaceConversationSettings?
+  userPermissions      UserPermission[]
+  conversationEvents   ConversationEvent[]
 }
 
 model User {
@@ -191,7 +263,7 @@ model User {
   name                String
   email               String                    @unique
   passwordHash        String
-  role                Role                      @default(AGENT)
+  role                Role                      @default(SELLER)
   status              UserStatus                @default(ACTIVE)
   title               String?
   avatarUrl           String?
@@ -215,6 +287,12 @@ model User {
   auditLogs           AuditLog[]                @relation("AuditActor")
   teamMembership      TeamMember?               @relation("TeamMembership")
   sentInvites         TeamMember[]              @relation("InvitedBy")
+  permissionOverrides UserPermission[]
+  resolvedConvos      Conversation[]            @relation("ConversationResolver")
+  closedConvos        Conversation[]            @relation("ConversationCloser")
+  conversationEvents  ConversationEvent[]       @relation("ConversationEventActor")
+  createdReminders    ConversationReminder[]    @relation("ConversationReminderCreator")
+  completedReminders  ConversationReminder[]    @relation("ConversationReminderCompleter")
 
   @@index([workspaceId, role])
 }
@@ -256,7 +334,7 @@ model TeamMember {
   name          String
   email         String
   title         String?
-  role          Role       @default(AGENT)
+  role          Role       @default(SELLER)
   status        UserStatus @default(PENDING)
   inviteToken   String?
   createdAt     DateTime   @default(now())
@@ -385,31 +463,47 @@ model ContactTag {
 }
 
 model Conversation {
-  id                 String                    @id @default(cuid())
-  workspaceId        String
-  contactId          String
-  instanceId         String?
-  assignedUserId     String?
-  status             ConversationStatus        @default(OPEN)
-  ownership          ConversationOwnership     @default(UNASSIGNED)
-  unreadCount        Int                       @default(0)
-  lastMessageAt      DateTime?
-  lastMessagePreview String?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  deletedAt          DateTime?
-  workspace          Workspace                 @relation(fields: [workspaceId], references: [id])
-  contact            Contact                   @relation(fields: [contactId], references: [id])
-  instance           Instance?                 @relation(fields: [instanceId], references: [id])
-  assignedUser       User?                     @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
-  messages           ConversationMessage[]
-  notes              ConversationNote[]
-  participants       ConversationParticipant[]
-  assignments        ConversationAssignment[]
-  tags               ConversationTag[]
+  id                    String                    @id @default(cuid())
+  workspaceId           String
+  contactId             String
+  instanceId            String?
+  assignedUserId        String?
+  status                ConversationStatus        @default(OPEN)
+  ownership             ConversationOwnership     @default(UNASSIGNED)
+  unreadCount           Int                       @default(0)
+  lastMessageAt         DateTime?
+  lastMessagePreview    String?
+  currentCycleStartedAt DateTime                  @default(now())
+  firstHumanResponseAt  DateTime?
+  lastHumanReplyAt      DateTime?
+  lastInboundAt         DateTime?
+  waitingSince          DateTime?
+  statusChangedAt       DateTime                  @default(now())
+  resolvedAt            DateTime?
+  resolvedById          String?
+  closedAt              DateTime?
+  closedById            String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  deletedAt             DateTime?
+  workspace             Workspace                 @relation(fields: [workspaceId], references: [id])
+  contact               Contact                   @relation(fields: [contactId], references: [id])
+  instance              Instance?                 @relation(fields: [instanceId], references: [id])
+  assignedUser          User?                     @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
+  resolvedBy            User?                     @relation("ConversationResolver", fields: [resolvedById], references: [id])
+  closedBy              User?                     @relation("ConversationCloser", fields: [closedById], references: [id])
+  messages              ConversationMessage[]
+  notes                 ConversationNote[]
+  reminders             ConversationReminder[]
+  participants          ConversationParticipant[]
+  assignments           ConversationAssignment[]
+  tags                  ConversationTag[]
+  events                ConversationEvent[]
 
   @@unique([workspaceId, contactId, instanceId])
   @@index([workspaceId, status, lastMessageAt])
+  @@index([workspaceId, status, assignedUserId, lastMessageAt])
+  @@index([workspaceId, waitingSince, status])
   @@index([contactId])
 }
 
@@ -455,6 +549,8 @@ model ConversationMessage {
   content           String
   metadata          Json?
   status            MessageStatus           @default(QUEUED)
+  isAutomated       Boolean                 @default(false)
+  autoMessageType   AutoMessageType?
   sentAt            DateTime?
   deliveredAt       DateTime?
   readAt            DateTime?
@@ -468,7 +564,74 @@ model ConversationMessage {
   deliveryStatuses  MessageDeliveryStatus[]
 
   @@index([workspaceId, conversationId, createdAt])
+  @@index([workspaceId, conversationId, autoMessageType, createdAt])
   @@index([externalMessageId])
+}
+
+model UserPermission {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  permission  PermissionKey
+  allowed     Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([workspaceId, permission])
+}
+
+model WorkspaceConversationSettings {
+  id                         String                  @id @default(cuid())
+  workspaceId                String                  @unique
+  inactivityTimeoutMinutes   Int                     @default(15)
+  timezone                   String                  @default("America/Fortaleza")
+  autoReplyCooldownMinutes   Int                     @default(120)
+  sendBusinessHoursAutoReply Boolean                 @default(false)
+  businessHoursAutoReply     String?
+  sendOutOfHoursAutoReply    Boolean                 @default(false)
+  outOfHoursAutoReply        String?
+  sendWindowClosedTemplateReply Boolean              @default(false)
+  windowClosedTemplateName      String?
+  windowClosedTemplateLanguageCode String?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  workspace                  Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  businessHours              WorkspaceBusinessHour[]
+}
+
+model WorkspaceBusinessHour {
+  id         String                        @id @default(cuid())
+  settingsId String
+  weekday    Int
+  isOpen     Boolean                       @default(false)
+  startTime  String?
+  endTime    String?
+  createdAt  DateTime                      @default(now())
+  updatedAt  DateTime                      @updatedAt
+  settings   WorkspaceConversationSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@unique([settingsId, weekday])
+}
+
+model ConversationEvent {
+  id             String                @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  actorUserId    String?
+  type           ConversationEventType
+  fromStatus     ConversationStatus?
+  toStatus       ConversationStatus?
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+  workspace      Workspace             @relation(fields: [workspaceId], references: [id])
+  conversation   Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  actorUser      User?                 @relation("ConversationEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, conversationId, createdAt])
+  @@index([workspaceId, type, createdAt])
 }
 
 model ConversationNote {
@@ -508,6 +671,10 @@ model Campaign {
   audienceType   CampaignAudienceType
   targetConfig   Json
   message        String
+  mediaStoragePath String?
+  mediaFileName  String?
+  mediaMimeType  String?
+  mediaSize      Int?
   scheduledAt    DateTime?
   status         CampaignStatus       @default(DRAFT)
   recipientCount Int                  @default(0)
@@ -522,6 +689,30 @@ model Campaign {
   recipients     CampaignRecipient[]
 
   @@index([workspaceId, status, createdAt])
+}
+
+model ConversationReminder {
+  id                  String         @id @default(cuid())
+  workspaceId         String
+  conversationId      String
+  createdById         String
+  completedById       String?
+  messageToSend       String
+  internalDescription String?
+  remindAt            DateTime
+  status              ReminderStatus @default(PENDING)
+  notifiedAt          DateTime?
+  completedAt         DateTime?
+  canceledAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  workspace           Workspace      @relation(fields: [workspaceId], references: [id])
+  conversation        Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy           User           @relation("ConversationReminderCreator", fields: [createdById], references: [id])
+  completedBy         User?          @relation("ConversationReminderCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, remindAt])
+  @@index([workspaceId, conversationId, status, remindAt])
 }
 
 model CampaignRecipient {
@@ -748,12 +939,17 @@ model Notification {
   title       String
   body        String
   type        NotificationType @default(INFO)
+  entityType  String?
+  entityId    String?
+  linkHref    String?
+  metadata    Json?
   readAt      DateTime?
   createdAt   DateTime         @default(now())
   workspace   Workspace        @relation(fields: [workspaceId], references: [id])
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, userId, readAt])
+  @@index([workspaceId, userId, createdAt])
 }
 
 model AuditLog {

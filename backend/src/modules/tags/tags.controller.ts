@@ -7,9 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { PermissionKey } from '@prisma/client';
 import { IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { TagsService } from './tags.service';
 
 class TagDto {
@@ -25,6 +27,7 @@ class TagDto {
 }
 
 @Controller('tags')
+@Permissions(PermissionKey.TAGS_VIEW)
 export class TagsController {
   constructor(private readonly tagsService: TagsService) {}
 

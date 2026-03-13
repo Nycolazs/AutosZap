@@ -12,10 +12,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { PermissionKey } from '@prisma/client';
 import { IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ConversationsService } from './conversations.service';
 
 type UploadedMediaFile = {
@@ -52,23 +54,20 @@ class SendMediaDto {
 }
 
 @Controller('messages')
+@Permissions(PermissionKey.INBOX_VIEW)
 export class MessagesController {
   constructor(private readonly conversationsService: ConversationsService) {}
 
   @Get()
   list(@CurrentUser() user: CurrentAuthUser, @Query() query: MessagesQueryDto) {
-    return this.conversationsService.listMessages(
-      query.conversationId,
-      user.workspaceId,
-    );
+    return this.conversationsService.listMessages(query.conversationId, user);
   }
 
   @Post()
   send(@CurrentUser() user: CurrentAuthUser, @Body() dto: SendMessageDto) {
     return this.conversationsService.sendMessage(
       dto.conversationId,
-      user.workspaceId,
-      user.sub,
+      user,
       dto.content,
     );
   }
@@ -92,8 +91,7 @@ export class MessagesController {
 
     return this.conversationsService.sendMediaMessage(
       dto.conversationId,
-      user.workspaceId,
-      user.sub,
+      user,
       {
         buffer: file.buffer,
         fileName: file.originalname,
@@ -110,10 +108,7 @@ export class MessagesController {
     @Param('id') id: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    const media = await this.conversationsService.getMessageMedia(
-      id,
-      user.workspaceId,
-    );
+    const media = await this.conversationsService.getMessageMedia(id, user);
 
     response.setHeader(
       'Content-Type',

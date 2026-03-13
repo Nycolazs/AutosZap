@@ -1,6 +1,9 @@
 import { Injectable, MessageEvent } from '@nestjs/common';
 import { Observable, Subject, concat, interval } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
+import { Role } from '@prisma/client';
+import { CurrentAuthUser } from '../decorators/current-user.decorator';
+import { normalizeRole } from '../../modules/access-control/permissions.constants';
 
 export type InboxEventType =
   | 'conversation.message.created'
@@ -13,6 +16,8 @@ export type InboxRealtimeEvent = {
   conversationId: string;
   type: InboxEventType;
   direction?: 'INBOUND' | 'OUTBOUND';
+  assignedUserId?: string | null;
+  audience?: 'WORKSPACE' | 'SELLERS_AND_ADMINS' | 'ADMINS_AND_ASSIGNEE';
 };
 
 @Injectable()
@@ -23,19 +28,20 @@ export class InboxEventsService {
     this.events$.next(event);
   }
 
-  stream(workspaceId: string): Observable<MessageEvent> {
+  stream(user: CurrentAuthUser): Observable<MessageEvent> {
     return concat(
       [
         {
           type: 'connected',
           data: {
             ok: true,
-            workspaceId,
+            workspaceId: user.workspaceId,
           },
         } satisfies MessageEvent,
       ],
       this.events$.pipe(
-        filter((event) => event.workspaceId === workspaceId),
+        filter((event) => event.workspaceId === user.workspaceId),
+        filter((event) => this.canUserReceiveEvent(user, event)),
         map(
           (event) =>
             ({
@@ -56,5 +62,27 @@ export class InboxEventsService {
         ),
       ),
     );
+  }
+
+  private canUserReceiveEvent(
+    user: CurrentAuthUser,
+    event: InboxRealtimeEvent,
+  ) {
+    const audience = event.audience ?? 'WORKSPACE';
+    const normalizedRole = normalizeRole(user.role as Role);
+
+    if (audience === 'WORKSPACE') {
+      return true;
+    }
+
+    if (normalizedRole === Role.ADMIN) {
+      return true;
+    }
+
+    if (audience === 'SELLERS_AND_ADMINS') {
+      return true;
+    }
+
+    return event.assignedUserId === user.sub;
   }
 }

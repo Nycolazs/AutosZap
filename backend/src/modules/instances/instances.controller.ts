@@ -15,6 +15,7 @@ import {
   InstanceMode,
   InstanceProvider,
   InstanceStatus,
+  PermissionKey,
   Role,
 } from '@prisma/client';
 import {
@@ -30,6 +31,7 @@ import {
 } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 import { InstancesService } from './instances.service';
@@ -148,6 +150,7 @@ class UpdateBusinessProfileDto {
 }
 
 @Controller('instances')
+@Permissions(PermissionKey.INTEGRATIONS_VIEW)
 export class InstancesController {
   constructor(
     private readonly instancesService: InstancesService,
@@ -164,13 +167,13 @@ export class InstancesController {
     return this.instancesService.findOne(id, user.workspaceId);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Post()
   create(@CurrentUser() user: CurrentAuthUser, @Body() dto: InstanceDto) {
     return this.instancesService.create(user.workspaceId, user.sub, dto);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Patch(':id')
   update(
     @CurrentUser() user: CurrentAuthUser,
@@ -180,13 +183,13 @@ export class InstancesController {
     return this.instancesService.update(id, user.workspaceId, dto);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Post(':id/connect')
   connect(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.instancesService.connect(id, user.workspaceId);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Post(':id/disconnect')
   disconnect(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.instancesService.disconnect(id, user.workspaceId);
@@ -210,7 +213,7 @@ export class InstancesController {
     return this.metaWhatsAppService.getBusinessProfile(user.workspaceId, id);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Patch(':id/business-profile')
   updateBusinessProfile(
     @CurrentUser() user: CurrentAuthUser,
@@ -233,7 +236,7 @@ export class InstancesController {
     return this.metaWhatsAppService.subscribeApp(user.workspaceId, id, dto);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Post(':id/profile-picture')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -274,7 +277,7 @@ export class InstancesController {
     return this.metaWhatsAppService.listTemplates(user.workspaceId, id);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @Delete(':id')
   remove(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.instancesService.remove(id, user.workspaceId);

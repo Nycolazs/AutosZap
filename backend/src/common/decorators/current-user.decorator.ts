@@ -5,7 +5,7 @@ export interface CurrentAuthUser {
   email: string;
   name: string;
   workspaceId: string;
-  role: 'ADMIN' | 'MANAGER' | 'AGENT';
+  role: 'ADMIN' | 'MANAGER' | 'AGENT' | 'SELLER';
 }
 
 export const CurrentUser = createParamDecorator(

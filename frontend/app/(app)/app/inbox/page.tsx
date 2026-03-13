@@ -1,17 +1,23 @@
 'use client';
 
 import type { KeyboardEvent, MutableRefObject } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CheckCircle2,
+  ChevronLeft,
+  Clock3,
+  Pencil,
   FileImage,
   Inbox,
   Mic,
   Pause,
   Paperclip,
   Play,
+  Plus,
   Search,
   SendHorizontal,
+  SlidersHorizontal,
   StickyNote,
   Trash2,
   Volume2,
@@ -24,28 +30,59 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
+import { formatManualMessageContent } from '@/lib/message-formatting';
+import { canAccess, getRoleLabel } from '@/lib/permissions';
 import {
+  AuthMeResponse,
   Conversation,
   ConversationMessage,
+  ConversationReminder,
   PaginatedResponse,
   Tag,
   UserSummary,
 } from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
+import { useSearchParams } from 'next/navigation';
 
 const INBOX_REFRESH_INTERVAL = 1500;
 const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 18, 14, 24, 18, 28, 20, 16, 24, 14, 18, 12, 8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14];
 const HIDDEN_MEDIA_LABELS = new Set(['Imagem', 'Audio', 'Video', 'Figurinha', 'Documento anexado']);
+const STATUS_OPTIONS = ['ALL', 'NEW', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'] as const;
+
+const STATUS_LABELS: Record<string, string> = {
+  ALL: 'Todas',
+  NEW: 'Novo',
+  IN_PROGRESS: 'Em atendimento',
+  WAITING: 'Aguardando',
+  RESOLVED: 'Resolvido',
+  CLOSED: 'Encerrado',
+};
 
 type RecordingMimeConfig = {
   mimeType: string;
   extension: string;
 };
 
-export default function InboxPage() {
+type ReminderFormState = {
+  messageToSend: string;
+  internalDescription: string;
+  date: string;
+  time: string;
+};
+
+const DEFAULT_REMINDER_FORM: ReminderFormState = {
+  messageToSend: '',
+  internalDescription: '',
+  date: '',
+  time: '',
+};
+
+function InboxPageContent() {
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -53,15 +90,20 @@ export default function InboxPage() {
   const recordingChunksRef = useRef<Blob[]>([]);
   const pendingRecordingActionRef = useRef<'discard' | 'send' | null>(null);
   const recordingMimeConfigRef = useRef<RecordingMimeConfig | null>(null);
+  const requestedConversationId = searchParams.get('conversationId');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
+  const [reminderForm, setReminderForm] = useState<ReminderFormState>(DEFAULT_REMINDER_FORM);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations', search, statusFilter],
@@ -76,6 +118,10 @@ export default function InboxPage() {
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
   });
+  const meQuery = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => apiRequest<AuthMeResponse>('auth/me'),
+  });
 
   const conversations = useMemo(() => conversationsQuery.data?.data ?? [], [conversationsQuery.data]);
   const activeConversationId = useMemo(() => {
@@ -87,8 +133,12 @@ export default function InboxPage() {
       return selectedConversationId;
     }
 
+    if (!isDesktopLayout) {
+      return null;
+    }
+
     return conversations[0]?.id ?? null;
-  }, [conversations, selectedConversationId]);
+  }, [conversations, isDesktopLayout, selectedConversationId]);
 
   const selectedConversationQuery = useQuery({
     queryKey: ['conversation', activeConversationId],
@@ -112,15 +162,25 @@ export default function InboxPage() {
 
   const sendMutation = useMutation({
     mutationFn: () =>
-      apiRequest('messages', {
+      apiRequest<ConversationMessage>('messages', {
         method: 'POST',
         body: {
           conversationId: activeConversationId,
-          content: messageDraft,
+          content: formatManualMessageContent(
+            meQuery.data?.name ?? 'Equipe',
+            messageDraft,
+          ),
         },
       }),
-    onSuccess: async () => {
+    onSuccess: async (message) => {
       setMessageDraft('');
+
+      if (message.metadata?.windowClosedTemplateReply) {
+        toast.success(
+          'Mensagem enviada via template aprovado porque a janela de 24 horas estava fechada.',
+        );
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
@@ -144,7 +204,10 @@ export default function InboxPage() {
       const caption = payload?.caption ?? messageDraft.trim();
 
       if (caption) {
-        formData.append('caption', caption);
+        formData.append(
+          'caption',
+          formatManualMessageContent(meQuery.data?.name ?? 'Equipe', caption),
+        );
       }
 
       if (payload?.isVoiceNote) {
@@ -185,8 +248,93 @@ export default function InboxPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const saveReminderMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConversationId) {
+        throw new Error('Selecione uma conversa antes de salvar o lembrete.');
+      }
+
+      if (!reminderForm.messageToSend.trim()) {
+        throw new Error('Informe a mensagem planejada para o cliente.');
+      }
+
+      if (!reminderForm.date || !reminderForm.time) {
+        throw new Error('Defina data e hora para o lembrete.');
+      }
+
+      return apiRequest(
+        editingReminderId
+          ? `conversations/${activeConversationId}/reminders/${editingReminderId}`
+          : `conversations/${activeConversationId}/reminders`,
+        {
+          method: editingReminderId ? 'PATCH' : 'POST',
+          body: {
+            messageToSend: reminderForm.messageToSend.trim(),
+            internalDescription:
+              reminderForm.internalDescription.trim() || undefined,
+            remindAt: `${reminderForm.date}T${reminderForm.time}`,
+          },
+        },
+      );
+    },
+    onSuccess: async () => {
+      setReminderForm(DEFAULT_REMINDER_FORM);
+      setEditingReminderId(null);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['conversation', activeConversationId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+      ]);
+      toast.success(
+        editingReminderId ? 'Lembrete atualizado.' : 'Lembrete criado.',
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const completeReminderMutation = useMutation({
+    mutationFn: (reminderId: string) =>
+      apiRequest(
+        `conversations/${activeConversationId}/reminders/${reminderId}/complete`,
+        {
+          method: 'POST',
+        },
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['conversation', activeConversationId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+      ]);
+      toast.success('Lembrete concluído.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const cancelReminderMutation = useMutation({
+    mutationFn: (reminderId: string) =>
+      apiRequest(
+        `conversations/${activeConversationId}/reminders/${reminderId}/cancel`,
+        {
+          method: 'POST',
+        },
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['conversation', activeConversationId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+      ]);
+      toast.success('Lembrete cancelado.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const updateConversationMutation = useMutation({
-    mutationFn: (payload: { status?: string; assignedUserId?: string; tagIds?: string[] }) =>
+    mutationFn: (payload: { assignedUserId?: string; tagIds?: string[] }) =>
       apiRequest(`conversations/${activeConversationId}`, {
         method: 'PATCH',
         body: payload,
@@ -200,12 +348,92 @@ export default function InboxPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const resolveConversationMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`conversations/${activeConversationId}/resolve`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-performance'] }),
+      ]);
+      toast.success('Conversa marcada como resolvida.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const closeConversationMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`conversations/${activeConversationId}/close`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-performance'] }),
+      ]);
+      toast.success('Conversa encerrada.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const reopenConversationMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`conversations/${activeConversationId}/reopen`, {
+        method: 'POST',
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
+      ]);
+      toast.success('Conversa reaberta.');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const selectedConversation = selectedConversationQuery.data;
 
   const selectedTagIds = useMemo(
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
     [selectedConversation],
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 1280px)');
+    const updateLayout = () => setIsDesktopLayout(mediaQuery.matches);
+
+    updateLayout();
+    mediaQuery.addEventListener('change', updateLayout);
+
+    return () => mediaQuery.removeEventListener('change', updateLayout);
+  }, []);
+
+  useEffect(() => {
+    if (!requestedConversationId) {
+      return;
+    }
+
+    const syncConversationId = window.setTimeout(() => {
+      setSelectedConversationId(requestedConversationId);
+    }, 0);
+
+    return () => window.clearTimeout(syncConversationId);
+  }, [requestedConversationId]);
+
+  useEffect(() => {
+    const resetPanels = window.setTimeout(() => {
+      setReminderForm(DEFAULT_REMINDER_FORM);
+      setEditingReminderId(null);
+      setDetailsOpen(false);
+    }, 0);
+
+    return () => window.clearTimeout(resetPanels);
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (!isRecording || recordingPaused) {
@@ -414,17 +642,48 @@ export default function InboxPage() {
     }
   };
 
+  const permissionMap = meQuery.data?.permissionMap;
+  const canTransferConversation = canAccess(permissionMap, 'TRANSFER_CONVERSATION');
+  const canResolveConversation = canAccess(permissionMap, 'RESOLVE_CONVERSATION');
+  const canCloseConversation = canAccess(permissionMap, 'CLOSE_CONVERSATION');
+  const canReopenConversation = canAccess(permissionMap, 'REOPEN_CONVERSATION');
+  const isConversationClosed =
+    selectedConversation?.status === 'RESOLVED' ||
+    selectedConversation?.status === 'CLOSED';
+
+  const startReminderEdit = (reminder: ConversationReminder) => {
+    setEditingReminderId(reminder.id);
+    setReminderForm({
+      messageToSend: reminder.messageToSend,
+      internalDescription: reminder.internalDescription ?? '',
+      date: reminder.remindAt.slice(0, 10),
+      time: reminder.remindAt.slice(11, 16),
+    });
+  };
+
+  const clearReminderEditor = () => {
+    setEditingReminderId(null);
+    setReminderForm(DEFAULT_REMINDER_FORM);
+  };
+
   return (
-    <div className="grid h-full min-h-0 overflow-hidden gap-4 xl:grid-cols-[296px_minmax(0,1fr)_278px]">
-      <Card className="h-full min-h-0 overflow-hidden p-0">
+    <div className="grid h-full min-h-0 overflow-hidden gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px]">
+      <Card
+        className={cn(
+          'h-full min-h-0 overflow-hidden p-0',
+          activeConversationId ? 'hidden xl:block' : '',
+        )}
+      >
         <CardContent className="flex h-full min-h-0 flex-col p-0">
           <div className="shrink-0 border-b border-border p-4">
             <h1 className="font-heading text-[22px] font-semibold">Conversas</h1>
             <Tabs defaultValue="ALL" value={statusFilter} onValueChange={setStatusFilter} className="mt-3">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="ALL">Todas</TabsTrigger>
-                <TabsTrigger value="OPEN">Abertas</TabsTrigger>
-                <TabsTrigger value="PENDING">Pendentes</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+                {STATUS_OPTIONS.map((status) => (
+                  <TabsTrigger key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </Tabs>
             <div className="relative mt-3">
@@ -454,9 +713,16 @@ export default function InboxPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium">{conversation.contact.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{conversation.contact.company ?? conversation.contact.phone}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {conversation.contact.company ?? conversation.contact.phone}
+                        </p>
                       </div>
-                      <span className="text-xs text-muted-foreground">{formatDate(conversation.lastMessageAt)}</span>
+                      <div className="text-right">
+                        <span className="text-xs text-muted-foreground">{formatDate(conversation.lastMessageAt)}</span>
+                        <div className="mt-2">
+                          <StatusBadge status={conversation.status} />
+                        </div>
+                      </div>
                     </div>
                     <p className="mt-2.5 line-clamp-2 text-sm text-foreground/78">
                       {conversation.lastMessagePreview ?? 'Sem mensagens recentes'}
@@ -469,7 +735,16 @@ export default function InboxPage() {
                           </Badge>
                         ))}
                       </div>
-                      {conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}
+                      <div className="flex items-center gap-2">
+                        {conversation.assignedUser ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {conversation.status === 'WAITING'
+                              ? `Último responsável: ${conversation.assignedUser.name}`
+                              : `Responsável: ${conversation.assignedUser.name}`}
+                          </span>
+                        ) : null}
+                        {conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -481,19 +756,56 @@ export default function InboxPage() {
         </CardContent>
       </Card>
 
-      <Card className="h-full min-h-0 overflow-hidden p-0">
+      <Card
+        className={cn(
+          'h-full min-h-0 overflow-hidden p-0',
+          !activeConversationId ? 'hidden xl:block' : '',
+        )}
+      >
         <CardContent className="flex h-full min-h-0 flex-col p-0">
           {selectedConversation ? (
             <>
               <div className="shrink-0 border-b border-border px-5 py-4">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="mt-0.5 shrink-0 xl:hidden"
+                      onClick={() => setSelectedConversationId(null)}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
                     <h2 className="font-heading text-[22px] font-semibold">{selectedConversation.contact.name}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {selectedConversation.contact.company ?? selectedConversation.contact.phone}
-                    </p>
+                    <div className="min-w-0">
+                      <h2 className="font-heading text-[22px] font-semibold">{selectedConversation.contact.name}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {selectedConversation.contact.company ?? selectedConversation.contact.phone}
+                      </p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {selectedConversation.assignedUser
+                          ? `Responsável atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
+                              selectedConversation.assignedUser.normalizedRole ?? selectedConversation.assignedUser.role,
+                            )})`
+                          : selectedConversation.status === 'WAITING'
+                            ? 'Disponível para retomada por qualquer vendedor liberado.'
+                            : 'Ainda sem responsável definido.'}
+                      </p>
+                    </div>
                   </div>
-                  <Badge>{selectedConversation.status}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="xl:hidden"
+                      onClick={() => setDetailsOpen(true)}
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </Button>
+                    <StatusBadge status={selectedConversation.status} />
+                  </div>
                 </div>
               </div>
 
@@ -501,14 +813,20 @@ export default function InboxPage() {
                 {selectedConversation.messages?.map((message) => (
                   <div
                     key={message.id}
-                    className={`w-fit max-w-[min(68%,32rem)] rounded-[18px] px-3 py-2 text-[14px] leading-5 ${
+                    className={`w-fit max-w-[86%] rounded-[18px] px-3 py-2 text-[14px] leading-5 sm:max-w-[min(68%,32rem)] ${
                       message.direction === 'OUTBOUND'
                         ? 'ml-auto bg-primary text-white'
-                        : 'bg-white/[0.04] text-foreground'
+                        : message.direction === 'SYSTEM'
+                          ? 'mx-auto border border-primary/15 bg-primary/10 text-foreground'
+                          : 'bg-white/[0.04] text-foreground'
                     }`}
                   >
                     <MessageBubbleContent message={message} />
-                    <p className={`mt-1.5 text-[10px] ${message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'}`}>
+                    <p
+                      className={`mt-1.5 text-[10px] ${
+                        message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'
+                      }`}
+                    >
                       {formatDate(message.createdAt)} • {message.status}
                     </p>
                   </div>
@@ -606,26 +924,35 @@ export default function InboxPage() {
                   ) : null}
                   {!isRecording ? (
                     <>
+                      <div className="mb-2 rounded-[16px] border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
+                        As mensagens manuais são enviadas com assinatura automática no formato
+                        <span className="mx-1 font-medium text-foreground">
+                          *{(meQuery.data?.name ?? 'Equipe').toUpperCase()}*:
+                        </span>
+                      </div>
                       <Textarea
                         value={messageDraft}
                         onChange={(event) => setMessageDraft(event.target.value)}
                         onKeyDown={handleComposerKeyDown}
                         placeholder={
-                          selectedFile
-                            ? selectedFile.type.startsWith('audio/')
-                              ? 'Adicione uma legenda opcional para a mensagem de voz...'
-                              : 'Adicione uma legenda opcional para a midia...'
-                            : 'Digite uma resposta para enviar pelo canal selecionado...'
+                          isConversationClosed
+                            ? 'Reabra a conversa para voltar a responder.'
+                            : selectedFile
+                              ? selectedFile.type.startsWith('audio/')
+                                ? 'Adicione uma legenda opcional para a mensagem de voz...'
+                                : 'Adicione uma legenda opcional para a mídia...'
+                              : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
                         className="min-h-[58px] max-h-36 resize-none border-none bg-transparent px-1 py-1 text-[15px] leading-6"
+                        disabled={isConversationClosed}
                       />
-                      <div className="mt-2 flex items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2">
+                      <div className="mt-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"
                             variant="secondary"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={!activeConversationId || sendMediaMutation.isPending}
+                            disabled={!activeConversationId || sendMediaMutation.isPending || isConversationClosed}
                             className="h-10 rounded-[14px] px-3.5 text-[13px] font-medium"
                           >
                             <Paperclip className="h-4 w-4" />
@@ -637,26 +964,29 @@ export default function InboxPage() {
                             onClick={() => {
                               void startAudioRecording();
                             }}
-                            disabled={!activeConversationId || Boolean(selectedFile) || sendMediaMutation.isPending}
+                            disabled={!activeConversationId || Boolean(selectedFile) || sendMediaMutation.isPending || isConversationClosed}
                             className="h-10 rounded-[14px] px-3.5 text-[13px] font-medium"
                           >
                             <Mic className="h-4 w-4" />
-                            Gravar audio
+                            Gravar áudio
                           </Button>
                         </div>
-                        <Button
-                          onClick={submitComposer}
-                          disabled={
-                            (!messageDraft.trim() && !selectedFile) ||
-                            !activeConversationId ||
-                            sendMutation.isPending ||
-                            sendMediaMutation.isPending
-                          }
-                          className="h-10 rounded-[14px] px-4 text-[13px] font-medium"
-                        >
-                          <SendHorizontal className="h-4 w-4" />
-                          {selectedFile ? 'Enviar midia' : 'Enviar'}
-                        </Button>
+                        <div className="sm:ml-auto">
+                          <Button
+                            onClick={submitComposer}
+                            disabled={
+                              (!messageDraft.trim() && !selectedFile) ||
+                              !activeConversationId ||
+                              sendMutation.isPending ||
+                              sendMediaMutation.isPending ||
+                              isConversationClosed
+                            }
+                            className="h-10 w-full rounded-[14px] px-4 text-[13px] font-medium sm:w-auto"
+                          >
+                            <SendHorizontal className="h-4 w-4" />
+                            {selectedFile ? 'Enviar mídia' : 'Enviar'}
+                          </Button>
+                        </div>
                       </div>
                     </>
                   ) : null}
@@ -675,124 +1005,458 @@ export default function InboxPage() {
         </CardContent>
       </Card>
 
-      <Card className="h-full min-h-0 overflow-hidden p-0">
+      <Card className="hidden h-full min-h-0 overflow-hidden p-0 xl:block">
         <CardContent className="flex h-full min-h-0 flex-col p-0">
-          {selectedConversation ? (
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Contato</p>
-                  <h3 className="mt-1 font-heading text-[22px] font-semibold">{selectedConversation.contact.name}</h3>
-                  <p className="mt-1.5 text-sm text-muted-foreground">{selectedConversation.contact.phone}</p>
-                  <p className="text-sm text-muted-foreground">{selectedConversation.contact.email ?? 'Sem email cadastrado'}</p>
-                </div>
-
-                <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-                  <p className="font-medium">Atribuicao e status</p>
-                  <select
-                    className="h-10 w-full rounded-xl border border-border bg-background-panel px-3.5 text-sm"
-                    value={selectedConversation.status}
-                    onChange={(event) => updateConversationMutation.mutate({ status: event.target.value })}
-                  >
-                    <option value="OPEN">Aberta</option>
-                    <option value="PENDING">Pendente</option>
-                    <option value="CLOSED">Fechada</option>
-                  </select>
-                  <select
-                    className="h-10 w-full rounded-xl border border-border bg-background-panel px-3.5 text-sm"
-                    value={selectedConversation.assignedUser?.id ?? ''}
-                    onChange={(event) =>
-                      updateConversationMutation.mutate({ assignedUserId: event.target.value || undefined })
-                    }
-                  >
-                    <option value="">Sem responsavel</option>
-                    {usersQuery.data?.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-                  <p className="font-medium">Tags da conversa</p>
-                  {tagsQuery.data?.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {tagsQuery.data.map((tag) => {
-                        const active = selectedTagIds.includes(tag.id);
-
-                        return (
-                          <button
-                            key={tag.id}
-                            type="button"
-                            className={cn(
-                              'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition',
-                              active
-                                ? 'border-transparent bg-primary text-white shadow-[0_10px_24px_rgba(50,151,255,0.24)]'
-                                : 'border-white/10 bg-white/[0.03] text-foreground/76 hover:border-primary/30 hover:text-foreground',
-                            )}
-                            onClick={() =>
-                              updateConversationMutation.mutate({
-                                tagIds: active
-                                  ? selectedTagIds.filter((tagId) => tagId !== tag.id)
-                                  : [...selectedTagIds, tag.id],
-                              })
-                            }
-                          >
-                            {tag.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-4 text-sm text-muted-foreground">
-                      Nenhuma tag cadastrada ainda.
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-                  <div className="flex items-center gap-2">
-                    <StickyNote className="h-4 w-4 text-primary" />
-                    <p className="font-medium">Notas internas</p>
-                  </div>
-                  <Textarea
-                    value={noteDraft}
-                    onChange={(event) => setNoteDraft(event.target.value)}
-                    placeholder="Registre um contexto interno para o time..."
-                  />
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() => noteMutation.mutate()}
-                    disabled={!noteDraft.trim()}
-                  >
-                    Adicionar nota
-                  </Button>
-                  <div className="space-y-3">
-                    {selectedConversation.notes?.map((note) => (
-                      <div key={note.id} className="rounded-2xl border border-border bg-background-panel p-3">
-                        <p className="text-sm">{note.content}</p>
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          {note.author.name} • {formatDate(note.createdAt)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-              <EmptyState
-                icon={Inbox}
-                title="Sem detalhes"
-                description="Selecione uma conversa para exibir dados do contato, tags e notas internas."
-              />
-            </div>
-          )}
+          <ConversationSidebar
+            selectedConversation={selectedConversation}
+            selectedTagIds={selectedTagIds}
+            tags={tagsQuery.data ?? []}
+            users={usersQuery.data ?? []}
+            canTransferConversation={canTransferConversation}
+            canResolveConversation={canResolveConversation}
+            canCloseConversation={canCloseConversation}
+            canReopenConversation={canReopenConversation}
+            isConversationClosed={isConversationClosed}
+            noteDraft={noteDraft}
+            onNoteDraftChange={setNoteDraft}
+            onAddNote={() => noteMutation.mutate()}
+            onResolve={() => resolveConversationMutation.mutate()}
+            onClose={() => closeConversationMutation.mutate()}
+            onReopen={() => reopenConversationMutation.mutate()}
+            onUpdateConversation={(payload) => updateConversationMutation.mutate(payload)}
+            reminderForm={reminderForm}
+            onReminderFormChange={setReminderForm}
+            editingReminderId={editingReminderId}
+            onEditReminder={startReminderEdit}
+            onClearReminderEditor={clearReminderEditor}
+            onSaveReminder={() => saveReminderMutation.mutate()}
+            onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
+            onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
+            remindersBusy={
+              saveReminderMutation.isPending ||
+              completeReminderMutation.isPending ||
+              cancelReminderMutation.isPending
+            }
+          />
         </CardContent>
       </Card>
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="w-[min(94vw,680px)] p-0 xl:hidden">
+          <div className="max-h-[85vh] overflow-y-auto">
+            <ConversationSidebar
+              selectedConversation={selectedConversation}
+              selectedTagIds={selectedTagIds}
+              tags={tagsQuery.data ?? []}
+              users={usersQuery.data ?? []}
+              canTransferConversation={canTransferConversation}
+              canResolveConversation={canResolveConversation}
+              canCloseConversation={canCloseConversation}
+              canReopenConversation={canReopenConversation}
+              isConversationClosed={isConversationClosed}
+              noteDraft={noteDraft}
+              onNoteDraftChange={setNoteDraft}
+              onAddNote={() => noteMutation.mutate()}
+              onResolve={() => resolveConversationMutation.mutate()}
+              onClose={() => closeConversationMutation.mutate()}
+              onReopen={() => reopenConversationMutation.mutate()}
+              onUpdateConversation={(payload) => updateConversationMutation.mutate(payload)}
+              reminderForm={reminderForm}
+              onReminderFormChange={setReminderForm}
+              editingReminderId={editingReminderId}
+              onEditReminder={startReminderEdit}
+              onClearReminderEditor={clearReminderEditor}
+              onSaveReminder={() => saveReminderMutation.mutate()}
+              onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
+              onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
+              remindersBusy={
+                saveReminderMutation.isPending ||
+                completeReminderMutation.isPending ||
+                cancelReminderMutation.isPending
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+export default function InboxPage() {
+  return (
+    <Suspense fallback={<div className="h-full rounded-[28px] border border-border bg-background-elevated/40" />}>
+      <InboxPageContent />
+    </Suspense>
+  );
+}
+
+function ConversationSidebar({
+  selectedConversation,
+  selectedTagIds,
+  tags,
+  users,
+  canTransferConversation,
+  canResolveConversation,
+  canCloseConversation,
+  canReopenConversation,
+  isConversationClosed,
+  noteDraft,
+  onNoteDraftChange,
+  onAddNote,
+  onResolve,
+  onClose,
+  onReopen,
+  onUpdateConversation,
+  reminderForm,
+  onReminderFormChange,
+  editingReminderId,
+  onEditReminder,
+  onClearReminderEditor,
+  onSaveReminder,
+  onCompleteReminder,
+  onCancelReminder,
+  remindersBusy,
+}: {
+  selectedConversation?: Conversation;
+  selectedTagIds: string[];
+  tags: Tag[];
+  users: UserSummary[];
+  canTransferConversation: boolean;
+  canResolveConversation: boolean;
+  canCloseConversation: boolean;
+  canReopenConversation: boolean;
+  isConversationClosed: boolean;
+  noteDraft: string;
+  onNoteDraftChange: (value: string) => void;
+  onAddNote: () => void;
+  onResolve: () => void;
+  onClose: () => void;
+  onReopen: () => void;
+  onUpdateConversation: (payload: {
+    assignedUserId?: string;
+    tagIds?: string[];
+  }) => void;
+  reminderForm: ReminderFormState;
+  onReminderFormChange: (
+    value: ReminderFormState | ((current: ReminderFormState) => ReminderFormState),
+  ) => void;
+  editingReminderId: string | null;
+  onEditReminder: (reminder: ConversationReminder) => void;
+  onClearReminderEditor: () => void;
+  onSaveReminder: () => void;
+  onCompleteReminder: (reminderId: string) => void;
+  onCancelReminder: (reminderId: string) => void;
+  remindersBusy: boolean;
+}) {
+  const applyReminderChange = (
+    field: keyof ReminderFormState,
+    value: string,
+  ) => {
+    onReminderFormChange((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  if (!selectedConversation) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <EmptyState
+          icon={Inbox}
+          title="Sem detalhes"
+          description="Selecione uma conversa para exibir dados do contato, tags, lembretes e notas internas."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm text-muted-foreground">Contato</p>
+          <h3 className="mt-1 font-heading text-[22px] font-semibold">
+            {selectedConversation.contact.name}
+          </h3>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {selectedConversation.contact.phone}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {selectedConversation.contact.email ?? 'Sem email cadastrado'}
+          </p>
+        </div>
+
+        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+          <p className="font-medium">Atribuição e status</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={selectedConversation.status} />
+            {selectedConversation.status === 'WAITING' ? (
+              <Badge variant="secondary">Disponível para retomada</Badge>
+            ) : null}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button
+              variant="secondary"
+              disabled={!canResolveConversation || isConversationClosed}
+              onClick={onResolve}
+            >
+              Resolver
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!canCloseConversation || isConversationClosed}
+              onClick={onClose}
+            >
+              Encerrar
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={!canReopenConversation || !isConversationClosed}
+              onClick={onReopen}
+            >
+              Reabrir
+            </Button>
+          </div>
+          <select
+            className="h-10 w-full rounded-xl border border-border bg-background-panel px-3.5 text-sm"
+            value={selectedConversation.assignedUser?.id ?? ''}
+            onChange={(event) =>
+              onUpdateConversation({
+                assignedUserId: event.target.value || undefined,
+              })
+            }
+            disabled={!canTransferConversation || isConversationClosed}
+          >
+            <option value="">Sem responsável</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}
+              </option>
+            ))}
+          </select>
+          {!canTransferConversation ? (
+            <p className="text-xs text-muted-foreground">
+              Transferência de conversa não liberada para seu usuário.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+          <p className="font-medium">Tags da conversa</p>
+          {tags.length ? (
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag) => {
+                const active = selectedTagIds.includes(tag.id);
+
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition',
+                      active
+                        ? 'border-transparent bg-primary text-white shadow-[0_10px_24px_rgba(50,151,255,0.24)]'
+                        : 'border-white/10 bg-white/[0.03] text-foreground/76 hover:border-primary/30 hover:text-foreground',
+                    )}
+                    onClick={() =>
+                      onUpdateConversation({
+                        tagIds: active
+                          ? selectedTagIds.filter((tagId) => tagId !== tag.id)
+                          : [...selectedTagIds, tag.id],
+                      })
+                    }
+                  >
+                    {tag.name}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-4 text-sm text-muted-foreground">
+              Nenhuma tag cadastrada ainda.
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock3 className="h-4 w-4 text-primary" />
+              <p className="font-medium">Lembrete de mensagem</p>
+            </div>
+            <Button
+              variant={editingReminderId ? 'ghost' : 'secondary'}
+              size="sm"
+              onClick={editingReminderId ? onClearReminderEditor : () => onClearReminderEditor()}
+            >
+              {editingReminderId ? (
+                <>
+                  <X className="h-4 w-4" />
+                  Cancelar edição
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Novo lembrete
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="grid gap-3 rounded-[20px] border border-border bg-background-panel/55 p-4">
+            <div className="space-y-2">
+              <Label>Descrição interna</Label>
+              <Input
+                value={reminderForm.internalDescription}
+                onChange={(event) =>
+                  applyReminderChange('internalDescription', event.target.value)
+                }
+                placeholder="Ex.: Retornar com proposta final"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Mensagem prevista para o cliente</Label>
+              <Textarea
+                value={reminderForm.messageToSend}
+                onChange={(event) =>
+                  applyReminderChange('messageToSend', event.target.value)
+                }
+                placeholder="Escreva o que a equipe deverá enviar quando o lembrete vencer."
+                className="min-h-24"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={reminderForm.date}
+                  onChange={(event) => applyReminderChange('date', event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Hora</Label>
+                <Input
+                  type="time"
+                  value={reminderForm.time}
+                  onChange={(event) => applyReminderChange('time', event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {editingReminderId ? (
+                <Button variant="ghost" onClick={onClearReminderEditor}>
+                  Limpar formulário
+                </Button>
+              ) : null}
+              <Button onClick={onSaveReminder} disabled={remindersBusy}>
+                {editingReminderId ? 'Salvar lembrete' : 'Criar lembrete'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {selectedConversation.reminders?.length ? (
+              selectedConversation.reminders.map((reminder) => (
+                <div
+                  key={reminder.id}
+                  className="rounded-[22px] border border-border bg-background-panel p-3.5"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">
+                        {reminder.internalDescription || 'Lembrete sem descrição'}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDate(reminder.remindAt)}
+                      </p>
+                    </div>
+                    <ReminderStatusBadge status={reminder.status} />
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-foreground/84">
+                    {reminder.messageToSend}
+                  </p>
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Criado por {reminder.createdBy.name}
+                    {reminder.completedBy
+                      ? ` • concluído por ${reminder.completedBy.name}`
+                      : ''}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {reminder.status !== 'COMPLETED' &&
+                    reminder.status !== 'CANCELED' ? (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onEditReminder(reminder)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Editar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onCompleteReminder(reminder.id)}
+                          disabled={remindersBusy}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Concluir
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onCancelReminder(reminder.id)}
+                          disabled={remindersBusy}
+                        >
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-4 text-sm text-muted-foreground">
+                Nenhum lembrete criado para esta conversa até agora.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+          <div className="flex items-center gap-2">
+            <StickyNote className="h-4 w-4 text-primary" />
+            <p className="font-medium">Notas internas</p>
+          </div>
+          <Textarea
+            value={noteDraft}
+            onChange={(event) => onNoteDraftChange(event.target.value)}
+            placeholder="Registre um contexto interno para o time..."
+          />
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={onAddNote}
+            disabled={!noteDraft.trim()}
+          >
+            Adicionar nota
+          </Button>
+          <div className="space-y-3">
+            {selectedConversation.notes?.map((note) => (
+              <div
+                key={note.id}
+                className="rounded-2xl border border-border bg-background-panel p-3"
+              >
+                <p className="text-sm">{note.content}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {note.author.name} • {formatDate(note.createdAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -863,7 +1527,68 @@ function MessageBubbleContent({
     );
   }
 
+  if (message.messageType === 'template') {
+    return (
+      <div className="space-y-2">
+        <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-current/85">
+          {message.metadata?.windowClosedTemplateReply
+            ? `Template automatico: ${message.metadata?.templateName ?? 'aprovado'}`
+            : `Template: ${message.metadata?.templateName ?? 'aprovado'}`}
+        </div>
+        <p>{message.content}</p>
+      </div>
+    );
+  }
+
   return <p>{message.content}</p>;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const badgeClassName =
+    status === 'NEW'
+      ? 'border-transparent bg-[#2f7df6]/20 text-[#7fc1ff]'
+      : status === 'IN_PROGRESS'
+        ? 'border-transparent bg-primary/20 text-primary'
+        : status === 'WAITING'
+          ? 'border-transparent bg-amber-500/15 text-amber-300'
+          : status === 'RESOLVED'
+            ? 'border-transparent bg-emerald-500/15 text-emerald-300'
+            : 'border-transparent bg-rose-500/15 text-rose-300';
+
+  return (
+    <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium', badgeClassName)}>
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
+
+function ReminderStatusBadge({ status }: { status: ConversationReminder['status'] }) {
+  const labelMap: Record<ConversationReminder['status'], string> = {
+    PENDING: 'Pendente',
+    NOTIFIED: 'Vencido',
+    COMPLETED: 'Concluído',
+    CANCELED: 'Cancelado',
+  };
+
+  const badgeClassName =
+    status === 'PENDING'
+      ? 'border-transparent bg-primary/18 text-primary'
+      : status === 'NOTIFIED'
+        ? 'border-transparent bg-amber-500/16 text-amber-300'
+        : status === 'COMPLETED'
+          ? 'border-transparent bg-emerald-500/16 text-emerald-300'
+          : 'border-transparent bg-rose-500/16 text-rose-300';
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium',
+        badgeClassName,
+      )}
+    >
+      {labelMap[status]}
+    </span>
+  );
 }
 
 function ImageMessagePreview({

@@ -7,9 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { PermissionKey } from '@prisma/client';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { GroupsService } from './groups.service';
 
 class GroupDto {
@@ -26,6 +28,7 @@ class GroupDto {
 }
 
 @Controller('groups')
+@Permissions(PermissionKey.GROUPS_VIEW)
 export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 

@@ -216,7 +216,7 @@ function KnowledgeBaseForm({
         <Input value={name} onChange={(event) => setName(event.target.value)} />
       </div>
       <div className="space-y-2">
-        <Label>Descricao</Label>
+        <Label>Descrição</Label>
         <Textarea value={description} onChange={(event) => setDescription(event.target.value)} />
       </div>
       <div className="grid gap-4 md:grid-cols-2">

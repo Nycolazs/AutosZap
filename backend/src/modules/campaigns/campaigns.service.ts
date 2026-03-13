@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
+import { CampaignMediaStorageService } from './campaign-media-storage.service';
 
 type CampaignPayload = {
   name: string;
@@ -21,6 +22,7 @@ type CampaignPayload = {
   scheduledAt?: string;
   status?: CampaignStatus;
   instanceId?: string;
+  removeMedia?: boolean;
 };
 
 @Injectable()
@@ -28,10 +30,11 @@ export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metaWhatsAppService: MetaWhatsAppService,
+    private readonly campaignMediaStorageService: CampaignMediaStorageService,
   ) {}
 
   async list(workspaceId: string) {
-    return this.prisma.campaign.findMany({
+    const campaigns = await this.prisma.campaign.findMany({
       where: {
         workspaceId,
         deletedAt: null,
@@ -47,6 +50,8 @@ export class CampaignsService {
         createdAt: 'desc',
       },
     });
+
+    return campaigns.map((campaign) => this.serializeCampaign(campaign));
   }
 
   async findOne(id: string, workspaceId: string) {
@@ -73,7 +78,7 @@ export class CampaignsService {
     }
 
     return {
-      ...campaign,
+      ...this.serializeCampaign(campaign),
       metrics: {
         total: campaign.recipients.length || campaign.recipientCount,
         sent: campaign.recipients.filter(
@@ -161,11 +166,17 @@ export class CampaignsService {
         audienceType,
         targetConfig: targetConfig as Prisma.InputJsonValue,
         message: payload.message ?? campaign.message,
-        scheduledAt: payload.scheduledAt
-          ? new Date(payload.scheduledAt)
-          : campaign.scheduledAt,
+        scheduledAt:
+          payload.scheduledAt !== undefined
+            ? payload.scheduledAt
+              ? new Date(payload.scheduledAt)
+              : null
+            : campaign.scheduledAt,
         status: payload.status ?? campaign.status,
-        instanceId: payload.instanceId ?? campaign.instanceId,
+        instanceId:
+          payload.instanceId !== undefined
+            ? payload.instanceId || null
+            : campaign.instanceId,
         recipientCount: recipientIds.length,
       },
     });
@@ -190,6 +201,8 @@ export class CampaignsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+
+    await this.campaignMediaStorageService.delete(campaign.mediaStoragePath);
 
     return { success: true };
   }
@@ -256,16 +269,26 @@ export class CampaignsService {
 
     for (const contact of contacts) {
       try {
-        const message = await this.metaWhatsAppService.sendDirectMessage(
-          workspaceId,
-          {
-            instanceId: campaign.instanceId,
-            to: contact.phone,
-            body: campaign.message,
-            userId: actorId,
-            contactName: contact.name,
-          },
-        );
+        const message = campaign.mediaStoragePath
+          ? await this.metaWhatsAppService.sendDirectMediaMessage(workspaceId, {
+              instanceId: campaign.instanceId,
+              to: contact.phone,
+              buffer: await this.campaignMediaStorageService.read(
+                campaign.mediaStoragePath,
+              ),
+              fileName: campaign.mediaFileName ?? 'campanha.jpg',
+              mimeType: campaign.mediaMimeType ?? 'image/jpeg',
+              caption: campaign.message,
+              userId: actorId,
+              contactName: contact.name,
+            })
+          : await this.metaWhatsAppService.sendDirectMessage(workspaceId, {
+              instanceId: campaign.instanceId,
+              to: contact.phone,
+              body: campaign.message,
+              userId: actorId,
+              contactName: contact.name,
+            });
 
         await this.prisma.campaignRecipient.create({
           data: {
@@ -307,6 +330,116 @@ export class CampaignsService {
     });
 
     return this.findOne(id, workspaceId);
+  }
+
+  async saveMedia(
+    id: string,
+    workspaceId: string,
+    file: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      size: number;
+    },
+  ) {
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        mediaStoragePath: true,
+      },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campanha nao encontrada.');
+    }
+
+    if (!file.mimeType.startsWith('image/')) {
+      throw new BadRequestException(
+        'Somente imagens sao aceitas para a pre-visualizacao da campanha.',
+      );
+    }
+
+    const savedFile = await this.campaignMediaStorageService.save(
+      workspaceId,
+      id,
+      file,
+    );
+
+    await this.prisma.campaign.update({
+      where: { id },
+      data: {
+        mediaStoragePath: savedFile.storagePath,
+        mediaFileName: savedFile.fileName,
+        mediaMimeType: savedFile.mimeType,
+        mediaSize: savedFile.size,
+      },
+    });
+
+    await this.campaignMediaStorageService.delete(campaign.mediaStoragePath);
+    return this.findOne(id, workspaceId);
+  }
+
+  async removeMedia(id: string, workspaceId: string) {
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        mediaStoragePath: true,
+      },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campanha nao encontrada.');
+    }
+
+    await this.prisma.campaign.update({
+      where: { id },
+      data: {
+        mediaStoragePath: null,
+        mediaFileName: null,
+        mediaMimeType: null,
+        mediaSize: null,
+      },
+    });
+
+    await this.campaignMediaStorageService.delete(campaign.mediaStoragePath);
+    return { success: true };
+  }
+
+  async getMedia(id: string, workspaceId: string) {
+    const campaign = await this.prisma.campaign.findFirst({
+      where: {
+        id,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        mediaStoragePath: true,
+        mediaFileName: true,
+        mediaMimeType: true,
+      },
+    });
+
+    if (!campaign || !campaign.mediaStoragePath) {
+      throw new NotFoundException('Midia da campanha nao encontrada.');
+    }
+
+    return {
+      buffer: await this.campaignMediaStorageService.read(
+        campaign.mediaStoragePath,
+      ),
+      mimeType: campaign.mediaMimeType ?? 'application/octet-stream',
+      fileName: campaign.mediaFileName ?? 'campanha',
+    };
   }
 
   private async resolveRecipients(
@@ -361,5 +494,23 @@ export class CampaignsService {
       : [];
 
     return customContactIds;
+  }
+
+  private serializeCampaign<
+    TCampaign extends {
+      id: string;
+      mediaStoragePath?: string | null;
+      mediaFileName?: string | null;
+      mediaMimeType?: string | null;
+      mediaSize?: number | null;
+    },
+  >(campaign: TCampaign) {
+    return {
+      ...campaign,
+      mediaUrl: campaign.mediaStoragePath
+        ? `campaigns/${campaign.id}/media`
+        : null,
+      hasMedia: Boolean(campaign.mediaStoragePath),
+    };
   }
 }

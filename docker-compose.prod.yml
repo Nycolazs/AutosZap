@@ -6,6 +6,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-autoszap}
       POSTGRES_USER: ${POSTGRES_USER:-autoszap}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,6 +58,8 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
     expose:
       - "4000"
+    volumes:
+      - backend_storage:/app/storage
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
@@ -82,5 +86,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  backend_storage:
   caddy_data:
   caddy_config:

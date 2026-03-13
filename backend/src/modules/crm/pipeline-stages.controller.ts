@@ -7,9 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { PermissionKey } from '@prisma/client';
 import { IsInt, IsString, Max, Min } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { CrmService } from './crm.service';
 
 class StageDto {
@@ -32,6 +34,7 @@ class StageDto {
 }
 
 @Controller('pipeline-stages')
+@Permissions(PermissionKey.PIPELINE_VIEW)
 export class PipelineStagesController {
   constructor(private readonly crmService: CrmService) {}
 

@@ -88,6 +88,46 @@ export class InstancesService {
       throw new BadRequestException('Ja existe uma instancia com este nome.');
     }
 
+    const deletedInstance = await this.prisma.instance.findFirst({
+      where: {
+        workspaceId,
+        name: payload.name,
+        NOT: {
+          deletedAt: null,
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    if (deletedInstance) {
+      await this.prisma.instance.update({
+        where: { id: deletedInstance.id },
+        data: {
+          deletedAt: null,
+          createdById: actorId,
+          name: payload.name,
+          provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
+          status: payload.status ?? InstanceStatus.DISCONNECTED,
+          mode: payload.mode ?? InstanceMode.DEV,
+          appId: payload.appId,
+          phoneNumber: payload.phoneNumber,
+          businessAccountId: payload.businessAccountId,
+          phoneNumberId: payload.phoneNumberId,
+          accessTokenEncrypted: this.cryptoService.encrypt(payload.accessToken),
+          webhookVerifyTokenEncrypted: this.cryptoService.encrypt(
+            payload.webhookVerifyToken,
+          ),
+          appSecretEncrypted: this.cryptoService.encrypt(payload.appSecret),
+          lastSyncAt:
+            payload.status === InstanceStatus.CONNECTED ? new Date() : null,
+        },
+      });
+
+      return this.findOne(deletedInstance.id, workspaceId);
+    }
+
     const instance = await this.prisma.instance.create({
       data: {
         workspaceId,
@@ -194,30 +234,59 @@ export class InstancesService {
       appSecretEncrypted?: string | null;
     },
   >(instance: T) {
-    const accessToken = this.cryptoService.decrypt(
+    const accessTokenMasked = this.maskStoredSecret(
       instance.accessTokenEncrypted,
     );
-    const webhookVerifyToken = this.cryptoService.decrypt(
+    const webhookVerifyTokenMasked = this.maskStoredSecret(
       instance.webhookVerifyTokenEncrypted,
     );
-    const appSecret = this.cryptoService.decrypt(instance.appSecretEncrypted);
+    const appSecretMasked = this.maskStoredSecret(instance.appSecretEncrypted);
 
     return {
       ...instance,
-      accessTokenMasked: this.maskSecret(accessToken),
-      webhookVerifyTokenMasked: this.maskSecret(webhookVerifyToken),
-      appSecretMasked: this.maskSecret(appSecret),
+      accessTokenMasked,
+      webhookVerifyTokenMasked,
+      appSecretMasked,
       accessTokenEncrypted: undefined,
       webhookVerifyTokenEncrypted: undefined,
       appSecretEncrypted: undefined,
     };
   }
 
-  private maskSecret(value?: string | null) {
+  private maskStoredSecret(encryptedValue?: string | null) {
+    if (!encryptedValue) {
+      return null;
+    }
+
+    try {
+      const decryptedValue = this.cryptoService.decrypt(encryptedValue);
+      const safeValue = this.normalizeSecretForDisplay(decryptedValue);
+
+      if (safeValue) {
+        return this.maskSecret(safeValue);
+      }
+    } catch {
+      // Fallback below returns a generic mask when legacy data can not be decrypted.
+    }
+
+    return '********';
+  }
+
+  private normalizeSecretForDisplay(value?: string | null) {
     if (!value) {
       return null;
     }
 
+    const normalizedValue = value.replace(/[^\x20-\x7E]/g, '').trim();
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    return normalizedValue;
+  }
+
+  private maskSecret(value: string) {
     if (value.length <= 8) {
       return '*'.repeat(value.length);
     }

@@ -107,7 +107,7 @@ export function CrudPage<TItem extends EntityWithId, TFormValues extends FieldVa
       ...columns,
       {
         id: 'actions',
-        header: 'Acoes',
+        header: 'Ações',
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -132,7 +132,7 @@ export function CrudPage<TItem extends EntityWithId, TFormValues extends FieldVa
                 </Button>
               }
               title="Excluir registro"
-              description="Esta acao nao podera ser desfeita."
+              description="Esta ação não poderá ser desfeita."
               actionLabel="Excluir"
               onConfirm={() => deleteMutation.mutate(row.original.id)}
             />
@@ -164,7 +164,7 @@ export function CrudPage<TItem extends EntityWithId, TFormValues extends FieldVa
             schema={schema}
             defaultValues={formDefaultValues as DefaultValues<TFormValues>}
             fields={fields}
-            submitLabel={selectedItem ? 'Salvar alteracoes' : 'Criar'}
+            submitLabel={selectedItem ? 'Salvar alterações' : 'Criar'}
             onSubmit={(values) => createMutation.mutateAsync(values)}
             trigger={
               <Button onClick={() => setSelectedItem(null)}>

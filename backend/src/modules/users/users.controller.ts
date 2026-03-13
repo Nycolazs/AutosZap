@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { PermissionKey } from '@prisma/client';
 import {
   IsEmail,
   IsObject,
@@ -8,6 +9,10 @@ import {
 } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import {
+  AnyPermissions,
+  Permissions,
+} from '../../common/decorators/permissions.decorator';
 import { UsersService } from './users.service';
 
 class UpdateProfileDto {
@@ -51,6 +56,11 @@ class UpdateWorkspaceDto {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @AnyPermissions(
+    PermissionKey.INBOX_VIEW,
+    PermissionKey.CRM_VIEW,
+    PermissionKey.TEAM_VIEW,
+  )
   @Get()
   list(@CurrentUser() user: CurrentAuthUser) {
     return this.usersService.list(user.workspaceId);
@@ -82,6 +92,12 @@ export class UsersController {
     return this.usersService.getWorkspace(user.workspaceId);
   }
 
+  @AnyPermissions(
+    PermissionKey.SETTINGS_VIEW,
+    PermissionKey.CONFIGURE_CONVERSATION_ROUTING,
+    PermissionKey.CONFIGURE_AUTO_MESSAGES,
+    PermissionKey.CONFIGURE_BUSINESS_HOURS,
+  )
   @Patch('workspace')
   updateWorkspace(
     @CurrentUser() user: CurrentAuthUser,

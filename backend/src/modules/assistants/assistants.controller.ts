@@ -13,6 +13,7 @@ import {
   EntityStatus,
   KnowledgeBaseType,
   KnowledgeDocumentType,
+  PermissionKey,
 } from '@prisma/client';
 import {
   IsArray,
@@ -24,6 +25,7 @@ import {
 } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { AssistantsService } from './assistants.service';
 
 class AssistantDto {
@@ -132,6 +134,7 @@ class AiToolDto {
 }
 
 @Controller('assistants')
+@Permissions(PermissionKey.ASSISTANTS_VIEW)
 export class AssistantsController {
   constructor(private readonly assistantsService: AssistantsService) {}
 
@@ -179,6 +182,7 @@ export class AssistantsController {
 }
 
 @Controller('knowledge-bases')
+@Permissions(PermissionKey.KNOWLEDGE_BASES_VIEW)
 export class KnowledgeBasesController {
   constructor(private readonly assistantsService: AssistantsService) {}
 
@@ -217,6 +221,7 @@ export class KnowledgeBasesController {
 }
 
 @Controller('knowledge-documents')
+@Permissions(PermissionKey.KNOWLEDGE_BASES_VIEW)
 export class KnowledgeDocumentsController {
   constructor(private readonly assistantsService: AssistantsService) {}
 
@@ -255,6 +260,7 @@ export class KnowledgeDocumentsController {
 }
 
 @Controller('ai-tools')
+@Permissions(PermissionKey.AI_TOOLS_VIEW)
 export class AiToolsController {
   constructor(private readonly assistantsService: AssistantsService) {}
 

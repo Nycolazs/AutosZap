@@ -52,7 +52,7 @@ const columns: ColumnDef<Contact>[] = [
   { accessorKey: 'company', header: 'Empresa' },
   {
     accessorKey: 'lastInteractionAt',
-    header: 'Ultima interacao',
+    header: 'Última interação',
     cell: ({ row }) => formatDate(row.original.lastInteractionAt),
   },
 ];
@@ -125,7 +125,7 @@ export default function ContactsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Contatos"
-        description="Centralize telefone, empresa, tags e historico de interacoes ligadas a campanhas e conversas."
+        description="Centralize telefone, empresa, tags e histórico de interações ligadas a campanhas e conversas."
         action={
           <Button
             onClick={() => {

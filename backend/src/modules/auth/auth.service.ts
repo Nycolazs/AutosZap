@@ -11,6 +11,8 @@ import { AuditAction, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { createAuditLog } from '../../common/utils/audit';
+import { AccessControlService } from '../access-control/access-control.service';
+import { normalizeRole } from '../access-control/permissions.constants';
 import {
   generateSecureToken,
   hashOpaqueToken,
@@ -40,6 +42,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -280,13 +283,24 @@ export class AuthService {
       throw new NotFoundException('Usuario nao encontrado.');
     }
 
+    const permissionSnapshot =
+      await this.accessControlService.getUserPermissions(
+        user.id,
+        user.workspaceId,
+      );
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
+      normalizedRole: normalizeRole(user.role),
       title: user.title,
       status: user.status,
+      permissions: Object.entries(permissionSnapshot.permissionMap)
+        .filter(([, allowed]) => allowed)
+        .map(([permission]) => permission),
+      permissionMap: permissionSnapshot.permissionMap,
       workspace: {
         id: user.workspace.id,
         name: user.workspace.name,

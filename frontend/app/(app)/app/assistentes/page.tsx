@@ -75,7 +75,7 @@ export default function AssistantsPage() {
       mapToPayload={(values) => ({ ...values, temperature: Number(values.temperature) })}
       fields={[
         { name: 'name', label: 'Nome' },
-        { name: 'description', label: 'Descricao', type: 'textarea' },
+        { name: 'description', label: 'Descrição', type: 'textarea' },
         { name: 'objective', label: 'Objetivo' },
         { name: 'systemPrompt', label: 'Prompt do sistema', type: 'textarea' },
         { name: 'temperature', label: 'Temperatura', type: 'number' },

@@ -304,7 +304,7 @@ export default function InstancesPage() {
     },
     {
       id: 'test',
-      header: 'Integracao',
+      header: 'Integração',
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-2">
           <Button
@@ -392,7 +392,7 @@ export default function InstancesPage() {
   return (
     <>
       <CrudPage
-        title="Instancias"
+        title="Instâncias"
         description="Configure canais oficiais da Meta com credenciais, webhook verify token, app secret, sync da WABA e testes reais da Cloud API."
         endpoint="instances"
         queryKey="instances"
@@ -553,7 +553,7 @@ export default function InstancesPage() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="profile-description">Descricao</Label>
+                  <Label htmlFor="profile-description">Descrição</Label>
                   <Textarea
                     id="profile-description"
                     rows={4}

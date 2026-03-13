@@ -39,7 +39,7 @@ export default function LoginPage() {
       accent="WhatsApp"
       description="Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas com a mesma sofisticação visual de uma plataforma enterprise."
     >
-      <Card className="w-full max-w-[500px] border-white/6 p-0">
+      <Card className="w-full max-w-[440px] border-white/6 p-0">
         <CardHeader className="p-6 pb-2">
           <CardTitle className="text-3xl">Bem-vindo de volta</CardTitle>
           <CardDescription className="text-base">

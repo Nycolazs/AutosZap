@@ -18,7 +18,7 @@ const schema = z.object({
 
 const columns: ColumnDef<Group>[] = [
   { accessorKey: 'name', header: 'Grupo' },
-  { accessorKey: 'description', header: 'Descricao' },
+  { accessorKey: 'description', header: 'Descrição' },
   {
     id: 'count',
     header: 'Contatos',
@@ -43,7 +43,7 @@ export default function GroupsPage() {
       defaultValues={{ name: '', description: '', contactIds: [] }}
       fields={[
         { name: 'name', label: 'Nome' },
-        { name: 'description', label: 'Descricao', type: 'textarea' },
+        { name: 'description', label: 'Descrição', type: 'textarea' },
         {
           name: 'contactIds',
           label: 'Contatos vinculados',
