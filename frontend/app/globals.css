@@ -14,6 +14,8 @@
   --secondary: #19b7d7;
   --danger: #ff6b81;
   --success: #4ab3ff;
+  --ui-font-size: 14px;
+  --ui-line-height: 1.35;
 }
 
 @theme inline {
@@ -40,6 +42,9 @@
 
 html {
   color-scheme: dark;
+  font-size: var(--ui-font-size);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   background:
     radial-gradient(circle at top left, rgba(36, 127, 255, 0.16), transparent 34%),
     radial-gradient(circle at bottom right, rgba(21, 118, 194, 0.18), transparent 28%),
@@ -50,6 +55,8 @@ body {
   min-height: 100vh;
   color: var(--foreground);
   font-family: var(--font-plus-jakarta), sans-serif;
+  font-size: 1rem;
+  line-height: var(--ui-line-height);
   overscroll-behavior-y: none;
   background:
     radial-gradient(circle at 20% 10%, rgba(33, 123, 255, 0.08), transparent 26%),

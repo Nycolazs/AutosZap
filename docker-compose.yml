@@ -50,10 +50,10 @@ services:
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/autoszap?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: change-me-access-secret
+      JWT_ACCESS_SECRET: autoszap-local-access-secret
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
-      APP_ENCRYPTION_KEY: change-me-encryption-key
+      APP_ENCRYPTION_KEY: autoszap-local-encryption-key
       META_MODE: ${META_MODE:-DEV}
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}

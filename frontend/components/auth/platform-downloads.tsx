@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Apple, Download, Laptop2, QrCode, Smartphone } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +31,7 @@ type ReleasesPayload = {
   recommended?: ReleaseArtifact | null;
 };
 
-function getPlatformHint() {
+function detectPlatformHint() {
   if (typeof navigator === 'undefined') {
     return null;
   }
@@ -48,7 +48,12 @@ export function PlatformDownloads() {
   const [payload, setPayload] = useState<ReleasesPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const platformHint = useMemo(getPlatformHint, []);
+  const [platformHint, setPlatformHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Resolve platform only after mount to avoid server/client markup mismatch.
+    setPlatformHint(detectPlatformHint());
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -81,87 +86,92 @@ export function PlatformDownloads() {
   const artifacts = payload?.artifacts ?? [];
 
   return (
-    <Card className="w-full max-w-[440px] rounded-[28px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.94),rgba(4,16,31,0.98))] shadow-[0_18px_48px_rgba(2,10,22,0.28)] backdrop-blur-xl">
-      <CardHeader className="p-5 pb-3 sm:p-6 sm:pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <Badge className="border-primary/20 bg-primary-soft px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-primary">
+    <Card className="w-full max-w-[400px] rounded-[18px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.95),rgba(4,14,28,0.98))] shadow-[0_14px_30px_rgba(2,10,22,0.3)] backdrop-blur-xl">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Badge className="border-primary/20 bg-primary-soft px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-primary">
               Downloads
             </Badge>
-            <CardTitle className="mt-3 text-xl sm:text-[22px]">
-              Apps para Android, Windows e macOS
+            <CardTitle className="text-xs font-semibold leading-tight tracking-tight text-foreground/90">
+              Android, Windows e macOS
             </CardTitle>
           </div>
           {platformHint ? (
-            <Badge className="border-white/10 bg-white/[0.05] text-[11px] text-foreground/80">
+            <Badge className="border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] text-foreground/80">
               Recomendado para {mapPlatform(platformHint)}
             </Badge>
           ) : null}
         </div>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Instale a versao certa para vender com notificacoes, lembretes e inbox dedicado fora do navegador.
-        </p>
       </CardHeader>
-      <CardContent className="space-y-3 p-5 pt-0 sm:p-6 sm:pt-0">
+      <CardContent className="space-y-1.5 p-4 pt-0">
         {loading ? (
-          <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3 text-xs text-muted-foreground">
             Carregando versoes disponiveis...
           </div>
         ) : error ? (
-          <div className="rounded-3xl border border-danger/25 bg-danger/10 p-4 text-sm text-danger">
+          <div className="rounded-xl border border-danger/25 bg-danger/10 p-3 text-xs text-danger">
             {error}
           </div>
         ) : (
           <>
-            <div className="grid gap-3">
+            <div className="grid gap-1.5">
               {artifacts.map((artifact) => (
                 <div
                   key={artifact.id}
-                  className={`rounded-[24px] border p-4 transition ${
+                  className={`rounded-lg border p-2.5 transition ${
                     artifact.platform === platformHint
-                      ? 'border-primary/35 bg-primary-soft/60 shadow-[0_12px_32px_rgba(61,150,255,0.16)]'
+                      ? 'border-primary/35 bg-primary-soft/60 shadow-[0_8px_24px_rgba(61,150,255,0.14)]'
                       : 'border-white/8 bg-white/[0.03]'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-2.5 text-primary">
+                      <div
+                        className={`shrink-0 rounded-md p-1 ring-1 ${
+                          artifact.platform === 'android'
+                            ? 'bg-[linear-gradient(135deg,rgba(61,220,132,0.20),rgba(61,220,132,0.07))] text-green-400 ring-green-400/25'
+                            : artifact.platform === 'windows'
+                              ? 'bg-[linear-gradient(135deg,rgba(50,151,255,0.22),rgba(50,151,255,0.07))] text-primary ring-primary/25'
+                              : 'bg-[linear-gradient(135deg,rgba(190,190,200,0.16),rgba(190,190,200,0.06))] text-foreground/70 ring-white/15'
+                        }`}
+                      >
                         {artifact.platform === 'android' ? (
-                          <Smartphone className="h-4 w-4" />
+                          <Smartphone className="h-3.5 w-3.5" />
                         ) : artifact.platform === 'windows' ? (
-                          <Laptop2 className="h-4 w-4" />
+                          <Laptop2 className="h-3.5 w-3.5" />
                         ) : (
-                          <Apple className="h-4 w-4" />
+                          <Apple className="h-3.5 w-3.5" />
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-foreground">{artifact.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          v{artifact.version} • build {artifact.buildNumber} • {artifact.channel}
+                        <p className="text-[12px] font-medium text-foreground">{artifact.label}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          v{artifact.version} • {artifact.channel}
                         </p>
                       </div>
                     </div>
                     {artifact.platform === platformHint ? (
-                      <Badge className="border-primary/20 bg-primary/12 text-[11px] text-primary">
+                      <Badge className="border-primary/20 bg-primary/12 px-2 py-0.5 text-[10px] text-primary">
                         Sua plataforma
                       </Badge>
                     ) : null}
                   </div>
 
                   {artifact.notes ? (
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
                       {artifact.notes}
                     </p>
                   ) : null}
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <Button
                       asChild
                       size="sm"
-                      className="h-9 rounded-xl px-4 text-sm"
+                      className="h-7 rounded-md px-3 text-[12px] font-medium"
                     >
                       <Link href={artifact.url} target="_blank">
-                        <Download className="mr-2 h-4 w-4" />
+                        <Download className="mr-1 h-3 w-3" />
                         Baixar
                       </Link>
                     </Button>
@@ -170,10 +180,10 @@ export function PlatformDownloads() {
                         asChild
                         size="sm"
                         variant="ghost"
-                        className="h-9 rounded-xl border-white/10 bg-white/[0.03] px-4 text-sm text-foreground hover:bg-white/[0.05]"
+                        className="h-7 rounded-md border border-white/10 bg-white/[0.03] px-3 text-[12px] font-medium text-foreground/75 hover:bg-white/[0.06]"
                       >
                         <Link href={artifact.qrCodeUrl} target="_blank">
-                          <QrCode className="mr-2 h-4 w-4" />
+                          <QrCode className="mr-1 h-3 w-3" />
                           QR Code
                         </Link>
                       </Button>
@@ -184,7 +194,7 @@ export function PlatformDownloads() {
             </div>
 
             {payload?.documentationUrl ? (
-              <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4 text-sm leading-6 text-muted-foreground">
+              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3 text-xs leading-5 text-muted-foreground">
                 Precisa de ajuda para instalar?{' '}
                 <Link
                   href={payload.documentationUrl}

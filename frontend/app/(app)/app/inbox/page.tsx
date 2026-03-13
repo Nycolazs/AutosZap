@@ -68,6 +68,8 @@ const MESSAGE_STATUS_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   ALL: 'Todas',
   NEW: 'Novo',
+  OPEN: 'Aberto',
+  PENDING: 'Pendente',
   IN_PROGRESS: 'Em atendimento',
   WAITING: 'Aguardando',
   RESOLVED: 'Resolvido',
@@ -802,11 +804,11 @@ function InboxPageContent() {
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <div className="min-w-0">
-                      <h2 className="font-heading text-[20px] font-semibold sm:text-[22px]">{selectedConversation.contact.name}</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <h2 className="font-heading text-[18px] font-semibold">{selectedConversation.contact.name}</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {selectedConversation.contact.company ?? selectedConversation.contact.phone}
                       </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
                         {selectedConversation.assignedUser
                           ? `Responsável atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
                               selectedConversation.assignedUser.normalizedRole ?? selectedConversation.assignedUser.role,
@@ -825,18 +827,18 @@ function InboxPageContent() {
                       className="xl:hidden"
                       onClick={() => setDetailsOpen(true)}
                     >
-                      <SlidersHorizontal className="h-4 w-4" />
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
                     </Button>
                     <StatusBadge status={selectedConversation.status} />
                   </div>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3.5 py-4 sm:px-5">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
                 {selectedConversation.messages?.map((message) => (
                   <div
                     key={message.id}
-                    className={`w-fit max-w-[92%] rounded-[22px] px-4 py-3 text-[14px] leading-6 shadow-[0_16px_36px_rgba(2,10,22,0.16)] sm:max-w-[min(68%,34rem)] ${
+                    className={`w-fit max-w-[92%] rounded-[20px] px-3.5 py-2.5 text-[13px] leading-5 shadow-[0_14px_30px_rgba(2,10,22,0.14)] sm:max-w-[min(68%,34rem)] ${
                       message.direction === 'OUTBOUND'
                         ? 'ml-auto bg-[linear-gradient(180deg,#45a0ff,#3a8eed)] text-white'
                         : message.direction === 'SYSTEM'
@@ -846,7 +848,7 @@ function InboxPageContent() {
                   >
                     <MessageBubbleContent message={message} />
                     <p
-                      className={`mt-2 text-[10px] ${
+                      className={`mt-1.5 text-[9px] ${
                         message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'
                       }`}
                     >
@@ -857,7 +859,7 @@ function InboxPageContent() {
               </div>
 
               <div className="safe-bottom-pad shrink-0 border-t border-border p-3.5 sm:p-4">
-                <div className="rounded-[18px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-2.5 shadow-[0_16px_36px_rgba(2,10,22,0.24)]">
+                <div className="rounded-[16px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-2 shadow-[0_14px_30px_rgba(2,10,22,0.22)]">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -866,23 +868,23 @@ function InboxPageContent() {
                     onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                   />
                   {isRecording ? (
-                    <div className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(10,24,44,0.92),rgba(7,18,33,0.98))] px-3 py-3 shadow-[0_18px_42px_rgba(2,10,22,0.38)]">
+                    <div className="flex items-center gap-2.5 rounded-[20px] border border-white/8 bg-[linear-gradient(180deg,rgba(10,24,44,0.92),rgba(7,18,33,0.98))] px-2.5 py-2.5 shadow-[0_16px_34px_rgba(2,10,22,0.34)]">
                       <button
                         type="button"
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground/85 transition hover:bg-white/6 hover:text-foreground"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/85 transition hover:bg-white/6 hover:text-foreground"
                         onClick={() => finishRecording('discard')}
                       >
-                        <Trash2 className="h-[18px] w-[18px]" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
 
-                      <div className="flex min-w-0 flex-1 items-center gap-3 rounded-full border border-white/10 bg-white/[0.035] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.035] px-3.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                         <span
                           className={cn(
                             'h-3 w-3 shrink-0 rounded-full bg-[#ff4d5e] shadow-[0_0_20px_rgba(255,77,94,0.75)]',
                             recordingPaused ? 'opacity-55' : 'animate-pulse',
                           )}
                         />
-                        <span className="w-11 shrink-0 font-semibold tabular-nums text-[13px] text-white/95">
+                        <span className="w-10 shrink-0 font-semibold tabular-nums text-[12px] text-white/95">
                           {formatMediaDuration(recordingDuration)}
                         </span>
                         <div className="flex min-w-0 flex-1 items-center justify-between gap-[2px] overflow-hidden">
@@ -904,28 +906,28 @@ function InboxPageContent() {
 
                       <button
                         type="button"
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/7 text-foreground transition hover:bg-white/12"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/7 text-foreground transition hover:bg-white/12"
                         onClick={toggleRecordingPause}
                       >
-                        {recordingPaused ? <Play className="ml-0.5 h-[18px] w-[18px] fill-current" /> : <Pause className="h-[18px] w-[18px] fill-current" />}
+                        {recordingPaused ? <Play className="ml-0.5 h-4 w-4 fill-current" /> : <Pause className="h-4 w-4 fill-current" />}
                       </button>
 
                       <button
                         type="button"
-                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-[0_10px_26px_rgba(50,151,255,0.38)] transition hover:bg-primary/92"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-[0_10px_24px_rgba(50,151,255,0.34)] transition hover:bg-primary/92"
                         onClick={() => finishRecording('send')}
                         disabled={sendMediaMutation.isPending}
                       >
-                        <SendHorizontal className="h-[18px] w-[18px]" />
+                        <SendHorizontal className="h-4 w-4" />
                       </button>
                     </div>
                   ) : selectedFile ? (
-                    <div className="mb-2.5 flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm">
+                    <div className="mb-2 flex items-center justify-between gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-1.5 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
                         {selectedFile.type.startsWith('audio/') ? (
-                          <Mic className="h-4 w-4 shrink-0 text-primary" />
+                          <Mic className="h-3.5 w-3.5 shrink-0 text-primary" />
                         ) : (
-                          <FileImage className="h-4 w-4 shrink-0 text-primary" />
+                          <FileImage className="h-3.5 w-3.5 shrink-0 text-primary" />
                         )}
                         <span className="truncate">
                           {selectedFile.name}
@@ -941,18 +943,12 @@ function InboxPageContent() {
                           }
                         }}
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ) : null}
                   {!isRecording ? (
                     <>
-                      <div className="mb-2 rounded-[16px] border border-white/8 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
-                        As mensagens manuais são enviadas com assinatura automática no formato
-                        <span className="mx-1 font-medium text-foreground">
-                          *{(meQuery.data?.name ?? 'Equipe').toUpperCase()}*:
-                        </span>
-                      </div>
                       <Textarea
                         value={messageDraft}
                         onChange={(event) => setMessageDraft(event.target.value)}
@@ -966,19 +962,19 @@ function InboxPageContent() {
                                 : 'Adicione uma legenda opcional para a mídia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
-                        className="min-h-[58px] max-h-36 resize-none border-none bg-transparent px-1 py-1 text-[15px] leading-6"
+                        className="min-h-[50px] max-h-32 resize-none border-none bg-transparent px-1 py-1 text-[13px] leading-5"
                         disabled={isConversationClosed}
                       />
-                      <div className="mt-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Button
                             type="button"
                             variant="secondary"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={!activeConversationId || sendMediaMutation.isPending || isConversationClosed}
-                            className="h-10 rounded-[14px] px-3.5 text-[13px] font-medium"
+                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
                           >
-                            <Paperclip className="h-4 w-4" />
+                            <Paperclip className="h-3.5 w-3.5" />
                             Anexar
                           </Button>
                           <Button
@@ -988,9 +984,9 @@ function InboxPageContent() {
                               void startAudioRecording();
                             }}
                             disabled={!activeConversationId || Boolean(selectedFile) || sendMediaMutation.isPending || isConversationClosed}
-                            className="h-10 rounded-[14px] px-3.5 text-[13px] font-medium"
+                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
                           >
-                            <Mic className="h-4 w-4" />
+                            <Mic className="h-3.5 w-3.5" />
                             Gravar áudio
                           </Button>
                         </div>
@@ -1004,9 +1000,9 @@ function InboxPageContent() {
                               sendMediaMutation.isPending ||
                               isConversationClosed
                             }
-                            className="h-10 w-full rounded-[14px] px-4 text-[13px] font-medium sm:w-auto"
+                            className="h-8 w-full rounded-[12px] px-3.5 text-xs font-medium sm:w-auto"
                           >
-                            <SendHorizontal className="h-4 w-4" />
+                            <SendHorizontal className="h-3.5 w-3.5" />
                             {selectedFile ? 'Enviar mídia' : 'Enviar'}
                           </Button>
                         </div>
@@ -1357,7 +1353,7 @@ function MessageBubbleContent({
 
   if (message.messageType === 'image' || message.messageType === 'sticker') {
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <ImageMessagePreview
           src={mediaUrl}
           alt={message.messageType === 'sticker' ? 'Figurinha' : 'Imagem'}
@@ -1370,7 +1366,7 @@ function MessageBubbleContent({
 
   if (message.messageType === 'audio') {
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <CompactAudioPlayer
           src={mediaUrl}
           isVoiceMessage={Boolean(message.metadata?.voice)}
@@ -1403,9 +1399,9 @@ function MessageBubbleContent({
           href={mediaUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-xs underline-offset-4 hover:underline"
         >
-          <Paperclip className="h-4 w-4" />
+          <Paperclip className="h-3.5 w-3.5" />
           {message.metadata?.fileName ?? 'Abrir documento'}
         </a>
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
@@ -1416,7 +1412,7 @@ function MessageBubbleContent({
   if (message.messageType === 'template') {
     return (
       <div className="space-y-2">
-        <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-current/85">
+        <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-current/85">
           {message.metadata?.windowClosedTemplateReply
             ? `Template automatico: ${message.metadata?.templateName ?? 'aprovado'}`
             : `Template: ${message.metadata?.templateName ?? 'aprovado'}`}
@@ -1444,6 +1440,7 @@ function FormattedMessageText({
     <WhatsAppFormattedText
       content={content}
       tone={tone === 'outgoing' ? 'outgoing' : 'incoming'}
+      className="text-[13px] leading-5"
     />
   );
 }
@@ -1458,9 +1455,9 @@ function getMessageStatusLabel(status?: string | null) {
 
 function StatusBadge({ status }: { status: string }) {
   const badgeClassName =
-    status === 'NEW'
+    status === 'NEW' || status === 'OPEN'
       ? 'border-transparent bg-[#2f7df6]/20 text-[#7fc1ff]'
-      : status === 'IN_PROGRESS'
+      : status === 'IN_PROGRESS' || status === 'PENDING'
         ? 'border-transparent bg-primary/20 text-primary'
         : status === 'WAITING'
           ? 'border-transparent bg-amber-500/15 text-amber-300'

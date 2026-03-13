@@ -61,7 +61,10 @@ export default function DashboardPage() {
       ),
   });
 
-  if (dashboardQuery.isLoading || performanceQuery.isLoading) {
+  const isLoading = dashboardQuery.isLoading || performanceQuery.isLoading;
+  const isError = dashboardQuery.isError || performanceQuery.isError;
+
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-24 w-full" />
@@ -70,6 +73,7 @@ export default function DashboardPage() {
             <Skeleton key={index} className="h-36" />
           ))}
         </div>
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
@@ -77,8 +81,33 @@ export default function DashboardPage() {
   const overview = dashboardQuery.data;
   const performance = performanceQuery.data;
 
-  if (!overview || !performance) {
-    return null;
+  if (isError || !overview || !performance) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Painel inicial"
+          description="Acompanhe a operação em tempo real e compare a performance dos vendedores."
+        />
+        <div className="rounded-[20px] border border-danger/25 bg-danger/10 px-5 py-8 text-center">
+          <p className="text-sm font-medium text-danger">
+            Não foi possível carregar os dados do painel.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Verifique se o backend está online e tente recarregar a página.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              void dashboardQuery.refetch();
+              void performanceQuery.refetch();
+            }}
+            className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-foreground transition hover:bg-white/[0.08]"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

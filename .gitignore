@@ -12,3 +12,4 @@ frontend/out
 backend/node_modules
 backend/dist
 backend/coverage
+.codex-local
