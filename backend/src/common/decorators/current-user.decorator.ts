@@ -1,4 +1,8 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  createParamDecorator,
+  ExecutionContext,
+} from '@nestjs/common';
 
 export interface CurrentAuthUser {
   sub: string;
@@ -13,7 +17,9 @@ export const CurrentUser = createParamDecorator(
     const request = ctx.switchToHttp().getRequest<{ user?: CurrentAuthUser }>();
 
     if (!request.user) {
-      throw new Error('Authenticated user is not available in request');
+      throw new UnauthorizedException(
+        'Usuario autenticado nao disponivel na requisicao.',
+      );
     }
 
     return request.user;

@@ -1,22 +1,13 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_COOKIE, REFRESH_COOKIE, authCookieOptions, getBackendUrl } from '@/lib/auth-cookies';
-
-async function readJsonPayload(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return {
-      message: 'Resposta invalida recebida do backend.',
-    };
-  }
-}
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  authCookieOptions,
+  getBackendUnavailableMessage,
+  getBackendUrl,
+  readBackendJson,
+} from '@/lib/auth-cookies';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +20,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    const payload = await readJsonPayload(response);
+    const payload = await readBackendJson(response);
 
     if (!response.ok) {
       return NextResponse.json(payload, { status: response.status });
@@ -52,8 +43,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json(
       {
-        message:
-          'Backend local indisponivel. Verifique se a API do AutosZap esta rodando na porta 4000.',
+        message: getBackendUnavailableMessage(),
       },
       { status: 503 },
     );

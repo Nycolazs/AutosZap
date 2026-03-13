@@ -26,4 +26,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "npm run prisma:generate && npm run prisma:push && node dist/src/main.js"]
+CMD ["sh", "-c", "npm run prisma:migrate:deploy && node dist/src/main.js"]

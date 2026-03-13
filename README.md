@@ -157,6 +157,7 @@ Além disso:
 2. Preencha `FRONTEND_URL`, segredos JWT, `APP_ENCRYPTION_KEY` e variáveis da Meta.
 3. Defina `AUTOSZAP_BACKEND_HOST` com um host HTTPS que resolva para a VPS. Exemplo sem domínio próprio: `178-156-252-137.sslip.io`.
 4. Defina `BACKEND_PUBLIC_URL` com a URL pública definitiva da API. Exemplo: `https://api.autoszap.com`.
+5. Em produção, preencha `REDIS_URL` e mantenha `SWAGGER_ENABLED=false`, a menos que você precise expor a documentação temporariamente.
 5. Suba com:
 
 ```bash
@@ -164,7 +165,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 docker compose --env-file .env.production -f docker-compose.prod.yml exec backend npm run seed
 ```
 
-O `docker-compose.prod.yml` sobe PostgreSQL, Redis, backend e Caddy com HTTPS automático.
+O `docker-compose.prod.yml` sobe PostgreSQL, Redis, backend e Caddy com HTTPS automático. O backend agora aplica `prisma migrate deploy` no boot, em vez de `prisma db push`, para manter o schema alinhado com as migrations versionadas.
 
 ### Frontend no Vercel
 
@@ -175,6 +176,8 @@ vercel deploy --prod --yes \
   -e BACKEND_URL=https://178-156-252-137.sslip.io \
   -e NEXT_PUBLIC_APP_NAME=AutosZap
 ```
+
+`BACKEND_URL` e um valor correto para `NEXT_PUBLIC_APP_NAME` precisam existir no projeto do Vercel. Sem `BACKEND_URL`, o frontend server-side nao consegue falar com a API em producao.
 
 Depois copie a URL final do Vercel e atualize `FRONTEND_URL` no `.env.production` da VPS com essa URL.
 

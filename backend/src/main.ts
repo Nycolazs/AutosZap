@@ -5,28 +5,25 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import {
+  assertProductionEnvironment,
+  isSwaggerEnabled,
+  parseFrontendOrigins,
+} from './common/config/runtime-config';
 import { PrismaService } from './common/prisma/prisma.service';
 
 type CorsOriginCallback = (error: Error | null, allow?: boolean) => void;
 
-function parseFrontendOrigins(value?: string) {
-  const origins = value
-    ?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return origins?.length
-    ? origins
-    : ['http://localhost:3000', 'http://localhost:3001'];
-}
-
 async function bootstrap() {
+  assertProductionEnvironment();
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
   });
   const configService = app.get(ConfigService);
   const allowedOrigins = parseFrontendOrigins(
     configService.get<string>('FRONTEND_URL'),
+    configService.get<string>('NODE_ENV') ?? 'development',
   );
 
   app.use(helmet());
@@ -51,14 +48,21 @@ async function bootstrap() {
   );
   app.setGlobalPrefix('api');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('AutosZap API')
-    .setDescription('API REST multi-tenant do AutosZap')
-    .setVersion('1.0.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (
+    isSwaggerEnabled(
+      configService.get<string>('NODE_ENV') ?? 'development',
+      configService.get<string>('SWAGGER_ENABLED'),
+    )
+  ) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('AutosZap API')
+      .setDescription('API REST multi-tenant do AutosZap')
+      .setVersion('1.0.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const prismaService = app.get(PrismaService);
   prismaService.enableShutdownHooks(app);

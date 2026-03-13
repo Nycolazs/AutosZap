@@ -1,6 +1,12 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { ACCESS_COOKIE, REFRESH_COOKIE, authCookieOptions, getBackendUrl } from '@/lib/auth-cookies';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  authCookieOptions,
+  getBackendUnavailableMessage,
+  getBackendUrl,
+} from '@/lib/auth-cookies';
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;
@@ -32,97 +38,126 @@ async function forwardRequest(request: NextRequest, path: string[], token?: stri
   });
 }
 
-async function handler(request: NextRequest, context: RouteContext) {
-  const { path } = await context.params;
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get(ACCESS_COOKIE)?.value;
-  const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
+function buildUnavailableResponse(request: NextRequest) {
+  const acceptsEventStream =
+    request.headers.get('accept')?.includes('text/event-stream') ?? false;
+  const message = getBackendUnavailableMessage();
 
-  let response = await forwardRequest(request, path, accessToken);
-  let nextAccessToken = accessToken;
-  let nextRefreshToken = refreshToken;
-
-  if (response.status === 401 && refreshToken) {
-    const refreshResponse = await fetch(`${getBackendUrl()}/api/auth/refresh`, {
-      method: 'POST',
+  if (acceptsEventStream) {
+    return new NextResponse(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+      status: 503,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
       },
-      body: JSON.stringify({ refreshToken }),
     });
-
-    if (refreshResponse.ok) {
-      const refreshPayload = (await refreshResponse.json()) as {
-        accessToken: string;
-        refreshToken: string;
-      };
-      nextAccessToken = refreshPayload.accessToken;
-      nextRefreshToken = refreshPayload.refreshToken;
-      response = await forwardRequest(request, path, nextAccessToken);
-    } else {
-      nextAccessToken = undefined;
-      nextRefreshToken = undefined;
-    }
   }
 
-  const contentType = response.headers.get('content-type') ?? 'application/json';
-  const isEventStream = contentType.includes('text/event-stream');
-  const responseHeaders = new Headers({
-    'Content-Type': contentType,
-  });
+  return NextResponse.json({ message }, { status: 503 });
+}
 
-  const cacheControl = response.headers.get('cache-control');
-  const contentDisposition = response.headers.get('content-disposition');
+async function handler(request: NextRequest, context: RouteContext) {
+  try {
+    const { path } = await context.params;
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get(ACCESS_COOKIE)?.value;
+    const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
 
-  if (cacheControl) {
-    responseHeaders.set('Cache-Control', cacheControl);
-  }
+    let response = await forwardRequest(request, path, accessToken);
+    let nextAccessToken = accessToken;
+    let nextRefreshToken = refreshToken;
 
-  if (contentDisposition) {
-    responseHeaders.set('Content-Disposition', contentDisposition);
-  }
-
-  if (isEventStream) {
-    responseHeaders.set(
-      'Cache-Control',
-      cacheControl ?? 'no-cache, no-transform',
-    );
-    responseHeaders.set(
-      'Connection',
-      response.headers.get('connection') ?? 'keep-alive',
-    );
-    responseHeaders.set('X-Accel-Buffering', 'no');
-  }
-
-  const proxyResponse = isEventStream
-    ? new NextResponse(response.body, {
-        status: response.status,
-        headers: responseHeaders,
-      })
-    : new NextResponse(await response.arrayBuffer(), {
-        status: response.status,
-        headers: responseHeaders,
+    if (response.status === 401 && refreshToken) {
+      const refreshResponse = await fetch(`${getBackendUrl()}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
       });
 
-  if (nextAccessToken) {
-    proxyResponse.cookies.set(ACCESS_COOKIE, nextAccessToken, {
-      ...authCookieOptions,
-      maxAge: 60 * 15,
-    });
-  } else {
-    proxyResponse.cookies.set(ACCESS_COOKIE, '', { ...authCookieOptions, maxAge: 0 });
-  }
+      if (refreshResponse.ok) {
+        const refreshPayload = (await refreshResponse.json()) as {
+          accessToken: string;
+          refreshToken: string;
+        };
+        nextAccessToken = refreshPayload.accessToken;
+        nextRefreshToken = refreshPayload.refreshToken;
+        response = await forwardRequest(request, path, nextAccessToken);
+      } else {
+        nextAccessToken = undefined;
+        nextRefreshToken = undefined;
+      }
+    }
 
-  if (nextRefreshToken) {
-    proxyResponse.cookies.set(REFRESH_COOKIE, nextRefreshToken, {
-      ...authCookieOptions,
-      maxAge: 60 * 60 * 24 * 7,
+    const contentType = response.headers.get('content-type') ?? 'application/json';
+    const isEventStream = contentType.includes('text/event-stream');
+    const responseHeaders = new Headers({
+      'Content-Type': contentType,
     });
-  } else {
-    proxyResponse.cookies.set(REFRESH_COOKIE, '', { ...authCookieOptions, maxAge: 0 });
-  }
 
-  return proxyResponse;
+    const cacheControl = response.headers.get('cache-control');
+    const contentDisposition = response.headers.get('content-disposition');
+
+    if (cacheControl) {
+      responseHeaders.set('Cache-Control', cacheControl);
+    }
+
+    if (contentDisposition) {
+      responseHeaders.set('Content-Disposition', contentDisposition);
+    }
+
+    if (isEventStream) {
+      responseHeaders.set(
+        'Cache-Control',
+        cacheControl ?? 'no-cache, no-transform',
+      );
+      responseHeaders.set(
+        'Connection',
+        response.headers.get('connection') ?? 'keep-alive',
+      );
+      responseHeaders.set('X-Accel-Buffering', 'no');
+    }
+
+    const proxyResponse = isEventStream
+      ? new NextResponse(response.body, {
+          status: response.status,
+          headers: responseHeaders,
+        })
+      : new NextResponse(await response.arrayBuffer(), {
+          status: response.status,
+          headers: responseHeaders,
+        });
+
+    if (nextAccessToken) {
+      proxyResponse.cookies.set(ACCESS_COOKIE, nextAccessToken, {
+        ...authCookieOptions,
+        maxAge: 60 * 15,
+      });
+    } else {
+      proxyResponse.cookies.set(ACCESS_COOKIE, '', {
+        ...authCookieOptions,
+        maxAge: 0,
+      });
+    }
+
+    if (nextRefreshToken) {
+      proxyResponse.cookies.set(REFRESH_COOKIE, nextRefreshToken, {
+        ...authCookieOptions,
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    } else {
+      proxyResponse.cookies.set(REFRESH_COOKIE, '', {
+        ...authCookieOptions,
+        maxAge: 0,
+      });
+    }
+
+    return proxyResponse;
+  } catch {
+    return buildUnavailableResponse(request);
+  }
 }
 
 export const GET = handler;

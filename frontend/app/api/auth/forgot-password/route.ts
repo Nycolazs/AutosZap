@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBackendUrl } from '@/lib/auth-cookies';
+import {
+  getBackendUnavailableMessage,
+  getBackendUrl,
+  readBackendJson,
+} from '@/lib/auth-cookies';
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json()) as Record<string, unknown>;
-  const response = await fetch(`${getBackendUrl()}/api/auth/forgot-password`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const response = await fetch(`${getBackendUrl()}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-  return NextResponse.json(await response.json(), { status: response.status });
+    return NextResponse.json(await readBackendJson(response), {
+      status: response.status,
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        message: getBackendUnavailableMessage(),
+      },
+      { status: 503 },
+    );
+  }
 }
