@@ -648,6 +648,13 @@ export class ConversationRemindersService {
       conversation.assignedUserId,
     );
     const recipientIds: string[] = [];
+    const linkedUserIds = new Set(
+      [
+        conversation.assignedUserId,
+        conversation.resolvedById,
+        conversation.closedById,
+      ].filter((value): value is string => Boolean(value)),
+    );
 
     for (const user of users) {
       if (normalizeRole(user.role) === Role.ADMIN) {
@@ -665,17 +672,15 @@ export class ConversationRemindersService {
         continue;
       }
 
-      if (
-        normalizedStatus === ConversationStatus.NEW ||
-        normalizedStatus === ConversationStatus.WAITING
-      ) {
-        recipientIds.push(user.id);
+      // For sellers, notify only users already linked to this conversation.
+      if (!linkedUserIds.has(user.id)) {
         continue;
       }
 
       if (
-        normalizedStatus === ConversationStatus.IN_PROGRESS &&
-        conversation.assignedUserId === user.id
+        normalizedStatus === ConversationStatus.NEW ||
+        normalizedStatus === ConversationStatus.WAITING ||
+        normalizedStatus === ConversationStatus.IN_PROGRESS
       ) {
         recipientIds.push(user.id);
         continue;

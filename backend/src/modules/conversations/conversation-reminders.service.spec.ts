@@ -52,7 +52,7 @@ describe('ConversationRemindersService', () => {
     };
   }
 
-  it('notifies only eligible workspace users when a reminder becomes due', async () => {
+  it('notifies only admins and users linked to the conversation when a reminder becomes due', async () => {
     const {
       service,
       prisma,
@@ -144,7 +144,7 @@ describe('ConversationRemindersService', () => {
         workspaceId: 'ws-1',
         entityId: 'rem-1',
         linkHref: '/app/inbox?conversationId=conv-1',
-        userIds: ['admin-1', 'seller-1'],
+        userIds: ['admin-1'],
       }),
     );
     expect(
