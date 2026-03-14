@@ -11,19 +11,28 @@ export function proxy(request: NextRequest) {
     publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
     pathname.startsWith('/reset-password/');
 
+  const applyNoStore = (response: NextResponse) => {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    return response;
+  };
+
   if (pathname === '/') {
-    return NextResponse.redirect(new URL(accessToken ? '/app/inbox' : '/login', request.url));
+    return applyNoStore(
+      NextResponse.redirect(new URL(accessToken ? '/app/inbox' : '/login', request.url)),
+    );
   }
 
   if (pathname.startsWith('/app') && !accessToken) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return applyNoStore(NextResponse.redirect(new URL('/login', request.url)));
   }
 
   if (isPublicRoute && accessToken) {
-    return NextResponse.redirect(new URL('/app/inbox', request.url));
+    return applyNoStore(NextResponse.redirect(new URL('/app/inbox', request.url)));
   }
 
-  return NextResponse.next();
+  return applyNoStore(NextResponse.next());
 }
 
 export const config = {
