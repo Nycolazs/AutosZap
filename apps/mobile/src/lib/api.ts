@@ -13,7 +13,7 @@ function resolveApiUrl() {
   const value =
     Constants.expoConfig?.extra?.apiUrl ??
     process.env.EXPO_PUBLIC_API_URL ??
-    'http://localhost:4000';
+    'https://api.autoszap.com';
 
   return String(value).replace(/\/+$/, '');
 }

@@ -87,15 +87,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, [api]);
 
+  const registerDeviceBestEffort = useCallback(async () => {
+    try {
+      await registerDevice();
+    } catch (error) {
+      // Device registration is auxiliary and should not block auth/session flow.
+      console.warn('Falha ao registrar dispositivo no backend.', error);
+    }
+  }, [registerDevice]);
+
   const login = useCallback(
     async (email: string, password: string) => {
       const nextSession = await api.login(email, password);
       await saveSession(nextSession);
       const nextMe = await api.me();
       setMe(nextMe);
-      await registerDevice();
+      await registerDeviceBestEffort();
     },
-    [api, registerDevice, saveSession],
+    [api, registerDeviceBestEffort, saveSession],
   );
 
   const logout = useCallback(async () => {
@@ -130,7 +139,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         try {
           const nextMe = await api.me();
           setMe(nextMe);
-          await registerDevice();
+          await registerDeviceBestEffort();
         } catch {
           await clearSession();
         }
@@ -138,7 +147,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       setReady(true);
     })();
-  }, [api, clearSession, registerDevice]);
+  }, [api, clearSession, registerDeviceBestEffort]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

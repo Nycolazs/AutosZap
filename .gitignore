@@ -12,6 +12,7 @@ frontend/out
 backend/node_modules
 backend/dist
 backend/coverage
+apps/mobile/.expo/
 .codex-local
 
 # Scripts temporários de operação / deploy ad-hoc.

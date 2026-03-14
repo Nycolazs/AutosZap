@@ -3,6 +3,7 @@ import type { ExpoConfig } from 'expo/config';
 const version = process.env.APP_VERSION ?? '0.1.0';
 const buildNumber = process.env.APP_BUILD_NUMBER ?? '1';
 const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+const hasEasProject = Boolean(projectId);
 
 const config: ExpoConfig = {
   name: 'AutoZap',
@@ -12,10 +13,12 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   icon: '../../frontend/public/brand/autoszap-mark.png',
   userInterfaceStyle: 'dark',
-  runtimeVersion: {
-    policy: 'appVersion',
-  },
-  updates: projectId
+  runtimeVersion: hasEasProject
+    ? {
+        policy: 'appVersion',
+      }
+    : undefined,
+  updates: hasEasProject
     ? {
         url: `https://u.expo.dev/${projectId}`,
       }
@@ -29,7 +32,7 @@ const config: ExpoConfig = {
     buildNumber,
   },
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000',
+    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://api.autoszap.com',
     eas: {
       projectId,
     },
