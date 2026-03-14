@@ -79,9 +79,13 @@ export class MetaWhatsAppController {
     @Headers('x-hub-signature-256') signature: string | undefined,
     @Req() request: Request & { rawBody?: Buffer },
   ) {
+    // Fallback for environments where Express does not preserve `rawBody`.
+    const rawBody =
+      request.rawBody ?? Buffer.from(JSON.stringify(payload), 'utf8');
+
     return this.metaWhatsAppService.handleWebhook(payload, {
       signature,
-      rawBody: request.rawBody,
+      rawBody,
     });
   }
 
