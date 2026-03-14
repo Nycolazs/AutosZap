@@ -76,6 +76,17 @@ const STATUS_LABELS: Record<string, string> = {
   RESOLVED: 'Resolvido',
   CLOSED: 'Encerrado',
 };
+
+function getConversationStatusLabel(
+  status: string,
+  closeReason?: Conversation['closeReason'],
+) {
+  if (status === 'CLOSED' && closeReason === 'UNANSWERED') {
+    return 'Nao respondido';
+  }
+
+  return STATUS_LABELS[status] ?? status;
+}
 const DEFAULT_CONVERSATION_STATUS_SUMMARY: ConversationStatusSummary = {
   ALL: 0,
   NEW: 0,
@@ -952,7 +963,10 @@ function InboxPageContent() {
                       <div className="text-right">
                         <span className="text-xs text-muted-foreground">{formatDate(conversation.lastMessageAt)}</span>
                         <div className="mt-2">
-                          <StatusBadge status={conversation.status} />
+                          <StatusBadge
+                            status={conversation.status}
+                            closeReason={conversation.closeReason}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1037,7 +1051,10 @@ function InboxPageContent() {
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5" />
                     </Button>
-                    <StatusBadge status={selectedConversation.status} />
+                    <StatusBadge
+                      status={selectedConversation.status}
+                      closeReason={selectedConversation.closeReason}
+                    />
                   </div>
                 </div>
               </div>
@@ -1491,7 +1508,10 @@ function ConversationSidebar({
         <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
           <p className="font-medium">Atribuição e status</p>
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={selectedConversation.status} />
+            <StatusBadge
+              status={selectedConversation.status}
+              closeReason={selectedConversation.closeReason}
+            />
             {selectedConversation.status === 'WAITING' ? (
               <Badge variant="secondary">Disponível para retomada</Badge>
             ) : null}
@@ -1746,7 +1766,13 @@ function getMessageStatusLabel(status?: string | null) {
   return MESSAGE_STATUS_LABELS[status] ?? status;
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({
+  status,
+  closeReason,
+}: {
+  status: string;
+  closeReason?: Conversation['closeReason'];
+}) {
   const badgeClassName =
     status === 'NEW' || status === 'OPEN'
       ? 'border-transparent bg-[#2f7df6]/20 text-[#7fc1ff]'
@@ -1760,7 +1786,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium', badgeClassName)}>
-      {STATUS_LABELS[status] ?? status}
+      {getConversationStatusLabel(status, closeReason)}
     </span>
   );
 }

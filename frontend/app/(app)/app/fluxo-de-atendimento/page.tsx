@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock3, MessageCircleReply, Save } from 'lucide-react';
+import { Clock3, MessageCircleReply, Minus, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ const weekdayLabels = [
 
 type WorkspaceConversationSettingsPayload = {
   inactivityTimeoutMinutes: number;
+  waitingAutoCloseTimeoutMinutes?: number | null;
   timezone: string;
   sendBusinessHoursAutoReply: boolean;
   businessHoursAutoReply?: string | null;
@@ -50,6 +51,8 @@ function sanitizeWorkspaceConversationSettings(
     id: settings.id,
     workspaceId: settings.workspaceId,
     inactivityTimeoutMinutes: settings.inactivityTimeoutMinutes,
+    waitingAutoCloseTimeoutMinutes:
+      settings.waitingAutoCloseTimeoutMinutes ?? null,
     timezone: settings.timezone,
     autoReplyCooldownMinutes: settings.autoReplyCooldownMinutes,
     sendBusinessHoursAutoReply: settings.sendBusinessHoursAutoReply,
@@ -77,6 +80,8 @@ function toWorkspaceConversationSettingsPayload(
 ): WorkspaceConversationSettingsPayload {
   return {
     inactivityTimeoutMinutes: settings.inactivityTimeoutMinutes,
+    waitingAutoCloseTimeoutMinutes:
+      settings.waitingAutoCloseTimeoutMinutes ?? null,
     timezone: settings.timezone,
     sendBusinessHoursAutoReply: settings.sendBusinessHoursAutoReply,
     businessHoursAutoReply: settings.businessHoursAutoReply ?? null,
@@ -95,6 +100,14 @@ function toWorkspaceConversationSettingsPayload(
       endTime: businessHour.isOpen ? businessHour.endTime ?? '18:00' : null,
     })),
   };
+}
+
+function clampInactivityTimeout(value: number) {
+  return Math.min(1440, Math.max(1, value));
+}
+
+function clampWaitingAutoCloseTimeout(value: number) {
+  return Math.min(10080, Math.max(1, value));
 }
 
 export default function ConversationFlowPage() {
@@ -205,26 +218,111 @@ export default function ConversationFlowPage() {
                     <Label htmlFor="inactivity-timeout">
                       Tempo de inatividade do vendedor
                     </Label>
-                    <Input
-                      id="inactivity-timeout"
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={conversationSettings.inactivityTimeoutMinutes}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          inactivityTimeoutMinutes: Number(
-                            event.target.value || 15,
-                          ),
-                        }))
-                      }
-                      disabled={!canEditRouting}
-                    />
+                    <div className="flex items-center gap-2 rounded-2xl border border-border bg-background-panel/70 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        className="h-9 w-9 rounded-xl"
+                        disabled={!canEditRouting}
+                        onClick={() =>
+                          updateDraft((current) => ({
+                            ...current,
+                            inactivityTimeoutMinutes: clampInactivityTimeout(
+                              current.inactivityTimeoutMinutes - 1,
+                            ),
+                          }))
+                        }
+                        aria-label="Diminuir tempo de inatividade"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+
+                      <div className="relative flex-1">
+                        <Input
+                          id="inactivity-timeout"
+                          type="number"
+                          min={1}
+                          max={1440}
+                          value={conversationSettings.inactivityTimeoutMinutes}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              inactivityTimeoutMinutes: clampInactivityTimeout(
+                                Number(event.target.value || 15),
+                              ),
+                            }))
+                          }
+                          disabled={!canEditRouting}
+                          className="h-10 rounded-xl border-white/10 bg-background/70 pl-4 pr-14 text-base font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        />
+                        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">
+                          min
+                        </span>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        className="h-9 w-9 rounded-xl"
+                        disabled={!canEditRouting}
+                        onClick={() =>
+                          updateDraft((current) => ({
+                            ...current,
+                            inactivityTimeoutMinutes: clampInactivityTimeout(
+                              current.inactivityTimeoutMinutes + 1,
+                            ),
+                          }))
+                        }
+                        aria-label="Aumentar tempo de inatividade"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Após esse período sem resposta do responsável, a conversa
                       volta para <strong>AGUARDANDO</strong> e fica disponível
                       para outros vendedores.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="waiting-auto-close-timeout">
+                      Encerramento automático no AGUARDANDO
+                    </Label>
+                    <Input
+                      id="waiting-auto-close-timeout"
+                      type="number"
+                      min={1}
+                      max={10080}
+                      value={
+                        conversationSettings.waitingAutoCloseTimeoutMinutes ??
+                        ''
+                      }
+                      onChange={(event) =>
+                        updateDraft((current) => {
+                          const rawValue = event.target.value.trim();
+
+                          return {
+                            ...current,
+                            waitingAutoCloseTimeoutMinutes: rawValue
+                              ? clampWaitingAutoCloseTimeout(Number(rawValue))
+                              : null,
+                          };
+                        })
+                      }
+                      placeholder="Desativado"
+                      disabled={!canEditRouting}
+                      className="h-10 rounded-xl border-white/10 bg-background/70"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Defina em minutos para fechar automaticamente conversas em
+                      <strong> AGUARDANDO</strong> como
+                      {' '}
+                      <strong>NAO RESPONDIDO</strong>.
+                      {' '}
+                      Deixe vazio para desativar.
                     </p>
                   </div>
 
@@ -315,10 +413,10 @@ export default function ConversationFlowPage() {
                     className="min-h-24"
                   />
 
-                  <div className="rounded-[20px] border border-border bg-background-panel px-4 py-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-medium">
+                  <div className="rounded-[20px] border border-border/80 bg-gradient-to-b from-white/[0.04] to-white/[0.015] px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium tracking-tight">
                           Template automatico fora da janela de 24 horas
                         </p>
                         <p className="text-sm text-muted-foreground">
@@ -328,6 +426,7 @@ export default function ConversationFlowPage() {
                         </p>
                       </div>
                       <Switch
+                        className="self-end sm:mt-1 sm:self-start"
                         checked={Boolean(
                           conversationSettings.sendWindowClosedTemplateReply,
                         )}
@@ -511,12 +610,13 @@ function AutomationToggle({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-[20px] border border-border bg-background-panel px-4 py-3">
-      <div>
-        <p className="font-medium">{label}</p>
+    <div className="flex flex-col gap-3 rounded-[20px] border border-border/80 bg-gradient-to-b from-white/[0.04] to-white/[0.015] px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium tracking-tight">{label}</p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <Switch
+        className="self-end sm:mt-1 sm:self-start"
         checked={checked}
         disabled={disabled}
         onCheckedChange={onCheckedChange}

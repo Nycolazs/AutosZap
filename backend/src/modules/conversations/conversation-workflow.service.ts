@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ConversationCloseReason,
   ConversationOwnership,
   ConversationStatus,
   ConversationEventType,
@@ -40,6 +41,7 @@ type LockedConversationRecord = {
   workspaceId: string;
   assignedUserId: string | null;
   status: ConversationStatus;
+  closeReason: ConversationCloseReason | null;
   ownership: ConversationOwnership;
   unreadCount: number;
   currentCycleStartedAt: Date;
@@ -530,6 +532,7 @@ export class ConversationWorkflowService {
         },
         data: {
           status: ConversationStatus.WAITING,
+          closeReason: null,
           ownership: ConversationOwnership.TEAM,
           currentCycleStartedAt: now,
           firstHumanResponseAt: null,
@@ -598,6 +601,7 @@ export class ConversationWorkflowService {
           },
           data: {
             status: nextStatus,
+            closeReason: null,
             ownership: ConversationOwnership.TEAM,
             currentCycleStartedAt: now,
             firstHumanResponseAt: null,
@@ -703,7 +707,8 @@ export class ConversationWorkflowService {
       },
     });
 
-    let updatedCount = 0;
+    let returnedToWaitingCount = 0;
+    let autoClosedCount = 0;
 
     for (const workspace of workspaces) {
       const settings =
@@ -782,7 +787,96 @@ export class ConversationWorkflowService {
         });
 
         if (changed) {
-          updatedCount += 1;
+          returnedToWaitingCount += 1;
+          await this.emitConversationRealtimeEvent(
+            workspace.id,
+            candidate.id,
+            'conversation.updated',
+          );
+        }
+      }
+
+      if (!settings.waitingAutoCloseTimeoutMinutes) {
+        continue;
+      }
+
+      const waitingAutoCloseThreshold = new Date(
+        Date.now() - settings.waitingAutoCloseTimeoutMinutes * 60_000,
+      );
+
+      const waitingCandidates = await this.prisma.conversation.findMany({
+        where: {
+          workspaceId: workspace.id,
+          deletedAt: null,
+          waitingSince: {
+            lte: waitingAutoCloseThreshold,
+          },
+          status: ConversationStatus.WAITING,
+        },
+        select: {
+          id: true,
+        },
+        take: 200,
+      });
+
+      for (const candidate of waitingCandidates) {
+        const changed = await this.prisma.$transaction(async (tx) => {
+          const lockedConversation = await this.lockConversation(
+            tx,
+            candidate.id,
+            workspace.id,
+          );
+          const currentStatus = normalizeConversationStatus(
+            lockedConversation.status,
+            lockedConversation.assignedUserId,
+          );
+
+          if (
+            currentStatus !== ConversationStatus.WAITING ||
+            !lockedConversation.waitingSince ||
+            lockedConversation.waitingSince > waitingAutoCloseThreshold
+          ) {
+            return false;
+          }
+
+          const now = new Date();
+
+          await tx.conversation.update({
+            where: {
+              id: candidate.id,
+            },
+            data: {
+              status: ConversationStatus.CLOSED,
+              closeReason: ConversationCloseReason.UNANSWERED,
+              ownership: ConversationOwnership.TEAM,
+              waitingSince: null,
+              unreadCount: 0,
+              closedAt: now,
+              closedById: null,
+              statusChangedAt: now,
+            },
+          });
+
+          await this.recordConversationEvent(tx, {
+            workspaceId: workspace.id,
+            conversationId: candidate.id,
+            actorUserId: null,
+            type: ConversationEventType.CLOSED,
+            fromStatus: currentStatus,
+            toStatus: ConversationStatus.CLOSED,
+            metadata: {
+              closeReason: 'UNANSWERED',
+              triggeredBy: 'waiting_auto_close_timeout',
+              waitingSince: lockedConversation.waitingSince.toISOString(),
+              timeoutMinutes: settings.waitingAutoCloseTimeoutMinutes,
+            },
+          });
+
+          return true;
+        });
+
+        if (changed) {
+          autoClosedCount += 1;
           await this.emitConversationRealtimeEvent(
             workspace.id,
             candidate.id,
@@ -793,7 +887,9 @@ export class ConversationWorkflowService {
     }
 
     return {
-      updatedCount,
+      updatedCount: returnedToWaitingCount + autoClosedCount,
+      returnedToWaitingCount,
+      autoClosedCount,
     };
   }
 
@@ -925,6 +1021,10 @@ export class ConversationWorkflowService {
         data: {
           assignedUserId: ownerUserId,
           status: finalStatus,
+          closeReason:
+            finalStatus === ConversationStatus.CLOSED
+              ? ConversationCloseReason.MANUAL
+              : null,
           ownership: ConversationOwnership.MINE,
           waitingSince: null,
           unreadCount: 0,
@@ -1021,6 +1121,7 @@ export class ConversationWorkflowService {
         "workspaceId",
         "assignedUserId",
         status,
+        "closeReason",
         ownership,
         "unreadCount",
         "currentCycleStartedAt",

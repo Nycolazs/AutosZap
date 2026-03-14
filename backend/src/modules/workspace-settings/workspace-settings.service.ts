@@ -59,6 +59,7 @@ export class WorkspaceSettingsService {
     workspaceId: string,
     payload: {
       inactivityTimeoutMinutes?: number;
+      waitingAutoCloseTimeoutMinutes?: number | null;
       timezone?: string;
       sendBusinessHoursAutoReply?: boolean;
       businessHoursAutoReply?: string | null;
@@ -79,6 +80,17 @@ export class WorkspaceSettingsService {
     ) {
       throw new BadRequestException(
         'Defina um tempo de inatividade entre 1 e 1440 minutos.',
+      );
+    }
+
+    if (
+      payload.waitingAutoCloseTimeoutMinutes !== undefined &&
+      payload.waitingAutoCloseTimeoutMinutes !== null &&
+      (payload.waitingAutoCloseTimeoutMinutes < 1 ||
+        payload.waitingAutoCloseTimeoutMinutes > 10080)
+    ) {
+      throw new BadRequestException(
+        'Defina um tempo de encerramento automatico do aguardando entre 1 e 10080 minutos.',
       );
     }
 
@@ -162,6 +174,10 @@ export class WorkspaceSettingsService {
           inactivityTimeoutMinutes:
             payload.inactivityTimeoutMinutes ??
             currentSettings.inactivityTimeoutMinutes,
+          waitingAutoCloseTimeoutMinutes:
+            payload.waitingAutoCloseTimeoutMinutes !== undefined
+              ? payload.waitingAutoCloseTimeoutMinutes
+              : currentSettings.waitingAutoCloseTimeoutMinutes,
           timezone: payload.timezone ?? currentSettings.timezone,
           sendBusinessHoursAutoReply,
           businessHoursAutoReply,

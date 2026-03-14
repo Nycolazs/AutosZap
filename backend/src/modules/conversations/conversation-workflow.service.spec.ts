@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import {
+  ConversationCloseReason,
   ConversationEventType,
   ConversationOwnership,
   ConversationStatus,
@@ -81,6 +82,7 @@ describe('ConversationWorkflowService', () => {
     overrides: Partial<{
       assignedUserId: string | null;
       status: ConversationStatus;
+      closeReason: ConversationCloseReason | null;
       firstHumanResponseAt: Date | null;
       waitingSince: Date | null;
       statusChangedAt: Date;
@@ -91,6 +93,7 @@ describe('ConversationWorkflowService', () => {
       workspaceId: 'ws-1',
       assignedUserId: null,
       status: ConversationStatus.OPEN,
+      closeReason: null,
       ownership: ConversationOwnership.UNASSIGNED,
       unreadCount: 1,
       currentCycleStartedAt: new Date('2026-03-12T17:45:00.000Z'),
@@ -276,6 +279,7 @@ describe('ConversationWorkflowService', () => {
     prisma.workspace.findMany.mockResolvedValue([{ id: 'ws-1' }]);
     workspaceSettingsService.getConversationSettings.mockResolvedValue({
       inactivityTimeoutMinutes: 5,
+      waitingAutoCloseTimeoutMinutes: null,
     });
     prisma.conversation.findMany.mockResolvedValue([{ id: 'conv-1' }]);
     bindTransaction(prisma.$transaction, tx);
@@ -290,6 +294,8 @@ describe('ConversationWorkflowService', () => {
 
     expect(result).toEqual({
       updatedCount: 1,
+      returnedToWaitingCount: 1,
+      autoClosedCount: 0,
     });
     const timeoutUpdateCalls = tx.conversation.update.mock.calls as Array<
       [
@@ -326,6 +332,324 @@ describe('ConversationWorkflowService', () => {
       ConversationEventType.WAITING_TIMEOUT,
     );
     expect(timeoutEventCall?.data.toStatus).toBe(ConversationStatus.WAITING);
+    expect(inboxEventsService.emit).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      conversationId: 'conv-1',
+      type: 'conversation.updated',
+      direction: undefined,
+      assignedUserId: 'seller-1',
+      audience: 'SELLERS_AND_ADMINS',
+    });
+  });
+
+  it('auto-closes stale WAITING conversations as unanswered when waiting timeout is configured', async () => {
+    const { service, prisma, inboxEventsService, workspaceSettingsService } =
+      createService();
+    const tx: TransactionMock = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        createLockedConversation({
+          assignedUserId: 'seller-1',
+          status: ConversationStatus.WAITING,
+          waitingSince: new Date('2026-03-12T17:40:00.000Z'),
+        }),
+      ]),
+      conversation: {
+        update: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.workspace.findMany.mockResolvedValue([{ id: 'ws-1' }]);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      inactivityTimeoutMinutes: 5,
+      waitingAutoCloseTimeoutMinutes: 10,
+    });
+    prisma.conversation.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'conv-1' }]);
+    bindTransaction(prisma.$transaction, tx);
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      assignedUserId: 'seller-1',
+      status: ConversationStatus.CLOSED,
+    });
+
+    const result = await service.processWaitingTimeouts();
+
+    expect(result).toEqual({
+      updatedCount: 1,
+      returnedToWaitingCount: 0,
+      autoClosedCount: 1,
+    });
+
+    const timeoutUpdateCalls = tx.conversation.update.mock.calls as Array<
+      [
+        {
+          where: { id: string };
+          data: {
+            status: ConversationStatus;
+            ownership: ConversationOwnership;
+            closedById: string | null;
+            closeReason: ConversationCloseReason | null;
+          };
+        },
+      ]
+    >;
+
+    const timeoutEventCalls = tx.conversationEvent.create.mock.calls as Array<
+      [
+        {
+          data: {
+            workspaceId: string;
+            conversationId: string;
+            type: ConversationEventType;
+            toStatus?: ConversationStatus;
+            metadata?: Record<string, unknown>;
+          };
+        },
+      ]
+    >;
+
+    const timeoutUpdateCall = timeoutUpdateCalls[0]?.[0];
+    const timeoutEventCall = timeoutEventCalls[0]?.[0];
+
+    expect(timeoutUpdateCall?.where.id).toBe('conv-1');
+    expect(timeoutUpdateCall?.data.status).toBe(ConversationStatus.CLOSED);
+    expect(timeoutUpdateCall?.data.ownership).toBe(ConversationOwnership.TEAM);
+    expect(timeoutUpdateCall?.data.closedById).toBeNull();
+    expect(timeoutUpdateCall?.data.closeReason).toBe(
+      ConversationCloseReason.UNANSWERED,
+    );
+    expect(timeoutEventCall?.data.workspaceId).toBe('ws-1');
+    expect(timeoutEventCall?.data.conversationId).toBe('conv-1');
+    expect(timeoutEventCall?.data.type).toBe(ConversationEventType.CLOSED);
+    expect(timeoutEventCall?.data.toStatus).toBe(ConversationStatus.CLOSED);
+    expect(timeoutEventCall?.data.metadata).toMatchObject({
+      closeReason: 'UNANSWERED',
+      triggeredBy: 'waiting_auto_close_timeout',
+      timeoutMinutes: 10,
+    });
+
+    expect(inboxEventsService.emit).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      conversationId: 'conv-1',
+      type: 'conversation.updated',
+      direction: undefined,
+      assignedUserId: 'seller-1',
+      audience: 'ADMINS_AND_ASSIGNEE',
+    });
+  });
+
+  it('does not auto-close WAITING conversations before timeout threshold', async () => {
+    const { service, prisma, workspaceSettingsService } = createService();
+
+    prisma.workspace.findMany.mockResolvedValue([{ id: 'ws-1' }]);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      inactivityTimeoutMinutes: 5,
+      waitingAutoCloseTimeoutMinutes: 10,
+    });
+    prisma.conversation.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await service.processWaitingTimeouts();
+
+    expect(result).toEqual({
+      updatedCount: 0,
+      returnedToWaitingCount: 0,
+      autoClosedCount: 0,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent when timeout processing runs multiple times', async () => {
+    const { service, prisma, workspaceSettingsService } = createService();
+    const tx: TransactionMock = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          createLockedConversation({
+            assignedUserId: 'seller-1',
+            status: ConversationStatus.WAITING,
+            waitingSince: new Date('2026-03-12T17:40:00.000Z'),
+          }),
+        ])
+        .mockResolvedValueOnce([
+          createLockedConversation({
+            assignedUserId: 'seller-1',
+            status: ConversationStatus.CLOSED,
+            closeReason: ConversationCloseReason.UNANSWERED,
+            waitingSince: null,
+          }),
+        ]),
+      conversation: {
+        update: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.workspace.findMany.mockResolvedValue([{ id: 'ws-1' }]);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      inactivityTimeoutMinutes: 5,
+      waitingAutoCloseTimeoutMinutes: 10,
+    });
+    prisma.conversation.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'conv-1' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'conv-1' }]);
+    bindTransaction(prisma.$transaction, tx);
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      assignedUserId: 'seller-1',
+      status: ConversationStatus.CLOSED,
+    });
+
+    const firstRun = await service.processWaitingTimeouts();
+    const secondRun = await service.processWaitingTimeouts();
+
+    expect(firstRun).toEqual({
+      updatedCount: 1,
+      returnedToWaitingCount: 0,
+      autoClosedCount: 1,
+    });
+    expect(secondRun).toEqual({
+      updatedCount: 0,
+      returnedToWaitingCount: 0,
+      autoClosedCount: 0,
+    });
+    expect(tx.conversation.update).toHaveBeenCalledTimes(1);
+    expect(tx.conversationEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-close waiting conversations when timeout setting is disabled', async () => {
+    const { service, prisma, workspaceSettingsService } = createService();
+
+    prisma.workspace.findMany.mockResolvedValue([{ id: 'ws-1' }]);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      inactivityTimeoutMinutes: 5,
+      waitingAutoCloseTimeoutMinutes: null,
+    });
+    prisma.conversation.findMany.mockResolvedValue([]);
+
+    const result = await service.processWaitingTimeouts();
+
+    expect(result).toEqual({
+      updatedCount: 0,
+      returnedToWaitingCount: 0,
+      autoClosedCount: 0,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.conversation.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps IN_PROGRESS on inbound activity and refreshes waitingSince for timeout tracking', async () => {
+    const { service, prisma, inboxEventsService } = createService();
+    const tx: TransactionMock = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        createLockedConversation({
+          assignedUserId: 'seller-1',
+          status: ConversationStatus.IN_PROGRESS,
+          waitingSince: new Date('2026-03-12T17:00:00.000Z'),
+        }),
+      ]),
+      conversation: {
+        update: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
+      },
+    };
+
+    bindTransaction(prisma.$transaction, tx);
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      assignedUserId: 'seller-1',
+      status: ConversationStatus.IN_PROGRESS,
+    });
+
+    const result = await service.registerInboundActivity('conv-1', 'ws-1');
+
+    expect(result).toEqual({ status: ConversationStatus.IN_PROGRESS });
+    const updateCall = tx.conversation.update.mock.calls[0]?.[0] as
+      | {
+          data: {
+            status: ConversationStatus;
+            ownership: ConversationOwnership;
+            waitingSince: Date | null;
+          };
+        }
+      | undefined;
+    expect(updateCall?.data.status).toBe(ConversationStatus.IN_PROGRESS);
+    expect(updateCall?.data.ownership).toBe(ConversationOwnership.MINE);
+    expect(updateCall?.data.waitingSince).toBeInstanceOf(Date);
+    expect(tx.conversationEvent.create).not.toHaveBeenCalled();
+    expect(inboxEventsService.emit).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      conversationId: 'conv-1',
+      type: 'conversation.updated',
+      direction: undefined,
+      assignedUserId: 'seller-1',
+      audience: 'ADMINS_AND_ASSIGNEE',
+    });
+  });
+
+  it('reopens CLOSED conversation to WAITING on new customer inbound activity', async () => {
+    const { service, prisma, inboxEventsService } = createService();
+    const tx: TransactionMock = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        createLockedConversation({
+          assignedUserId: 'seller-1',
+          status: ConversationStatus.CLOSED,
+          closeReason: ConversationCloseReason.UNANSWERED,
+        }),
+      ]),
+      conversation: {
+        update: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
+      },
+    };
+
+    bindTransaction(prisma.$transaction, tx);
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      assignedUserId: 'seller-1',
+      status: ConversationStatus.WAITING,
+    });
+
+    const result = await service.registerInboundActivity('conv-1', 'ws-1');
+
+    expect(result).toEqual({ status: ConversationStatus.WAITING });
+    const updateCall = tx.conversation.update.mock.calls[0]?.[0] as
+      | {
+          data: {
+            status: ConversationStatus;
+            closeReason: ConversationCloseReason | null;
+            ownership: ConversationOwnership;
+          };
+        }
+      | undefined;
+    expect(updateCall?.data.status).toBe(ConversationStatus.WAITING);
+    expect(updateCall?.data.closeReason).toBeNull();
+    expect(updateCall?.data.ownership).toBe(ConversationOwnership.TEAM);
+    expect(tx.conversationEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: ConversationEventType.REOPENED,
+          toStatus: ConversationStatus.WAITING,
+        }),
+      }),
+    );
     expect(inboxEventsService.emit).toHaveBeenCalledWith({
       workspaceId: 'ws-1',
       conversationId: 'conv-1',

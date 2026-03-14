@@ -20,7 +20,7 @@ export function proxy(request: NextRequest) {
 
   if (pathname === '/') {
     return applyNoStore(
-      NextResponse.redirect(new URL(accessToken ? '/app/inbox' : '/login', request.url)),
+      NextResponse.redirect(new URL(accessToken ? '/app' : '/login', request.url)),
     );
   }
 
@@ -29,7 +29,7 @@ export function proxy(request: NextRequest) {
   }
 
   if (isPublicRoute && accessToken) {
-    return applyNoStore(NextResponse.redirect(new URL('/app/inbox', request.url)));
+    return applyNoStore(NextResponse.redirect(new URL('/app', request.url)));
   }
 
   return applyNoStore(NextResponse.next());

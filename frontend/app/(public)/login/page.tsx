@@ -70,7 +70,7 @@ export default function LoginPage() {
                   }
 
                   toast.success('Sessao iniciada com sucesso.');
-                  router.push('/app/inbox');
+                  router.push('/app');
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : 'Falha no login.');
                 }

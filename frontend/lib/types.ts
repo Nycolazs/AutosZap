@@ -114,6 +114,7 @@ export interface ConversationReminder {
 export interface Conversation {
   id: string;
   status: string;
+  closeReason?: 'MANUAL' | 'UNANSWERED' | null;
   ownership: string;
   unreadCount: number;
   lastMessageAt?: string | null;
@@ -362,6 +363,7 @@ export interface WorkspaceConversationSettings {
   id: string;
   workspaceId: string;
   inactivityTimeoutMinutes: number;
+  waitingAutoCloseTimeoutMinutes?: number | null;
   timezone: string;
   autoReplyCooldownMinutes: number;
   sendBusinessHoursAutoReply: boolean;

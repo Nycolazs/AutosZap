@@ -923,15 +923,19 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     path: string,
     axiosConfig?: AxiosRequestConfig,
   ) {
-    const response = await axios.get<T>(this.buildGraphUrl(path), {
-      ...axiosConfig,
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-        ...(axiosConfig?.headers ?? {}),
-      },
-    });
+    try {
+      const response = await axios.get<T>(this.buildGraphUrl(path), {
+        ...axiosConfig,
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          ...(axiosConfig?.headers ?? {}),
+        },
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      throw new Error(this.describeMetaRequestError(error));
+    }
   }
 
   private async listAllTemplates(
@@ -1041,16 +1045,66 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     body: Record<string, unknown>,
     axiosConfig?: AxiosRequestConfig,
   ) {
-    const response = await axios.post<T>(this.buildGraphUrl(path), body, {
-      ...axiosConfig,
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json',
-        ...(axiosConfig?.headers ?? {}),
-      },
-    });
+    try {
+      const response = await axios.post<T>(this.buildGraphUrl(path), body, {
+        ...axiosConfig,
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json',
+          ...(axiosConfig?.headers ?? {}),
+        },
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      throw new Error(this.describeMetaRequestError(error));
+    }
+  }
+
+  private describeMetaRequestError(error: unknown) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const payload = error.response?.data as
+        | {
+            error?: {
+              message?: string;
+              error_user_msg?: string;
+              error_user_title?: string;
+              code?: number;
+            };
+          }
+        | undefined;
+      const providerMessage =
+        payload?.error?.error_user_msg ??
+        payload?.error?.message ??
+        error.message;
+
+      if (status === 401) {
+        return [
+          'A Meta recusou as credenciais da instancia (401).',
+          'Verifique o Access Token, o Phone Number ID e se o token ainda tem permissao para a WABA configurada.',
+          providerMessage,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      if (status === 403) {
+        return [
+          'A Meta negou acesso ao recurso solicitado (403).',
+          'Verifique se o app e o numero possuem as permissoes necessarias.',
+          providerMessage,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      return providerMessage || 'Erro inesperado na comunicacao com a Meta.';
+    }
+
+    return error instanceof Error
+      ? error.message
+      : 'Erro inesperado na comunicacao com a Meta.';
   }
 
   private buildGraphUrl(path: string) {

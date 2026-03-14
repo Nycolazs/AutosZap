@@ -38,6 +38,11 @@ enum ConversationStatus {
   RESOLVED
 }
 
+enum ConversationCloseReason {
+  MANUAL
+  UNANSWERED
+}
+
 enum ConversationOwnership {
   MINE
   UNASSIGNED
@@ -509,6 +514,7 @@ model Conversation {
   instanceId            String?
   assignedUserId        String?
   status                ConversationStatus        @default(OPEN)
+  closeReason           ConversationCloseReason?
   ownership             ConversationOwnership     @default(UNASSIGNED)
   unreadCount           Int                       @default(0)
   lastMessageAt         DateTime?
@@ -627,6 +633,7 @@ model WorkspaceConversationSettings {
   id                         String                  @id @default(cuid())
   workspaceId                String                  @unique
   inactivityTimeoutMinutes   Int                     @default(15)
+  waitingAutoCloseTimeoutMinutes Int?
   timezone                   String                  @default("America/Fortaleza")
   autoReplyCooldownMinutes   Int                     @default(120)
   sendBusinessHoursAutoReply Boolean                 @default(false)

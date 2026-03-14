@@ -84,6 +84,7 @@ const emptyBusinessProfileForm: BusinessProfileFormState = {
 };
 
 export default function InstancesPage() {
+  const [instanceActionKey, setInstanceActionKey] = useState<string | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -116,6 +117,22 @@ export default function InstancesPage() {
     return apiRequest<WhatsAppInstanceDiagnostics>(`instances/${instanceId}/sync`, {
       method: 'POST',
     });
+  }
+
+  async function runInstanceAction(actionKey: string, action: () => Promise<void>) {
+    setInstanceActionKey(actionKey);
+
+    try {
+      await action();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel executar a acao da instancia.',
+      );
+    } finally {
+      setInstanceActionKey((current) => (current === actionKey ? null : current));
+    }
   }
 
   async function loadBusinessProfile(instanceId: string) {
@@ -306,81 +323,116 @@ export default function InstancesPage() {
     {
       id: 'test',
       header: 'Integração',
-      cell: ({ row }) => (
+      cell: ({ row }) => {
+        const testActionKey = `test:${row.original.id}`;
+        const syncActionKey = `sync:${row.original.id}`;
+        const subscribeActionKey = `subscribe:${row.original.id}`;
+        const templatesActionKey = `templates:${row.original.id}`;
+        const profileActionKey = `profile:${row.original.id}`;
+
+        return (
         <div className="flex flex-wrap gap-2">
           <Button
+            type="button"
             variant="secondary"
             size="sm"
+            disabled={instanceActionKey !== null}
             onClick={async (event) => {
               event.stopPropagation();
-              const response = await apiRequest<{ detail: string; simulated: boolean }>(
-                `instances/${row.original.id}/test`,
-                { method: 'POST' },
-              );
-              toast.success(response.simulated ? 'Teste dev executado.' : response.detail);
+              await runInstanceAction(testActionKey, async () => {
+                const response = await apiRequest<{ detail: string; simulated: boolean }>(
+                  `instances/${row.original.id}/test`,
+                  { method: 'POST' },
+                );
+                toast.success(response.simulated ? 'Teste dev executado.' : response.detail);
+              });
             }}
           >
+            {instanceActionKey === testActionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Testar
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
+            disabled={instanceActionKey !== null}
             onClick={async (event) => {
               event.stopPropagation();
-              const response = await syncInstance(row.original.id);
-              toast.success(
-                response.simulated
-                  ? 'Sync em modo dev.'
-                  : `${response.phoneNumber?.displayPhoneNumber ?? 'Numero validado'} • ${response.templates.length} templates`,
-              );
+              await runInstanceAction(syncActionKey, async () => {
+                const response = await syncInstance(row.original.id);
+                toast.success(
+                  response.simulated
+                    ? 'Sync em modo dev.'
+                    : `${response.phoneNumber?.displayPhoneNumber ?? 'Numero validado'} • ${response.templates.length} templates`,
+                );
+              });
             }}
           >
+            {instanceActionKey === syncActionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Sync Meta
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
+            disabled={instanceActionKey !== null}
             onClick={async (event) => {
               event.stopPropagation();
-              const response = await apiRequest<{ detail: string; simulated: boolean }>(
-                `instances/${row.original.id}/subscribe-app`,
-                { method: 'POST' },
-              );
-              toast.success(response.simulated ? 'Subscribe simulado.' : response.detail);
+              await runInstanceAction(subscribeActionKey, async () => {
+                const response = await apiRequest<{ detail: string; simulated: boolean }>(
+                  `instances/${row.original.id}/subscribe-app`,
+                  {
+                    method: 'POST',
+                    body: {},
+                  },
+                );
+                toast.success(response.simulated ? 'Subscribe simulado.' : response.detail);
+              });
             }}
           >
+            {instanceActionKey === subscribeActionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Subscribe
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
+            disabled={instanceActionKey !== null}
             onClick={async (event) => {
               event.stopPropagation();
-              const templates = await apiRequest<WhatsAppTemplateSummary[]>(
-                `instances/${row.original.id}/templates`,
-              );
-              toast.success(
-                templates.length
-                  ? `${templates.length} templates carregados. Primeira: ${templates[0]?.name}`
-                  : 'Nenhum template retornado pela WABA.',
-              );
+              await runInstanceAction(templatesActionKey, async () => {
+                const templates = await apiRequest<WhatsAppTemplateSummary[]>(
+                  `instances/${row.original.id}/templates`,
+                );
+                toast.success(
+                  templates.length
+                    ? `${templates.length} templates carregados. Primeira: ${templates[0]?.name}`
+                    : 'Nenhum template retornado pela WABA.',
+                );
+              });
             }}
           >
+            {instanceActionKey === templatesActionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Templates
           </Button>
           <Button
+            type="button"
             variant="secondary"
             size="sm"
+            disabled={instanceActionKey !== null}
             onClick={async (event) => {
               event.stopPropagation();
-              await openProfileDialog(row.original);
+              await runInstanceAction(profileActionKey, async () => {
+                await openProfileDialog(row.original);
+              });
             }}
           >
-            <Camera className="h-4 w-4" />
+            {instanceActionKey === profileActionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             Perfil WhatsApp
           </Button>
         </div>
-      ),
+        );
+      },
     },
   ];
 

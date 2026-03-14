@@ -27,6 +27,14 @@ import {
 import { NotificationsResponse } from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
 
+function isRouteActive(pathname: string, href: string) {
+  if (href === '/app') {
+    return pathname === '/app';
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function Topbar({
   userName,
   userRole,
@@ -60,9 +68,8 @@ export function Topbar({
     () =>
       visibleSections
         .flatMap((section) => section.items)
-        .find(
-          (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-        )?.label ?? 'AutosZap',
+        .find((item) => isRouteActive(pathname, item.href))?.label ??
+      'AutosZap',
     [pathname, visibleSections],
   );
 
@@ -240,9 +247,7 @@ export function Topbar({
                 </p>
                 <div className="space-y-1">
                   {section.items.map((item) => {
-                    const active =
-                      pathname === item.href ||
-                      pathname.startsWith(`${item.href}/`);
+                    const active = isRouteActive(pathname, item.href);
                     const Icon = item.icon;
 
                     return (

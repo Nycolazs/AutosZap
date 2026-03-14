@@ -149,6 +149,14 @@ export const APP_NAV_SECTIONS: Array<{
   },
 ];
 
+function isRouteActive(pathname: string, href: string) {
+  if (href === '/app') {
+    return pathname === '/app';
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap }) {
   const pathname = usePathname();
   const visibleSections = APP_NAV_SECTIONS
@@ -187,7 +195,7 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
                 </p>
                 <div className="space-y-1">
                   {section.items.map((item) => {
-                    const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    const active = isRouteActive(pathname, item.href);
                     const Icon = item.icon;
 
                     return (

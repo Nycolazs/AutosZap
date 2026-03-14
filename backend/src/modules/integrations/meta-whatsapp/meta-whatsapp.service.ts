@@ -1473,7 +1473,6 @@ export class MetaWhatsAppService {
       where: {
         workspaceId,
         contactId,
-        instanceId,
         deletedAt: null,
       },
       orderBy: {
@@ -1482,6 +1481,30 @@ export class MetaWhatsAppService {
     });
 
     if (existing) {
+      if (existing.instanceId !== instanceId) {
+        try {
+          return await this.prisma.conversation.update({
+            where: {
+              id: existing.id,
+            },
+            data: {
+              instanceId,
+            },
+          });
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002'
+          ) {
+            // If another active conversation already holds this unique triplet,
+            // keep using the latest conversation found for this contact.
+            return existing;
+          }
+
+          throw error;
+        }
+      }
+
       return existing;
     }
 
@@ -1509,7 +1532,6 @@ export class MetaWhatsAppService {
           where: {
             workspaceId,
             contactId,
-            instanceId,
             deletedAt: null,
           },
           orderBy: {

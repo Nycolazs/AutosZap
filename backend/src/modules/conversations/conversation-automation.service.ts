@@ -54,7 +54,7 @@ export class ConversationAutomationService
 
       if (result.updatedCount > 0) {
         this.logger.log(
-          `Timeouts processados com sucesso. Conversas liberadas: ${result.updatedCount}.`,
+          `Timeouts processados com sucesso. Liberadas para AGUARDANDO: ${result.returnedToWaitingCount}. Encerradas como NAO RESPONDIDO: ${result.autoClosedCount}.`,
         );
       }
     } catch (error) {

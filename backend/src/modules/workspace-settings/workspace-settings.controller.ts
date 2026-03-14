@@ -45,6 +45,12 @@ class UpdateWorkspaceConversationSettingsDto {
   inactivityTimeoutMinutes?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10080)
+  waitingAutoCloseTimeoutMinutes?: number | null;
+
+  @IsOptional()
   @IsString()
   timezone?: string;
 
