@@ -474,8 +474,8 @@ export function ConversationRemindersPanel({
       </section>
 
       <Dialog open={activeDialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="w-[min(1120px,calc(100vw-0.75rem))] border-white/10 bg-[#04111f]/96 p-0">
-          <div className="max-h-[92vh] overflow-y-auto p-4 sm:p-5">
+        <DialogContent className="min-h-[82vh] max-h-[97vh] w-[min(1120px,calc(100vw-0.75rem))] border-white/10 bg-[#04111f]/96 p-0 sm:min-h-[88vh] sm:max-h-[96vh]">
+          <div className="max-h-[95vh] overflow-y-auto p-4 sm:max-h-[93vh] sm:p-5">
             <DialogHeader className="pr-10">
               <div className="mb-2.5 flex items-start gap-2">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border border-primary/18 bg-primary/10 shadow-[0_8px_20px_rgba(50,151,255,0.18)]">

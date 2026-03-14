@@ -79,7 +79,7 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-      <DialogContent className="sm:max-w-[680px]">
+      <DialogContent className="min-h-[76vh] max-h-[96vh] sm:min-h-[82vh] sm:max-h-[95vh] sm:max-w-[760px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}

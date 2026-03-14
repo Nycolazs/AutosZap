@@ -13,3 +13,12 @@ backend/node_modules
 backend/dist
 backend/coverage
 .codex-local
+
+# Scripts temporários de operação / deploy ad-hoc.
+# Nunca devem entrar no repositório pois podem conter credenciais.
+tmp-deploy.py
+check-status.py
+tmp-*.py
+tmp-*.sh
+scratch-*.sh
+scratch-*.py

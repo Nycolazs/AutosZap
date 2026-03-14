@@ -356,7 +356,7 @@ export default function TeamPage() {
                 </div>
               ) : null}
 
-              <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-2">
+              <div className="max-h-[80vh] space-y-4 overflow-y-auto pr-2">
                 {Object.entries(groupedPermissions).map(([category, permissions]) => (
                   <Card key={category} className="p-0">
                     <CardHeader className="p-5 pb-3">

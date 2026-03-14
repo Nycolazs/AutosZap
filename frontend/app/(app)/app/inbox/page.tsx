@@ -93,6 +93,8 @@ function InboxPageContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoScrolledConversationRef = useRef<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -460,6 +462,36 @@ function InboxPageContent() {
 
     return () => window.clearTimeout(resetPanels);
   }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!selectedConversation?.id) {
+      return;
+    }
+
+    if (lastAutoScrolledConversationRef.current === selectedConversation.id) {
+      return;
+    }
+
+    lastAutoScrolledConversationRef.current = selectedConversation.id;
+
+    const scrollToBottom = () => {
+      const container = messagesScrollRef.current;
+
+      if (!container) {
+        return;
+      }
+
+      container.scrollTop = container.scrollHeight;
+    };
+
+    // Wait one frame so the messages list is fully painted before measuring height.
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom();
+      window.setTimeout(scrollToBottom, 0);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedConversation?.id]);
 
   useEffect(() => {
     if (!isRecording || recordingPaused) {
@@ -834,7 +866,7 @@ function InboxPageContent() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
+              <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
                 {selectedConversation.messages?.map((message) => (
                   <div
                     key={message.id}
@@ -1062,7 +1094,7 @@ function InboxPageContent() {
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="w-full p-0 xl:hidden sm:w-[min(94vw,680px)]">
-          <div className="max-h-[85vh] overflow-y-auto">
+          <div className="max-h-[92vh] overflow-y-auto">
             <ConversationSidebar
               selectedConversation={selectedConversation}
               selectedTagIds={selectedTagIds}

@@ -65,6 +65,23 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Atomically increments a counter. Sets the TTL on first creation.
+   * Returns the new counter value. Used for rate limiting.
+   */
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    const client = this.getClient();
+    if (client.status === 'wait') {
+      await client.connect();
+    }
+    const pipeline = client.pipeline();
+    pipeline.incr(key);
+    pipeline.expire(key, ttlSeconds, 'NX');
+    const results = await pipeline.exec();
+    const count = results?.[0]?.[1];
+    return typeof count === 'number' ? count : 1;
+  }
+
   async onModuleDestroy() {
     if (this.client) {
       await this.client.quit();

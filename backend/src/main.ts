@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import {
@@ -28,6 +29,9 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
+  // Limit request body size to prevent payload-based DoS attacks
+  app.use(json({ limit: '2mb' }));
+  app.use(urlencoded({ extended: true, limit: '2mb' }));
   app.enableCors({
     origin: (origin: string | undefined, callback: CorsOriginCallback) => {
       if (!origin || allowedOrigins.includes(origin)) {

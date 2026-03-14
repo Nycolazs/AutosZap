@@ -86,25 +86,25 @@ export function PlatformDownloads() {
   const artifacts = payload?.artifacts ?? [];
 
   return (
-    <Card className="w-full max-w-[400px] rounded-[18px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.95),rgba(4,14,28,0.98))] shadow-[0_14px_30px_rgba(2,10,22,0.3)] backdrop-blur-xl">
+    <Card className="w-full max-w-[420px] rounded-[20px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.95),rgba(4,14,28,0.98))] shadow-[0_14px_30px_rgba(2,10,22,0.3)] backdrop-blur-xl">
       <CardHeader className="p-4 pb-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
             <Badge className="border-primary/20 bg-primary-soft px-2 py-0.5 text-[9px] uppercase tracking-[0.16em] text-primary">
               Downloads
             </Badge>
-            <CardTitle className="text-xs font-semibold leading-tight tracking-tight text-foreground/90">
+            <CardTitle className="text-[12px] font-semibold leading-tight tracking-tight text-foreground/90">
               Android, Windows e macOS
             </CardTitle>
           </div>
           {platformHint ? (
-            <Badge className="border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] text-foreground/80">
+            <Badge className="w-fit border-white/10 bg-white/[0.05] px-2.5 py-0.5 text-[10px] text-foreground/80">
               Recomendado para {mapPlatform(platformHint)}
             </Badge>
           ) : null}
         </div>
       </CardHeader>
-      <CardContent className="space-y-1.5 p-4 pt-0">
+      <CardContent className="space-y-2 p-4 pt-0">
         {loading ? (
           <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3 text-xs text-muted-foreground">
             Carregando versoes disponiveis...
@@ -115,11 +115,11 @@ export function PlatformDownloads() {
           </div>
         ) : (
           <>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               {artifacts.map((artifact) => (
                 <div
                   key={artifact.id}
-                  className={`rounded-lg border p-2.5 transition ${
+                  className={`rounded-xl border p-3 transition ${
                     artifact.platform === platformHint
                       ? 'border-primary/35 bg-primary-soft/60 shadow-[0_8px_24px_rgba(61,150,255,0.14)]'
                       : 'border-white/8 bg-white/[0.03]'
@@ -128,7 +128,7 @@ export function PlatformDownloads() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div
-                        className={`shrink-0 rounded-md p-1 ring-1 ${
+                        className={`shrink-0 rounded-lg p-1.5 ring-1 ${
                           artifact.platform === 'android'
                             ? 'bg-[linear-gradient(135deg,rgba(61,220,132,0.20),rgba(61,220,132,0.07))] text-green-400 ring-green-400/25'
                             : artifact.platform === 'windows'
@@ -137,16 +137,16 @@ export function PlatformDownloads() {
                         }`}
                       >
                         {artifact.platform === 'android' ? (
-                          <Smartphone className="h-3.5 w-3.5" />
+                          <Smartphone className="h-4.5 w-4.5" />
                         ) : artifact.platform === 'windows' ? (
-                          <Laptop2 className="h-3.5 w-3.5" />
+                          <Laptop2 className="h-4.5 w-4.5" />
                         ) : (
-                          <Apple className="h-3.5 w-3.5" />
+                          <Apple className="h-4.5 w-4.5" />
                         )}
                       </div>
                       <div>
-                        <p className="text-[12px] font-medium text-foreground">{artifact.label}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[13px] font-semibold text-foreground">{artifact.label}</p>
+                        <p className="text-[11px] text-muted-foreground">
                           v{artifact.version} • {artifact.channel}
                         </p>
                       </div>
@@ -164,14 +164,14 @@ export function PlatformDownloads() {
                     </p>
                   ) : null}
 
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <Button
                       asChild
                       size="sm"
-                      className="h-7 rounded-md px-3 text-[12px] font-medium"
+                      className="h-8 rounded-lg px-3 text-[12px] font-medium"
                     >
                       <Link href={artifact.url} target="_blank">
-                        <Download className="mr-1 h-3 w-3" />
+                        <Download className="mr-1 h-3.5 w-3.5" />
                         Baixar
                       </Link>
                     </Button>
@@ -180,10 +180,10 @@ export function PlatformDownloads() {
                         asChild
                         size="sm"
                         variant="ghost"
-                        className="h-7 rounded-md border border-white/10 bg-white/[0.03] px-3 text-[12px] font-medium text-foreground/75 hover:bg-white/[0.06]"
+                        className="h-8 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-[12px] font-medium text-foreground/75 hover:bg-white/[0.06]"
                       >
                         <Link href={artifact.qrCodeUrl} target="_blank">
-                          <QrCode className="mr-1 h-3 w-3" />
+                          <QrCode className="mr-1 h-3.5 w-3.5" />
                           QR Code
                         </Link>
                       </Button>

@@ -64,10 +64,10 @@ export function AuthShell({
               const Icon = bullet.icon;
               return (
                 <div key={bullet.text} className="flex items-center gap-3">
-                  <div className="shrink-0 rounded-lg bg-[linear-gradient(135deg,rgba(50,151,255,0.22),rgba(50,151,255,0.08))] p-1.5 text-primary shadow-[0_2px_8px_rgba(50,151,255,0.16)] ring-1 ring-primary/20">
-                    <Icon className="h-3 w-3" />
+                  <div className="shrink-0 rounded-xl bg-[linear-gradient(135deg,rgba(50,151,255,0.24),rgba(50,151,255,0.1))] p-2 text-primary shadow-[0_4px_12px_rgba(50,151,255,0.2)] ring-1 ring-primary/25">
+                    <Icon className="h-4 w-4" />
                   </div>
-                  <p className="text-[12px] font-medium text-foreground/85">{bullet.text}</p>
+                  <p className="text-[13px] font-medium text-foreground/85">{bullet.text}</p>
                 </div>
               );
             })}
@@ -83,7 +83,7 @@ export function AuthShell({
               </div>
               <div>
                 <p className="text-[12px] font-semibold">Equipe AutosZap</p>
-                <p className="text-[10px] text-muted-foreground">Backend real, seed completo, pronto para desenvolver</p>
+                <p className="text-[10px] text-muted-foreground">Simplicidade, agilidade e eficiência para o seu negócio</p>
               </div>
             </div>
           </div>

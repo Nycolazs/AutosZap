@@ -6,6 +6,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { RateLimitGuard } from './common/guards/rate-limit.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RealtimeModule } from './common/realtime/realtime.module';
@@ -72,6 +73,10 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RateLimitGuard,
     },
     {
       provide: APP_FILTER,

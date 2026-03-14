@@ -324,7 +324,7 @@ export function Topbar({
             </div>
           </div>
 
-          <div className="max-h-[70vh] overflow-y-auto px-4 py-4 sm:max-h-[70vh]">
+          <div className="max-h-[82vh] overflow-y-auto px-4 py-4 sm:max-h-[80vh]">
             {notificationsQuery.data?.items.length ? (
               <div className="space-y-3">
                 {notificationsQuery.data.items.map((notification) => (
