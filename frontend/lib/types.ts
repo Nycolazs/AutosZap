@@ -312,7 +312,18 @@ export interface DashboardOverview {
     crmLeads: number;
   };
   chart: Array<{ label: string; value: number }>;
-  recentActivity: Array<{ id: string; entityType: string; action: string; createdAt: string }>;
+  recentActivity: Array<{
+    id: string;
+    entityType: string;
+    entityId?: string;
+    action: string;
+    actionLabel?: string;
+    entityLabel?: string;
+    actorName?: string;
+    actorEmail?: string | null;
+    detail?: string | null;
+    createdAt: string;
+  }>;
   notifications: NotificationItem[];
   shortcuts: Array<{ title: string; href: string }>;
 }

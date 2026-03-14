@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import { AuditAction, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 
@@ -65,6 +65,14 @@ export class DashboardService {
         where: { workspaceId },
         orderBy: { createdAt: 'desc' },
         take: 8,
+        include: {
+          actor: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
       }),
       this.prisma.notification.findMany({
         where: { workspaceId },
@@ -103,6 +111,22 @@ export class DashboardService {
       chartMap.set(key, (chartMap.get(key) ?? 0) + 1);
     }
     const chartSource = [...chartMap.entries()].slice(-7);
+    const recentActivitySummary = recentActivity.map((activity) => {
+      const metadata = this.parseAuditMetadata(activity.metadata);
+
+      return {
+        id: activity.id,
+        entityType: activity.entityType,
+        entityId: activity.entityId,
+        action: activity.action,
+        createdAt: activity.createdAt,
+        actorName: activity.actor?.name ?? activity.actor?.email ?? 'Sistema',
+        actorEmail: activity.actor?.email ?? null,
+        actionLabel: this.mapAuditActionLabel(activity.action),
+        entityLabel: this.mapAuditEntityLabel(activity.entityType),
+        detail: this.buildAuditDetail(activity.action, activity.entityType, metadata),
+      };
+    });
 
     const response = {
       metrics: {
@@ -116,7 +140,7 @@ export class DashboardService {
         label,
         value,
       })),
-      recentActivity,
+      recentActivity: recentActivitySummary,
       notifications,
       shortcuts: [
         { title: 'Nova campanha', href: '/app/disparos' },
@@ -151,7 +175,13 @@ export class DashboardService {
         SELECT
           COALESCE(metadata->>'ownerUserId', "actorUserId") AS "userId",
           COUNT(*)::int AS "resolvedCount",
-          AVG(NULLIF((metadata->>'resolutionTimeMs')::numeric, 0))::float AS "avgResolutionMs"
+          AVG(
+            CASE
+              WHEN COALESCE(metadata->>'resolutionTimeMs', '') ~ '^[0-9]+(\\.[0-9]+)?$'
+              THEN NULLIF((metadata->>'resolutionTimeMs')::numeric, 0)
+              ELSE NULL
+            END
+          )::float AS "avgResolutionMs"
         FROM "ConversationEvent"
         WHERE "workspaceId" = ${workspaceId}
           AND type = 'RESOLVED'
@@ -173,7 +203,13 @@ export class DashboardService {
       first_response_events AS (
         SELECT
           "actorUserId" AS "userId",
-          AVG(NULLIF((metadata->>'responseTimeMs')::numeric, 0))::float AS "avgFirstResponseMs"
+          AVG(
+            CASE
+              WHEN COALESCE(metadata->>'responseTimeMs', '') ~ '^[0-9]+(\\.[0-9]+)?$'
+              THEN NULLIF((metadata->>'responseTimeMs')::numeric, 0)
+              ELSE NULL
+            END
+          )::float AS "avgFirstResponseMs"
         FROM "ConversationEvent"
         WHERE "workspaceId" = ${workspaceId}
           AND type = 'FIRST_RESPONSE'
@@ -301,5 +337,75 @@ export class DashboardService {
       from: startDate,
       to: endDate,
     };
+  }
+
+  private parseAuditMetadata(metadata: Prisma.JsonValue | null | undefined) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return null;
+    }
+
+    return metadata as Record<string, unknown>;
+  }
+
+  private mapAuditActionLabel(action: AuditAction) {
+    const labels: Record<AuditAction, string> = {
+      CREATE: 'Criou',
+      UPDATE: 'Atualizou',
+      DELETE: 'Removeu',
+      LOGIN: 'Entrou no sistema',
+      INVITE: 'Convidou usuário',
+      SEND: 'Enviou',
+      SYNC: 'Sincronizou',
+    };
+
+    return labels[action] ?? action;
+  }
+
+  private mapAuditEntityLabel(entityType: string) {
+    const normalized = entityType.trim().toLowerCase();
+    const labels: Record<string, string> = {
+      user: 'Usuário',
+      users: 'Usuário',
+      team_member: 'Membro da equipe',
+      contact: 'Contato',
+      conversation: 'Conversa',
+      campaign: 'Campanha',
+      lead: 'Lead',
+      instance: 'Instância',
+      notification: 'Notificação',
+    };
+
+    return labels[normalized] ?? entityType;
+  }
+
+  private buildAuditDetail(
+    action: AuditAction,
+    entityType: string,
+    metadata: Record<string, unknown> | null,
+  ) {
+    if (!metadata) {
+      return `${this.mapAuditEntityLabel(entityType)} • sem detalhes adicionais`;
+    }
+
+    const userAgent = typeof metadata.userAgent === 'string' ? metadata.userAgent : '';
+    const ipAddress = typeof metadata.ipAddress === 'string' ? metadata.ipAddress : '';
+    const email = typeof metadata.email === 'string' ? metadata.email : '';
+    const status = typeof metadata.status === 'string' ? metadata.status : '';
+
+    if (action === AuditAction.LOGIN) {
+      const loginDetails = [ipAddress ? `IP ${ipAddress}` : null, userAgent ? userAgent : null].filter(Boolean);
+      return loginDetails.length ? loginDetails.join(' • ') : 'Login realizado com sucesso';
+    }
+
+    if (action === AuditAction.INVITE) {
+      const inviteDetails = [email ? `Email ${email}` : null, status ? `Status ${status}` : null].filter(Boolean);
+      return inviteDetails.length ? inviteDetails.join(' • ') : 'Convite enviado';
+    }
+
+    if (email) {
+      return `Email ${email}`;
+    }
+
+    return `${this.mapAuditEntityLabel(entityType)} atualizada`;
   }
 }

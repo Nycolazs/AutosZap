@@ -7,9 +7,29 @@ export class ApiError extends Error {
   }
 }
 
+export class AuthRedirectError extends Error {
+  constructor() {
+    super('Redirecionando para login.');
+  }
+}
+
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
 };
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (window.location.pathname.startsWith('/login')) {
+    return;
+  }
+
+  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const loginUrl = `/login?next=${encodeURIComponent(next)}`;
+  window.location.replace(loginUrl);
+}
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   const isFormData =
@@ -31,8 +51,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
           : JSON.stringify(options.body),
   });
 
-  if (response.status === 401 && typeof window !== 'undefined') {
-    window.location.href = '/login';
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') {
+      redirectToLogin();
+      throw new AuthRedirectError();
+    }
+
     throw new ApiError('Sessao expirada.', 401);
   }
 

@@ -69,9 +69,10 @@ export function Topbar({
   const notificationsQuery = useQuery({
     queryKey: ['notifications'],
     queryFn: () => apiRequest<NotificationsResponse>('notifications?limit=12'),
-    refetchInterval: 15_000,
+    refetchInterval: notificationsOpen ? 15_000 : 60_000,
     refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: notificationsOpen,
+    staleTime: notificationsOpen ? 0 : 60_000,
   });
 
   const markAllReadMutation = useMutation({
@@ -109,16 +110,24 @@ export function Topbar({
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
 
   async function openNotification(notificationId: string, linkHref?: string | null) {
-    await apiRequest(`notifications/${notificationId}/read`, {
-      method: 'POST',
-    });
-    await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    try {
+      await apiRequest(`notifications/${notificationId}/read`, {
+        method: 'POST',
+      });
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
 
-    if (linkHref) {
-      router.push(linkHref);
+      if (linkHref) {
+        router.push(linkHref);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel abrir a notificacao agora.';
+      toast.error(message);
+    } finally {
+      setNotificationsOpen(false);
     }
-
-    setNotificationsOpen(false);
   }
 
   function submitSearch() {
@@ -216,7 +225,7 @@ export function Topbar({
       </div>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent className="left-0 right-auto top-0 bottom-auto h-dvh max-h-dvh w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-r border-border bg-background-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-none sm:border-r">
+        <DialogContent className="mobile-menu-drawer left-auto right-0 top-0 bottom-auto h-dvh max-h-dvh w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-l border-border border-r-0 bg-background-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-none sm:border-l sm:border-r-0">
           <DialogHeader>
             <DialogTitle>Navegação</DialogTitle>
             <DialogDescription>

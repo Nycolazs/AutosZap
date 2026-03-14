@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuditAction, PermissionKey, Role, UserStatus } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { createAuditLog } from '../../common/utils/audit';
 import { generateSecureToken } from '../../common/utils/auth';
@@ -75,28 +76,83 @@ export class TeamService {
       title?: string;
       role: Role;
       status?: UserStatus;
+      password?: string;
+      confirmPassword?: string;
     },
   ) {
+    const normalizedEmail = payload.email.toLowerCase();
+    const normalizedRole = normalizeRole(payload.role);
+    const shouldCreateLogin =
+      typeof payload.password === 'string' && payload.password.length > 0;
+
+    if (shouldCreateLogin && payload.password !== payload.confirmPassword) {
+      throw new BadRequestException('As senhas informadas nao conferem.');
+    }
+
     const existing = await this.prisma.teamMember.findFirst({
-      where: { workspaceId, email: payload.email.toLowerCase() },
+      where: { workspaceId, email: normalizedEmail },
     });
 
     if (existing) {
       throw new BadRequestException('Ja existe um membro com este email.');
     }
 
-    const member = await this.prisma.teamMember.create({
-      data: {
-        workspaceId,
-        invitedById: actorId,
-        name: payload.name,
-        email: payload.email.toLowerCase(),
-        title: payload.title,
-        role: normalizeRole(payload.role),
-        status: payload.status ?? UserStatus.PENDING,
-        inviteToken: generateSecureToken(16),
-      },
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
     });
+
+    if (existingUser) {
+      throw new BadRequestException('Ja existe uma conta com este email.');
+    }
+
+    const status = shouldCreateLogin
+      ? payload.status && payload.status !== UserStatus.PENDING
+        ? payload.status
+        : UserStatus.ACTIVE
+      : payload.status ?? UserStatus.PENDING;
+
+    const member = shouldCreateLogin
+      ? await this.prisma.$transaction(async (tx) => {
+          const passwordHash = await bcrypt.hash(payload.password as string, 10);
+          const user = await tx.user.create({
+            data: {
+              workspaceId,
+              name: payload.name,
+              email: normalizedEmail,
+              passwordHash,
+              role: normalizedRole,
+              status,
+              title: payload.title,
+            },
+          });
+
+          return tx.teamMember.create({
+            data: {
+              workspaceId,
+              invitedById: actorId,
+              userId: user.id,
+              name: payload.name,
+              email: normalizedEmail,
+              title: payload.title,
+              role: normalizedRole,
+              status,
+              inviteToken: null,
+            },
+          });
+        })
+      : await this.prisma.teamMember.create({
+          data: {
+            workspaceId,
+            invitedById: actorId,
+            name: payload.name,
+            email: normalizedEmail,
+            title: payload.title,
+            role: normalizedRole,
+            status,
+            inviteToken: generateSecureToken(16),
+          },
+        });
 
     await createAuditLog(
       this.prisma,
@@ -119,9 +175,12 @@ export class TeamService {
     workspaceId: string,
     payload: {
       name?: string;
+      email?: string;
       title?: string;
       role?: Role;
       status?: UserStatus;
+      password?: string;
+      confirmPassword?: string;
     },
   ) {
     const member = await this.prisma.teamMember.findFirst({
@@ -133,6 +192,91 @@ export class TeamService {
 
     if (!member) {
       throw new NotFoundException('Membro nao encontrado.');
+    }
+
+    const normalizedEmail = payload.email?.toLowerCase().trim();
+    const shouldUpdateEmail =
+      !!normalizedEmail && normalizedEmail !== member.email.toLowerCase();
+
+    if (shouldUpdateEmail) {
+      const existingMember = await this.prisma.teamMember.findFirst({
+        where: {
+          workspaceId,
+          email: normalizedEmail,
+          NOT: { id },
+        },
+        select: { id: true },
+      });
+
+      if (existingMember) {
+        throw new BadRequestException('Ja existe um membro com este email.');
+      }
+
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      });
+
+      if (existingUser && (!member.user || existingUser.id !== member.user.id)) {
+        throw new BadRequestException('Ja existe uma conta com este email.');
+      }
+    }
+
+    const shouldUpdatePassword =
+      typeof payload.password === 'string' && payload.password.length > 0;
+
+    if (shouldUpdatePassword && payload.password !== payload.confirmPassword) {
+      throw new BadRequestException('As senhas informadas nao conferem.');
+    }
+
+    if (shouldUpdatePassword && !member.user) {
+      const email = normalizedEmail ?? member.email.toLowerCase();
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+
+      if (existingUser) {
+        throw new BadRequestException('Ja existe uma conta com este email.');
+      }
+
+      const nextRole = payload.role ? normalizeRole(payload.role) : member.role;
+      const nextStatus =
+        payload.status && payload.status !== UserStatus.PENDING
+          ? payload.status
+          : UserStatus.ACTIVE;
+      const passwordHash = await bcrypt.hash(payload.password as string, 10);
+
+      await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            workspaceId,
+            name: payload.name ?? member.name,
+            email,
+            passwordHash,
+            role: nextRole,
+            status: nextStatus,
+            title: payload.title ?? member.title,
+          },
+        });
+
+        await tx.teamMember.update({
+          where: { id },
+          data: {
+            userId: user.id,
+            name: payload.name ?? member.name,
+            email,
+            title: payload.title ?? member.title,
+            role: nextRole,
+            status: nextStatus,
+            inviteToken: null,
+          },
+        });
+      });
+
+      return this.list(workspaceId).then((items) =>
+        items.find((teamMember) => teamMember.id === id),
+      );
     }
 
     if (
@@ -165,10 +309,33 @@ export class TeamService {
       });
     }
 
+    if (member.user && shouldUpdateEmail) {
+      await this.prisma.user.update({
+        where: {
+          id: member.user.id,
+        },
+        data: {
+          email: normalizedEmail,
+        },
+      });
+    }
+
+    if (member.user && shouldUpdatePassword) {
+      await this.prisma.user.update({
+        where: {
+          id: member.user.id,
+        },
+        data: {
+          passwordHash: await bcrypt.hash(payload.password as string, 10),
+        },
+      });
+    }
+
     await this.prisma.teamMember.update({
       where: { id },
       data: {
         name: payload.name ?? member.name,
+        email: normalizedEmail ?? member.email,
         title: payload.title ?? member.title,
         role: payload.role ? normalizeRole(payload.role) : member.role,
         status: payload.status ?? member.status,

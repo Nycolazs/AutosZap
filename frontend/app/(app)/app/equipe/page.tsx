@@ -27,6 +27,47 @@ const teamMemberSchema = z.object({
   title: z.string().optional(),
   role: z.enum(['ADMIN', 'SELLER']),
   status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
+  password: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal('')),
+  confirmPassword: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal('')),
+}).superRefine((values, ctx) => {
+  const hasPassword = Boolean(values.password && values.password.length > 0);
+  const hasConfirm = Boolean(values.confirmPassword && values.confirmPassword.length > 0);
+
+  if (!hasPassword && !hasConfirm) {
+    return;
+  }
+
+  if (!hasPassword || (values.password?.length ?? 0) < 6) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['password'],
+      message: 'A senha precisa ter ao menos 6 caracteres.',
+    });
+  }
+
+  if (!hasConfirm || (values.confirmPassword?.length ?? 0) < 6) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['confirmPassword'],
+      message: 'Confirme a senha com ao menos 6 caracteres.',
+    });
+  }
+
+  if (values.password !== values.confirmPassword) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['confirmPassword'],
+      message: 'As senhas nao conferem.',
+    });
+  }
 });
 
 type TeamMemberFormValues = z.infer<typeof teamMemberSchema>;
@@ -63,11 +104,34 @@ export default function TeamPage() {
   }, [permissionCatalogQuery.data]);
 
   const saveMemberMutation = useMutation({
-    mutationFn: (values: TeamMemberFormValues) =>
-      apiRequest(selectedMember ? `team/${selectedMember.id}` : 'team', {
-        method: selectedMember ? 'PATCH' : 'POST',
+    mutationFn: (values: TeamMemberFormValues) => {
+      if (selectedMember) {
+        const normalizedPassword = values.password?.trim() ?? '';
+        const normalizedConfirmPassword = values.confirmPassword?.trim() ?? '';
+
+        return apiRequest(`team/${selectedMember.id}`, {
+          method: 'PATCH',
+          body: {
+            name: values.name,
+            email: values.email,
+            title: values.title,
+            role: values.role,
+            status: values.status,
+            ...(normalizedPassword
+              ? {
+                  password: normalizedPassword,
+                  confirmPassword: normalizedConfirmPassword,
+                }
+              : {}),
+          },
+        });
+      }
+
+      return apiRequest('team', {
+        method: 'POST',
         body: values,
-      }),
+      });
+    },
     onSuccess: async () => {
       toast.success(selectedMember ? 'Membro atualizado.' : 'Membro criado.');
       setDialogOpen(false);
@@ -209,6 +273,8 @@ export default function TeamPage() {
           selectedMember.status === 'ACTIVE' || selectedMember.status === 'INACTIVE'
             ? selectedMember.status
             : 'PENDING',
+          password: '',
+          confirmPassword: '',
       }
     : {
         name: '',
@@ -216,6 +282,8 @@ export default function TeamPage() {
         title: '',
         role: 'SELLER',
         status: 'PENDING',
+          password: '',
+          confirmPassword: '',
       };
 
   return (
@@ -240,7 +308,7 @@ export default function TeamPage() {
             onSubmit={async (values) => saveMemberMutation.mutateAsync(values)}
             fields={[
               { name: 'name', label: 'Nome' },
-              { name: 'email', label: 'Email', type: 'email' },
+              { name: 'email' as const, label: 'Email', type: 'email' as const },
               { name: 'title', label: 'Cargo' },
               {
                 name: 'role',
@@ -260,6 +328,16 @@ export default function TeamPage() {
                   { label: 'Ativo', value: 'ACTIVE' },
                   { label: 'Inativo', value: 'INACTIVE' },
                 ],
+              },
+              {
+                name: 'password' as const,
+                label: selectedMember ? 'Nova senha (opcional)' : 'Senha (opcional)',
+                type: 'password' as const,
+              },
+              {
+                name: 'confirmPassword' as const,
+                label: 'Confirmar senha',
+                type: 'password' as const,
               },
             ]}
             trigger={

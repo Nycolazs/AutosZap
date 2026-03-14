@@ -15,6 +15,8 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -44,12 +46,26 @@ class CreateTeamMemberDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  password?: string;
+
+  @ValidateIf((object: CreateTeamMemberDto) => object.password !== undefined)
+  @IsString()
+  @MinLength(6)
+  confirmPassword?: string;
 }
 
 class UpdateTeamMemberDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 
   @IsOptional()
   @IsString()
@@ -62,6 +78,16 @@ class UpdateTeamMemberDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  password?: string;
+
+  @ValidateIf((object: UpdateTeamMemberDto) => object.password !== undefined)
+  @IsString()
+  @MinLength(6)
+  confirmPassword?: string;
 }
 
 class PermissionOverrideDto {

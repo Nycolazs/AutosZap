@@ -150,9 +150,17 @@ export default function KnowledgeBasesPage() {
                     variant="ghost"
                     size="sm"
                     onClick={async () => {
-                      await apiRequest(`knowledge-documents/${document.id}`, { method: 'DELETE' });
-                      await queryClient.invalidateQueries({ queryKey: ['knowledge-base-detail', selectedBase?.id] });
-                      toast.success('Documento removido.');
+                      try {
+                        await apiRequest(`knowledge-documents/${document.id}`, { method: 'DELETE' });
+                        await queryClient.invalidateQueries({ queryKey: ['knowledge-base-detail', selectedBase?.id] });
+                        toast.success('Documento removido.');
+                      } catch (error) {
+                        const message =
+                          error instanceof Error
+                            ? error.message
+                            : 'Nao foi possivel remover o documento.';
+                        toast.error(message);
+                      }
                     }}
                   >
                     Remover

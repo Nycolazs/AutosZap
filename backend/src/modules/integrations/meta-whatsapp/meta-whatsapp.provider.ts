@@ -75,7 +75,19 @@ type MetaTemplatesResponse = {
     category?: string;
     quality_score?: { score?: string };
     last_updated_time?: string;
+    components?: Array<{
+      type?: string;
+      format?: string;
+      text?: string;
+    }>;
   }>;
+  paging?: {
+    cursors?: {
+      before?: string;
+      after?: string;
+    };
+    next?: string;
+  };
 };
 
 type MetaSubscribedAppsResponse = {
@@ -89,6 +101,9 @@ type MetaSubscribedAppsResponse = {
 
 @Injectable()
 export class MetaWhatsAppProvider implements MessagingProvider {
+  private static readonly TEMPLATE_FIELDS =
+    'id,name,status,language,category,quality_score,last_updated_time,components';
+
   constructor(private readonly configService: ConfigService) {}
 
   async sendTextMessage(
@@ -418,12 +433,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         config,
         `${config.phoneNumberId}/whatsapp_business_profile?fields=about,description,email,profile_picture_url,websites`,
       ),
-      config.businessAccountId
-        ? this.get<MetaTemplatesResponse>(
-            config,
-            `${config.businessAccountId}/message_templates?fields=id,name,status,language,category,quality_score,last_updated_time&limit=25`,
-          )
-        : Promise.resolve({ data: [] } satisfies MetaTemplatesResponse),
+      this.listAllTemplates(config),
       config.businessAccountId
         ? this.get<MetaSubscribedAppsResponse>(
             config,
@@ -441,6 +451,15 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         category: template.category,
         qualityScore: template.quality_score?.score ?? null,
         lastUpdatedTime: template.last_updated_time ?? null,
+        headerFormat: this.resolveTemplateHeaderFormat(template.components),
+        headerParameterCount: this.countTemplateComponentParameters(
+          template.components,
+          'HEADER',
+        ),
+        bodyParameterCount: this.countTemplateComponentParameters(
+          template.components,
+          'BODY',
+        ),
       }),
     );
 
@@ -913,6 +932,73 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     });
 
     return response.data;
+  }
+
+  private async listAllTemplates(
+    config: MessagingInstanceConfig,
+  ): Promise<MetaTemplatesResponse> {
+    if (!config.businessAccountId) {
+      return { data: [] };
+    }
+
+    const templates: NonNullable<MetaTemplatesResponse['data']> = [];
+    let after: string | undefined;
+    let pageCount = 0;
+
+    do {
+      const querySuffix = after ? `&after=${encodeURIComponent(after)}` : '';
+      const response = await this.get<MetaTemplatesResponse>(
+        config,
+        `${config.businessAccountId}/message_templates?fields=${MetaWhatsAppProvider.TEMPLATE_FIELDS}&limit=100${querySuffix}`,
+      );
+
+      templates.push(...(response.data ?? []));
+      after = response.paging?.next ? response.paging.cursors?.after : undefined;
+      pageCount += 1;
+    } while (after && pageCount < 100);
+
+    return {
+      data: templates,
+    };
+  }
+
+  private resolveTemplateHeaderFormat(
+    components?: Array<{
+      type?: string;
+      format?: string;
+      text?: string;
+    }>,
+  ) {
+    const header = components?.find(
+      (component) => component.type?.trim().toUpperCase() === 'HEADER',
+    );
+
+    return header?.format?.trim().toUpperCase() ?? null;
+  }
+
+  private countTemplateComponentParameters(
+    components:
+      | Array<{
+          type?: string;
+          format?: string;
+          text?: string;
+        }>
+      | undefined,
+    componentType: 'HEADER' | 'BODY',
+  ): number | null {
+    if (components === undefined) {
+      return null;
+    }
+
+    const component = components.find(
+      (item) => item.type?.trim().toUpperCase() === componentType,
+    );
+
+    if (!component?.text) {
+      return 0;
+    }
+
+    return component.text.match(/\{\{[^}]+\}\}/g)?.length ?? 0;
   }
 
   private mapPhoneNumber(

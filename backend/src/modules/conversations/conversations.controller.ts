@@ -38,6 +38,12 @@ class ConversationsQueryDto extends PaginationQueryDto {
   tagId?: string;
 }
 
+class ConversationDetailQueryDto {
+  @IsOptional()
+  @IsString()
+  include?: string;
+}
+
 class UpdateConversationDto {
   @IsOptional()
   @IsString()
@@ -80,8 +86,12 @@ export class ConversationsController {
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
-    return this.conversationsService.findOne(id, user);
+  findOne(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+    @Query() query: ConversationDetailQueryDto,
+  ) {
+    return this.conversationsService.findOne(id, user, query.include);
   }
 
   @AnyPermissions(PermissionKey.INBOX_VIEW, PermissionKey.TRANSFER_CONVERSATION)

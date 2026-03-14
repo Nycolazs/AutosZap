@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -30,6 +31,9 @@ const DEFAULT_BUSINESS_HOURS: BusinessHourInput[] = [
   { weekday: 6, isOpen: false, startTime: null, endTime: null },
 ];
 
+const DEFAULT_WINDOW_CLOSED_TEMPLATE_NAME = 'retomada_atendimento_autozap';
+const DEFAULT_WINDOW_CLOSED_TEMPLATE_LANGUAGE_CODE = 'pt_BR';
+
 const WEEKDAY_LOOKUP: Record<string, number> = {
   Sun: 0,
   Mon: 1,
@@ -42,7 +46,10 @@ const WEEKDAY_LOOKUP: Record<string, number> = {
 
 @Injectable()
 export class WorkspaceSettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async getConversationSettings(workspaceId: string) {
     return this.ensureConversationSettings(workspaceId);
@@ -259,11 +266,19 @@ export class WorkspaceSettingsService {
 
     if (!workspace.conversationSettings) {
       const timezone = this.extractWorkspaceTimezone(workspace.settings);
+      const defaultClosedWindowTemplate =
+        this.getDefaultClosedWindowTemplateConfig();
 
       return this.prisma.workspaceConversationSettings.create({
         data: {
           workspaceId,
           timezone,
+          sendWindowClosedTemplateReply:
+            defaultClosedWindowTemplate.sendWindowClosedTemplateReply,
+          windowClosedTemplateName:
+            defaultClosedWindowTemplate.windowClosedTemplateName,
+          windowClosedTemplateLanguageCode:
+            defaultClosedWindowTemplate.windowClosedTemplateLanguageCode,
           businessHours: {
             create: DEFAULT_BUSINESS_HOURS,
           },
@@ -305,7 +320,58 @@ export class WorkspaceSettingsService {
       return this.ensureConversationSettings(workspaceId);
     }
 
+    const shouldBackfillClosedWindowTemplate =
+      !workspace.conversationSettings.sendWindowClosedTemplateReply &&
+      !workspace.conversationSettings.windowClosedTemplateName?.trim() &&
+      !workspace.conversationSettings.windowClosedTemplateLanguageCode?.trim();
+
+    if (shouldBackfillClosedWindowTemplate) {
+      const defaultClosedWindowTemplate =
+        this.getDefaultClosedWindowTemplateConfig();
+
+      await this.prisma.workspaceConversationSettings.update({
+        where: {
+          workspaceId,
+        },
+        data: {
+          sendWindowClosedTemplateReply:
+            defaultClosedWindowTemplate.sendWindowClosedTemplateReply,
+          windowClosedTemplateName:
+            defaultClosedWindowTemplate.windowClosedTemplateName,
+          windowClosedTemplateLanguageCode:
+            defaultClosedWindowTemplate.windowClosedTemplateLanguageCode,
+        },
+      });
+
+      return this.ensureConversationSettings(workspaceId);
+    }
+
     return workspace.conversationSettings;
+  }
+
+  private getDefaultClosedWindowTemplateConfig() {
+    const templateName =
+      this.configService
+        .get<string>('DEFAULT_WINDOW_CLOSED_TEMPLATE_NAME')
+        ?.trim() || DEFAULT_WINDOW_CLOSED_TEMPLATE_NAME;
+    const languageCode =
+      this.configService
+        .get<string>('DEFAULT_WINDOW_CLOSED_TEMPLATE_LANGUAGE_CODE')
+        ?.trim() || DEFAULT_WINDOW_CLOSED_TEMPLATE_LANGUAGE_CODE;
+    const sendTemplateReplyRaw = this.configService
+      .get<string>('DEFAULT_SEND_WINDOW_CLOSED_TEMPLATE_REPLY')
+      ?.trim()
+      .toLowerCase();
+    const sendWindowClosedTemplateReply =
+      sendTemplateReplyRaw === undefined
+        ? true
+        : !['0', 'false', 'no', 'off'].includes(sendTemplateReplyRaw);
+
+    return {
+      sendWindowClosedTemplateReply,
+      windowClosedTemplateName: templateName,
+      windowClosedTemplateLanguageCode: languageCode,
+    };
   }
 
   private normalizeBusinessHours(businessHours: BusinessHourInput[]) {

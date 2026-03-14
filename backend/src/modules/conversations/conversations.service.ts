@@ -17,6 +17,10 @@ import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp
 import { ConversationWorkflowService } from './conversation-workflow.service';
 import { normalizeConversationStatus } from './conversation-workflow.utils';
 
+const INBOX_MESSAGES_PRELOAD_LIMIT = 120;
+
+type ConversationIncludeToken = 'messages' | 'notes' | 'reminders' | 'contactTags';
+
 @Injectable()
 export class ConversationsService {
   constructor(
@@ -127,12 +131,26 @@ export class ConversationsService {
     return summary;
   }
 
-  async findOne(id: string, user: CurrentAuthUser) {
+  async findOne(id: string, user: CurrentAuthUser, include?: string) {
     await this.conversationWorkflowService.assertConversationAccess(
       id,
       user,
       'visualizar esta conversa',
     );
+
+    const includes = this.resolveConversationIncludes(include);
+
+    const contactInclude = includes.has('contactTags')
+      ? {
+          include: {
+            tagLinks: {
+              include: {
+                tag: true,
+              },
+            },
+          },
+        }
+      : true;
 
     const conversation = await this.prisma.conversation.findFirst({
       where: {
@@ -141,15 +159,7 @@ export class ConversationsService {
         deletedAt: null,
       },
       include: {
-        contact: {
-          include: {
-            tagLinks: {
-              include: {
-                tag: true,
-              },
-            },
-          },
-        },
+        contact: contactInclude,
         assignedUser: {
           select: {
             id: true,
@@ -162,48 +172,55 @@ export class ConversationsService {
             tag: true,
           },
         },
-        messages: {
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-        notes: {
-          include: {
-            author: {
-              select: {
-                id: true,
-                name: true,
+        messages: includes.has('messages')
+          ? {
+              orderBy: {
+                createdAt: 'desc',
               },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
-        reminders: {
-          include: {
-            createdBy: {
-              select: {
-                id: true,
-                name: true,
+              take: INBOX_MESSAGES_PRELOAD_LIMIT,
+            }
+          : false,
+        notes: includes.has('notes')
+          ? {
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
-            },
-            completedBy: {
-              select: {
-                id: true,
-                name: true,
+              orderBy: {
+                createdAt: 'desc',
               },
-            },
-          },
-          orderBy: [
-            {
-              remindAt: 'asc',
-            },
-            {
-              createdAt: 'desc',
-            },
-          ],
-        },
+            }
+          : false,
+        reminders: includes.has('reminders')
+          ? {
+              include: {
+                createdBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+                completedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+              orderBy: [
+                {
+                  remindAt: 'asc',
+                },
+                {
+                  createdAt: 'desc',
+                },
+              ],
+            }
+          : false,
       },
     });
 
@@ -213,12 +230,78 @@ export class ConversationsService {
 
     return {
       ...conversation,
+      messages: conversation.messages
+        ? [...conversation.messages].reverse()
+        : undefined,
       tags: conversation.tags.map((item) => item.tag),
       contact: {
         ...conversation.contact,
-        tags: conversation.contact.tagLinks.map((item) => item.tag),
+        tags: this.extractContactTags(conversation.contact),
       },
     };
+  }
+
+  private extractContactTags(contact: unknown) {
+    if (!contact || typeof contact !== 'object' || !('tagLinks' in contact)) {
+      return undefined;
+    }
+
+    const tagLinks = (contact as { tagLinks?: Array<{ tag: unknown }> }).tagLinks;
+
+    return tagLinks?.map((item) => item.tag);
+  }
+
+  private resolveConversationIncludes(include?: string) {
+    if (!include?.trim()) {
+      return new Set<ConversationIncludeToken>([
+        'messages',
+        'notes',
+        'reminders',
+        'contactTags',
+      ]);
+    }
+
+    const normalizedIncludes = include
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const includes = new Set<ConversationIncludeToken>();
+
+    for (const value of normalizedIncludes) {
+      if (value === 'messages') {
+        includes.add('messages');
+      }
+
+      if (value === 'notes') {
+        includes.add('notes');
+      }
+
+      if (value === 'reminders') {
+        includes.add('reminders');
+      }
+
+      if (value === 'contactTags') {
+        includes.add('contactTags');
+      }
+
+      if (value === 'sidebar' || value === 'details') {
+        includes.add('notes');
+        includes.add('reminders');
+        includes.add('contactTags');
+      }
+
+      if (value === 'all') {
+        includes.add('messages');
+        includes.add('notes');
+        includes.add('reminders');
+        includes.add('contactTags');
+      }
+    }
+
+    return includes.size
+      ? includes
+      : new Set<ConversationIncludeToken>(['messages']);
   }
 
   private buildConversationWhere(

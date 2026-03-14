@@ -41,6 +41,36 @@ function getDefaultDateRange() {
   };
 }
 
+const EMPTY_DASHBOARD_OVERVIEW: DashboardOverview = {
+  metrics: {
+    activeConversations: 0,
+    totalContacts: 0,
+    responseRate: 0,
+    sentCampaigns: 0,
+    crmLeads: 0,
+  },
+  chart: [],
+  recentActivity: [],
+  notifications: [],
+  shortcuts: [],
+};
+
+const EMPTY_DASHBOARD_PERFORMANCE: DashboardPerformance = {
+  period: {
+    from: '',
+    to: '',
+  },
+  totals: {
+    resolvedCount: 0,
+    closedCount: 0,
+    assignedCount: 0,
+    avgFirstResponseMs: null,
+    avgResolutionMs: null,
+  },
+  chart: [],
+  ranking: [],
+};
+
 export default function DashboardPage() {
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
   const [from, setFrom] = useState(defaultDateRange.from);
@@ -50,6 +80,7 @@ export default function DashboardPage() {
   const dashboardQuery = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => apiRequest<DashboardOverview>('dashboard'),
+    retry: 2,
   });
   const performanceQuery = useQuery({
     queryKey: ['dashboard-performance', from, to, selectedUserId],
@@ -59,12 +90,14 @@ export default function DashboardPage() {
           selectedUserId !== 'ALL' ? `&userId=${encodeURIComponent(selectedUserId)}` : ''
         }`,
       ),
+    retry: 2,
   });
 
-  const isLoading = dashboardQuery.isLoading || performanceQuery.isLoading;
-  const isError = dashboardQuery.isError || performanceQuery.isError;
+  const isInitialLoading =
+    (!dashboardQuery.data && dashboardQuery.isLoading) ||
+    (!performanceQuery.data && performanceQuery.isLoading);
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-24 w-full" />
@@ -78,37 +111,11 @@ export default function DashboardPage() {
     );
   }
 
-  const overview = dashboardQuery.data;
-  const performance = performanceQuery.data;
-
-  if (isError || !overview || !performance) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Painel inicial"
-          description="Acompanhe a operação em tempo real e compare a performance dos vendedores."
-        />
-        <div className="rounded-[20px] border border-danger/25 bg-danger/10 px-5 py-8 text-center">
-          <p className="text-sm font-medium text-danger">
-            Não foi possível carregar os dados do painel.
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Verifique se o backend está online e tente recarregar a página.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              void dashboardQuery.refetch();
-              void performanceQuery.refetch();
-            }}
-            className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-foreground transition hover:bg-white/[0.08]"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const overview = dashboardQuery.data ?? EMPTY_DASHBOARD_OVERVIEW;
+  const performance = performanceQuery.data ?? EMPTY_DASHBOARD_PERFORMANCE;
+  const hasErrors = dashboardQuery.isError || performanceQuery.isError;
+  const shouldShowErrorBanner =
+    hasErrors && !dashboardQuery.data && !performanceQuery.data;
 
   return (
     <div className="space-y-6">
@@ -116,6 +123,31 @@ export default function DashboardPage() {
         title="Painel inicial"
         description="Acompanhe a operação em tempo real e compare a performance dos vendedores por conversas resolvidas."
       />
+
+      {shouldShowErrorBanner ? (
+        <div className="rounded-[20px] border border-danger/20 bg-danger/8 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-danger">
+                Nao foi possivel carregar os dados do painel.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Verifique a conexao com o backend e tente atualizar.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void dashboardQuery.refetch();
+                void performanceQuery.refetch();
+              }}
+              className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-foreground transition hover:bg-white/[0.08]"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard title="Conversas ativas" value={overview.metrics.activeConversations} helper="Novas, em atendimento e aguardando" icon={MessageSquareText} />
@@ -298,8 +330,15 @@ export default function DashboardPage() {
               <div key={activity.id} className="flex items-center justify-between rounded-2xl border border-border bg-white/[0.03] px-4 py-3">
                 <div>
                   <p className="text-sm font-medium">
-                    {activity.action} em <span className="text-primary">{activity.entityType}</span>
+                    <span className="text-primary">{activity.actorName ?? 'Sistema'}</span>
+                    {' • '}
+                    {activity.actionLabel ?? activity.action}
+                    {' em '}
+                    <span className="text-foreground/90">{activity.entityLabel ?? activity.entityType}</span>
                   </p>
+                  {activity.detail ? (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{activity.detail}</p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">{formatDate(activity.createdAt)}</p>
                 </div>
                 <Activity className="h-4 w-4 text-muted-foreground" />

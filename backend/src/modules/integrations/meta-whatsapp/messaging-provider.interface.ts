@@ -35,6 +35,9 @@ export interface ProviderTemplateSummary {
   category?: string;
   qualityScore?: string | null;
   lastUpdatedTime?: string | null;
+  headerFormat?: string | null;
+  headerParameterCount?: number | null;
+  bodyParameterCount?: number | null;
 }
 
 export interface ProviderSubscribedApp {

@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/select';
 import { apiRequest } from '@/lib/api-client';
@@ -54,7 +55,7 @@ import {
 import { cn, formatDate } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 
-const INBOX_REFRESH_INTERVAL = 1500;
+const INBOX_REFRESH_INTERVAL = 12000;
 const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 18, 14, 24, 18, 28, 20, 16, 24, 14, 18, 12, 8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14];
 const HIDDEN_MEDIA_LABELS = new Set(['Imagem', 'Audio', 'Video', 'Figurinha', 'Documento anexado']);
 const MESSAGE_STATUS_LABELS: Record<string, string> = {
@@ -139,11 +140,16 @@ function InboxPageContent() {
       apiRequest<ConversationStatusSummary>(
         `conversations/summary${search ? `?search=${encodeURIComponent(search)}` : ''}`,
       ),
-    refetchInterval: INBOX_REFRESH_INTERVAL,
-    refetchIntervalInBackground: true,
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
   });
+
+  const isInitialLoading =
+    conversationsQuery.isLoading ||
+    meQuery.isLoading ||
+    conversationSummaryQuery.isLoading;
 
   const conversations = useMemo(() => conversationsQuery.data?.data ?? [], [conversationsQuery.data]);
   const activeConversationId = useMemo(() => {
@@ -163,24 +169,101 @@ function InboxPageContent() {
   }, [conversations, isDesktopLayout, selectedConversationId]);
 
   const selectedConversationQuery = useQuery({
-    queryKey: ['conversation', activeConversationId],
+    queryKey: ['conversation', activeConversationId, 'messages'],
     enabled: Boolean(activeConversationId),
-    queryFn: () => apiRequest<Conversation>(`conversations/${activeConversationId}`),
-    refetchInterval: activeConversationId ? INBOX_REFRESH_INTERVAL : false,
-    refetchIntervalInBackground: true,
+    queryFn: () =>
+      apiRequest<Conversation>(
+        `conversations/${activeConversationId}?include=messages`,
+      ),
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+  });
+
+  const conversationDetailsEnabled = Boolean(activeConversationId) && (detailsOpen || isDesktopLayout);
+
+  const selectedConversationDetailsQuery = useQuery({
+    queryKey: ['conversation', activeConversationId, 'details'],
+    enabled: conversationDetailsEnabled,
+    queryFn: () =>
+      apiRequest<Conversation>(
+        `conversations/${activeConversationId}?include=details`,
+      ),
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
   });
 
   const usersQuery = useQuery({
     queryKey: ['users'],
+    enabled: detailsOpen || isDesktopLayout,
     queryFn: () => apiRequest<UserSummary[]>('users'),
   });
 
   const tagsQuery = useQuery({
     queryKey: ['tags'],
+    enabled: detailsOpen || isDesktopLayout,
     queryFn: () => apiRequest<Tag[]>('tags'),
   });
+
+  const applyOptimisticConversationMessage = (
+    conversationId: string,
+    message: ConversationMessage,
+    preview: string,
+  ) => {
+    queryClient.setQueriesData<Conversation | undefined>(
+      { queryKey: ['conversation', conversationId] },
+      (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          lastMessageAt: message.createdAt,
+          lastMessagePreview: preview,
+          messages: [...(current.messages ?? []), message],
+        };
+      },
+    );
+
+    queryClient.setQueryData<PaginatedResponse<Conversation>>(
+      ['conversations', search, statusFilter],
+      (current) => {
+        if (!current) {
+          return current;
+        }
+
+        const updatedConversations = current.data.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                lastMessageAt: message.createdAt,
+                lastMessagePreview: preview,
+              }
+            : conversation,
+        );
+
+        updatedConversations.sort((left, right) => {
+          const leftTimestamp = left.lastMessageAt
+            ? new Date(left.lastMessageAt).getTime()
+            : 0;
+          const rightTimestamp = right.lastMessageAt
+            ? new Date(right.lastMessageAt).getTime()
+            : 0;
+
+          return rightTimestamp - leftTimestamp;
+        });
+
+        return {
+          ...current,
+          data: updatedConversations,
+        };
+      },
+    );
+  };
 
   const sendMutation = useMutation({
     mutationFn: () =>
@@ -194,6 +277,48 @@ function InboxPageContent() {
           ),
         },
       }),
+    onMutate: async () => {
+      if (!activeConversationId) {
+        return null;
+      }
+
+      const formattedContent = formatManualMessageContent(
+        meQuery.data?.name ?? 'Equipe',
+        messageDraft,
+      );
+      const optimisticMessage: ConversationMessage = {
+        id: `optimistic-${Date.now()}`,
+        direction: 'OUTBOUND',
+        messageType: 'text',
+        content: formattedContent,
+        metadata: null,
+        status: 'QUEUED',
+        createdAt: new Date().toISOString(),
+      };
+      const conversationSnapshots = queryClient.getQueriesData<Conversation | undefined>({
+        queryKey: ['conversation', activeConversationId],
+      });
+      const conversationsSnapshot = queryClient.getQueryData<PaginatedResponse<Conversation>>([
+        'conversations',
+        search,
+        statusFilter,
+      ]);
+
+      await queryClient.cancelQueries({ queryKey: ['conversation', activeConversationId] });
+      await queryClient.cancelQueries({ queryKey: ['conversations', search, statusFilter] });
+
+      applyOptimisticConversationMessage(
+        activeConversationId,
+        optimisticMessage,
+        formattedContent,
+      );
+
+      return {
+        activeConversationId,
+        conversationSnapshots,
+        conversationsSnapshot,
+      };
+    },
     onSuccess: async (message) => {
       setMessageDraft('');
 
@@ -209,7 +334,20 @@ function InboxPageContent() {
         queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
       ]);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error, _variables, context) => {
+      if (context?.activeConversationId) {
+        for (const [queryKey, value] of context.conversationSnapshots) {
+          queryClient.setQueryData(queryKey, value);
+        }
+
+        queryClient.setQueryData(
+          ['conversations', search, statusFilter],
+          context.conversationsSnapshot,
+        );
+      }
+
+      toast.error(error.message);
+    },
   });
 
   const sendMediaMutation = useMutation({
@@ -420,7 +558,37 @@ function InboxPageContent() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const selectedConversation = selectedConversationQuery.data;
+  const selectedConversation = useMemo(() => {
+    const baseConversation = selectedConversationQuery.data;
+    const detailsConversation = selectedConversationDetailsQuery.data;
+
+    if (!baseConversation) {
+      return detailsConversation;
+    }
+
+    if (!detailsConversation) {
+      return baseConversation;
+    }
+
+    return {
+      ...baseConversation,
+      ...detailsConversation,
+      contact: {
+        ...baseConversation.contact,
+        ...detailsConversation.contact,
+      },
+      assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
+      tags: detailsConversation.tags ?? baseConversation.tags,
+      messages: baseConversation.messages ?? detailsConversation.messages,
+      notes: detailsConversation.notes ?? baseConversation.notes,
+      reminders: detailsConversation.reminders ?? baseConversation.reminders,
+    } satisfies Conversation;
+  }, [selectedConversationDetailsQuery.data, selectedConversationQuery.data]);
+
+  const isConversationLoading =
+    Boolean(activeConversationId) &&
+    !selectedConversation &&
+    (selectedConversationQuery.isLoading || selectedConversationDetailsQuery.isLoading);
 
   const selectedTagIds = useMemo(
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
@@ -515,6 +683,7 @@ function InboxPageContent() {
         };
 
         void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        void queryClient.invalidateQueries({ queryKey: ['conversations-summary'] });
 
         if (
           payload.conversationId &&
@@ -526,6 +695,7 @@ function InboxPageContent() {
         }
       } catch {
         void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        void queryClient.invalidateQueries({ queryKey: ['conversations-summary'] });
       }
     };
 
@@ -724,6 +894,10 @@ function InboxPageContent() {
     setReminderForm(DEFAULT_REMINDER_FORM);
   };
 
+  if (isInitialLoading) {
+    return <InboxPageSkeleton />;
+  }
+
   return (
     <div className="grid h-full min-h-0 overflow-hidden gap-3 xl:gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px]">
       <Card
@@ -821,7 +995,9 @@ function InboxPageContent() {
         )}
       >
         <CardContent className="flex h-full min-h-0 flex-col p-0">
-          {selectedConversation ? (
+          {isConversationLoading ? (
+            <ChatConversationLoadingState />
+          ) : selectedConversation ? (
             <>
               <div className="shrink-0 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
                 <div className="flex items-start justify-between gap-4">
@@ -1135,9 +1311,94 @@ function InboxPageContent() {
 
 export default function InboxPage() {
   return (
-    <Suspense fallback={<div className="h-full rounded-[28px] border border-border bg-background-elevated/40" />}>
+    <Suspense fallback={<InboxPageSkeleton />}>
       <InboxPageContent />
     </Suspense>
+  );
+}
+
+function InboxPageSkeleton() {
+  return (
+    <div className="grid h-full gap-3 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)_340px]">
+      <div className="rounded-[26px] border border-border bg-background-elevated/45 p-3">
+        <Skeleton className="h-10 w-full rounded-xl" />
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-8 w-full rounded-xl" />
+          <Skeleton className="h-8 w-5/6 rounded-xl" />
+          <Skeleton className="h-8 w-4/5 rounded-xl" />
+        </div>
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <Skeleton key={index} className="h-16 w-full rounded-2xl" />
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[26px] border border-border bg-background-elevated/45 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-11 w-52 rounded-xl" />
+          <Skeleton className="h-9 w-28 rounded-xl" />
+        </div>
+        <div className="mt-4 space-y-3">
+          <Skeleton className="h-18 w-3/4 rounded-2xl" />
+          <Skeleton className="ml-auto h-20 w-2/3 rounded-2xl" />
+          <Skeleton className="h-16 w-1/2 rounded-2xl" />
+          <Skeleton className="ml-auto h-22 w-3/5 rounded-2xl" />
+          <Skeleton className="h-18 w-2/3 rounded-2xl" />
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-11 rounded-xl" />
+        </div>
+      </div>
+
+      <div className="hidden rounded-[26px] border border-border bg-background-elevated/45 p-4 xl:block">
+        <Skeleton className="h-10 w-2/3 rounded-xl" />
+        <div className="mt-4 space-y-3">
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-28 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatConversationLoadingState() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-heading text-[18px] font-semibold">Carregando conversa...</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Buscando histórico e informações do contato.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+            Carregando
+          </span>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
+        <Skeleton className="h-18 w-[72%] rounded-[20px]" />
+        <Skeleton className="ml-auto h-16 w-[58%] rounded-[20px]" />
+        <Skeleton className="h-20 w-[66%] rounded-[20px]" />
+        <Skeleton className="ml-auto h-14 w-[44%] rounded-[20px]" />
+        <Skeleton className="h-16 w-[54%] rounded-[20px]" />
+      </div>
+
+      <div className="safe-bottom-pad shrink-0 border-t border-border p-3.5 sm:p-4">
+        <div className="rounded-[16px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-3">
+          <p className="text-xs text-muted-foreground">
+            Preparando o chat para envio de mensagens...
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 

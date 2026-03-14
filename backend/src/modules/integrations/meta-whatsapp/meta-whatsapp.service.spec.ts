@@ -28,6 +28,9 @@ describe('MetaWhatsAppService automatic replies', () => {
       conversation: {
         findFirst: jest.fn(),
       },
+      workspaceConversationSettings: {
+        update: jest.fn(),
+      },
     };
     const provider = {
       isProductionMode: jest.fn(),
@@ -188,5 +191,257 @@ describe('MetaWhatsAppService automatic replies', () => {
       }),
     );
     expect(provider.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('auto-configures another approved template when the configured one fails', async () => {
+    const { service, prisma, provider, workspaceSettingsService } =
+      createService();
+
+    const sendTemplateConversationMessageSpy = jest
+      .spyOn(service, 'sendTemplateConversationMessage')
+      .mockRejectedValueOnce(new Error('template not found'))
+      .mockResolvedValueOnce({ id: 'msg-template-2' } as never);
+
+    jest
+      .spyOn(service, 'listTemplates')
+      .mockResolvedValue([
+        {
+          name: 'retomada_atendimento_autozap',
+          language: 'pt_BR',
+          status: 'APPROVED',
+          bodyParameterCount: 1,
+          headerParameterCount: 0,
+          headerFormat: 'TEXT',
+        },
+        {
+          name: 'retomada_atendimento_padrao',
+          language: 'pt_BR',
+          status: 'APPROVED',
+          category: 'UTILITY',
+          qualityScore: 'GREEN',
+          bodyParameterCount: 1,
+          headerParameterCount: 0,
+          headerFormat: 'TEXT',
+        },
+      ] as never);
+
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      instanceId: 'instance-1',
+      contact: {
+        phone: '+5585988112201',
+      },
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+    provider.canUseRealTransport.mockReturnValue(true);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      sendWindowClosedTemplateReply: true,
+      windowClosedTemplateName: 'retomada_atendimento_autozap',
+      windowClosedTemplateLanguageCode: 'pt_BR',
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      getInstanceConfig: jest.fn().mockResolvedValue({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        mode: 'PRODUCTION',
+        accessToken: 'token',
+        phoneNumberId: 'phone-id',
+      }),
+    });
+
+    await service.sendConversationMessage(
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      '*ANA*:\nPodemos continuar o atendimento por aqui?',
+    );
+
+    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
+      1,
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      expect.objectContaining({
+        templateName: 'retomada_atendimento_autozap',
+        languageCode: 'pt_BR',
+      }),
+    );
+
+    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
+      2,
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      expect.objectContaining({
+        templateName: 'retomada_atendimento_padrao',
+        languageCode: 'pt_BR',
+        metadata: {
+          windowClosedTemplateReply: true,
+          autoTemplateConfigured: true,
+        },
+      }),
+    );
+
+    expect(
+      prisma.workspaceConversationSettings.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'ws-1',
+      },
+      data: {
+        sendWindowClosedTemplateReply: true,
+        windowClosedTemplateName: 'retomada_atendimento_padrao',
+        windowClosedTemplateLanguageCode: 'pt_BR',
+      },
+    });
+  });
+
+  it('normalizes the configured template language before sending outside the 24-hour window', async () => {
+    const { service, prisma, provider, workspaceSettingsService } =
+      createService();
+    const sendTemplateConversationMessageSpy = jest
+      .spyOn(service, 'sendTemplateConversationMessage')
+      .mockResolvedValue({ id: 'msg-template-3' } as never);
+
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      instanceId: 'instance-1',
+      contact: {
+        phone: '+5585988112201',
+      },
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+    provider.canUseRealTransport.mockReturnValue(true);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      sendWindowClosedTemplateReply: true,
+      windowClosedTemplateName: 'retomada_atendimento_autozap',
+      windowClosedTemplateLanguageCode: 'pt-br',
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      getInstanceConfig: jest.fn().mockResolvedValue({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        mode: 'PRODUCTION',
+        accessToken: 'token',
+        phoneNumberId: 'phone-id',
+      }),
+    });
+
+    await service.sendConversationMessage(
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      '*ANA*:\nPodemos continuar o atendimento por aqui?',
+    );
+
+    expect(sendTemplateConversationMessageSpy).toHaveBeenCalledWith(
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      expect.objectContaining({
+        templateName: 'retomada_atendimento_autozap',
+        languageCode: 'pt_BR',
+      }),
+    );
+  });
+
+  it('skips approved templates that are incompatible with the automatic closed-window flow', async () => {
+    const { service, prisma, provider, workspaceSettingsService } =
+      createService();
+
+    const sendTemplateConversationMessageSpy = jest
+      .spyOn(service, 'sendTemplateConversationMessage')
+      .mockRejectedValueOnce(new Error('template not found'))
+      .mockResolvedValueOnce({ id: 'msg-template-4' } as never);
+
+    jest.spyOn(service, 'listTemplates').mockResolvedValue([
+      {
+        name: 'retomada_atendimento_autozap',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        bodyParameterCount: 1,
+        headerParameterCount: 0,
+        headerFormat: 'TEXT',
+      },
+      {
+        name: 'template_com_header_midia',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        bodyParameterCount: 1,
+        headerParameterCount: 0,
+        headerFormat: 'IMAGE',
+      },
+      {
+        name: 'template_com_duas_variaveis',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        bodyParameterCount: 2,
+        headerParameterCount: 0,
+        headerFormat: 'TEXT',
+      },
+      {
+        name: 'retomada_atendimento_padrao',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        bodyParameterCount: 1,
+        headerParameterCount: 0,
+        headerFormat: 'TEXT',
+      },
+    ] as never);
+
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      workspaceId: 'ws-1',
+      instanceId: 'instance-1',
+      contact: {
+        phone: '+5585988112201',
+      },
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+    provider.canUseRealTransport.mockReturnValue(true);
+    workspaceSettingsService.getConversationSettings.mockResolvedValue({
+      sendWindowClosedTemplateReply: true,
+      windowClosedTemplateName: 'retomada_atendimento_autozap',
+      windowClosedTemplateLanguageCode: 'pt_BR',
+    });
+    Object.assign(service as unknown as Record<string, unknown>, {
+      getInstanceConfig: jest.fn().mockResolvedValue({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        mode: 'PRODUCTION',
+        accessToken: 'token',
+        phoneNumberId: 'phone-id',
+      }),
+    });
+
+    await service.sendConversationMessage(
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      '*ANA*:\nPodemos continuar o atendimento por aqui?',
+    );
+
+    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
+      1,
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      expect.objectContaining({
+        templateName: 'retomada_atendimento_autozap',
+      }),
+    );
+    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
+      2,
+      'ws-1',
+      'conv-1',
+      'seller-1',
+      expect.objectContaining({
+        templateName: 'retomada_atendimento_padrao',
+      }),
+    );
+    expect(sendTemplateConversationMessageSpy).toHaveBeenCalledTimes(2);
   });
 });

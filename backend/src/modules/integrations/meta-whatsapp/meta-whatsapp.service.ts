@@ -1111,8 +1111,9 @@ export class MetaWhatsAppService {
     }
 
     const templateName = settings.windowClosedTemplateName?.trim();
-    const languageCode =
-      settings.windowClosedTemplateLanguageCode?.trim() ?? null;
+    const languageCode = this.normalizeTemplateLanguageCode(
+      settings.windowClosedTemplateLanguageCode,
+    );
 
     if (!templateName || !languageCode) {
       throw new BadRequestException(
@@ -1136,11 +1137,204 @@ export class MetaWhatsAppService {
           },
         },
       );
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao enviar template configurado para janela fechada (workspace=${payload.workspaceId}, template=${templateName}, language=${languageCode}): ${error instanceof Error ? error.message : String(error)}. Tentando auto-descoberta.`,
+      );
+
+      const autoCandidates = await this.resolveClosedWindowTemplateCandidates({
+        workspaceId: payload.workspaceId,
+        instanceId: payload.instanceId,
+        preferredLanguageCode: languageCode,
+        attemptedTemplateKey: `${templateName}|${languageCode}`,
+      });
+
+      for (const candidate of autoCandidates) {
+        try {
+          const message = await this.sendTemplateConversationMessage(
+            payload.workspaceId,
+            payload.conversationId,
+            payload.senderUserId,
+            {
+              instanceId: payload.instanceId,
+              templateName: candidate.templateName,
+              languageCode: candidate.languageCode,
+              bodyParameters: [payload.content],
+              contentPreview: payload.content,
+              metadata: {
+                windowClosedTemplateReply: true,
+                autoTemplateConfigured: true,
+              },
+            },
+          );
+
+          await this.prisma.workspaceConversationSettings.update({
+            where: {
+              workspaceId: payload.workspaceId,
+            },
+            data: {
+              sendWindowClosedTemplateReply: true,
+              windowClosedTemplateName: candidate.templateName,
+              windowClosedTemplateLanguageCode: candidate.languageCode,
+            },
+          });
+
+          this.logger.log(
+            `Template fora da janela auto-configurado (workspace=${payload.workspaceId}, template=${candidate.templateName}, language=${candidate.languageCode}).`,
+          );
+
+          return message;
+        } catch {
+          continue;
+        }
+      }
+
+      this.logger.warn(
+        `Auto-descoberta de template falhou para workspace=${payload.workspaceId}.`,
+      );
+
       throw new BadRequestException(
         'Nao foi possivel enviar o template aprovado configurado para fora da janela de 24 horas. Revise o nome e o idioma configurados na Meta.',
       );
     }
+  }
+
+  private async resolveClosedWindowTemplateCandidates(payload: {
+    workspaceId: string;
+    instanceId: string;
+    preferredLanguageCode?: string | null;
+    attemptedTemplateKey?: string;
+  }) {
+    try {
+      const preferredLanguage = this.normalizeTemplateLanguageCode(
+        payload.preferredLanguageCode,
+      );
+      const templates = await this.listTemplates(
+        payload.workspaceId,
+        payload.instanceId,
+      );
+
+      const approved = templates.filter((template) => {
+        const status = template.status?.trim().toUpperCase();
+        return status === 'APPROVED';
+      });
+
+      const compatibleTemplates = approved.filter((template) =>
+        this.isClosedWindowTemplateCandidateCompatible(template),
+      );
+
+      const scored = compatibleTemplates
+        .map((template) => {
+          const languageCode = this.normalizeTemplateLanguageCode(
+            template.language,
+          );
+          const key = `${template.name}|${languageCode}`;
+          let score = 0;
+
+          if (preferredLanguage && languageCode === preferredLanguage) {
+            score += 100;
+          }
+
+          if (
+            preferredLanguage &&
+            languageCode &&
+            this.baseTemplateLanguage(languageCode) ===
+              this.baseTemplateLanguage(preferredLanguage)
+          ) {
+            score += 20;
+          }
+
+          if ((template.qualityScore ?? '').toUpperCase() === 'GREEN') {
+            score += 10;
+          }
+
+          if ((template.category ?? '').trim().toUpperCase() === 'UTILITY') {
+            score += 15;
+          }
+
+          return {
+            templateName: template.name,
+            languageCode,
+            key,
+            score,
+            lastUpdatedTime: template.lastUpdatedTime ?? null,
+          };
+        })
+        .filter(
+          (item) =>
+            item.languageCode &&
+            item.templateName.trim() &&
+            item.key !== payload.attemptedTemplateKey,
+        )
+        .sort((left, right) => {
+          if (right.score !== left.score) {
+            return right.score - left.score;
+          }
+
+          if (left.lastUpdatedTime && right.lastUpdatedTime) {
+            return right.lastUpdatedTime.localeCompare(left.lastUpdatedTime);
+          }
+
+          return left.templateName.localeCompare(right.templateName);
+        });
+
+      return scored.map(({ templateName, languageCode }) => ({
+        templateName,
+        languageCode,
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao listar templates aprovados para auto-configuracao (workspace=${payload.workspaceId}).`,
+      );
+      return [];
+    }
+  }
+
+  private normalizeTemplateLanguageCode(value?: string | null) {
+    if (!value?.trim()) {
+      return '';
+    }
+
+    const normalized = value.trim().replace('-', '_');
+    const [language, region] = normalized.split('_');
+
+    if (!language) {
+      return normalized;
+    }
+
+    if (!region) {
+      return language.toLowerCase();
+    }
+
+    return `${language.toLowerCase()}_${region.toUpperCase()}`;
+  }
+
+  private baseTemplateLanguage(value: string) {
+    return value.split('_')[0]?.toLowerCase() ?? value.toLowerCase();
+  }
+
+  private isClosedWindowTemplateCandidateCompatible(
+    template: ProviderTemplateSummary,
+  ) {
+    const headerFormat = template.headerFormat?.trim().toUpperCase() ?? null;
+    // null means components data was not returned by the API - be lenient and allow the attempt
+    const headerParameterCount = template.headerParameterCount;
+    const bodyParameterCount = template.bodyParameterCount;
+
+    if (headerFormat && headerFormat !== 'TEXT') {
+      return false;
+    }
+
+    if (headerParameterCount !== null && headerParameterCount !== undefined && headerParameterCount > 0) {
+      return false;
+    }
+
+    // If count is unknown (null/undefined), allow it — Meta will validate the actual parameter count
+    if (bodyParameterCount === null || bodyParameterCount === undefined) {
+      return true;
+    }
+
+    return bodyParameterCount === 1;
   }
 
   private async persistOutboundMessage(payload: {

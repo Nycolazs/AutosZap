@@ -153,4 +153,90 @@ describe('MetaWhatsAppProvider', () => {
       'Nao foi possivel atualizar o callback da Meta. Configure Access Token e Business Account ID na instancia antes de assinar o app na WABA.',
     );
   });
+
+  it('loads all template pages from Meta diagnostics', async () => {
+    const provider = new MetaWhatsAppProvider(
+      new ConfigService({
+        META_MODE: 'DEV',
+        META_GRAPH_API_VERSION: 'v23.0',
+      }),
+    );
+    const axiosGetSpy = jest.spyOn(axios, 'get');
+
+    axiosGetSpy
+      .mockResolvedValueOnce({
+        data: {
+          id: 'phone-1',
+          display_phone_number: '+55 85 99999-0000',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            {
+              id: 'tmpl-1',
+              name: 'primeiro_template',
+              status: 'APPROVED',
+              language: 'pt_BR',
+              components: [{ type: 'BODY', text: 'Oi {{1}}' }],
+            },
+          ],
+          paging: {
+            cursors: {
+              after: 'cursor-2',
+            },
+            next:
+              'https://graph.facebook.com/v23.0/business-1/message_templates?after=cursor-2',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [
+            {
+              id: 'tmpl-2',
+              name: 'segundo_template',
+              status: 'APPROVED',
+              language: 'pt_BR',
+              components: [{ type: 'BODY', text: 'Ola {{1}}' }],
+            },
+          ],
+        },
+      });
+
+    const diagnostics = await provider.getInstanceDiagnostics({
+      id: 'instance-1',
+      workspaceId: 'ws-1',
+      mode: InstanceMode.DEV,
+      accessToken: 'token',
+      phoneNumberId: 'phone-1',
+      businessAccountId: 'business-1',
+    });
+
+    expect(diagnostics.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'primeiro_template' }),
+        expect.objectContaining({ name: 'segundo_template' }),
+      ]),
+    );
+
+    expect(axiosGetSpy).toHaveBeenCalledWith(
+      'https://graph.facebook.com/v23.0/business-1/message_templates?fields=id,name,status,language,category,quality_score,last_updated_time,components&limit=100',
+      expect.any(Object),
+    );
+    expect(axiosGetSpy).toHaveBeenCalledWith(
+      'https://graph.facebook.com/v23.0/business-1/message_templates?fields=id,name,status,language,category,quality_score,last_updated_time,components&limit=100&after=cursor-2',
+      expect.any(Object),
+    );
+  });
 });
