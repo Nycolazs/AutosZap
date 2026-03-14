@@ -105,8 +105,10 @@ function InboxPageContent() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const lastAutoScrolledConversationRef = useRef<string | null>(null);
+  const shouldStickToBottomRef = useRef(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -605,6 +607,29 @@ function InboxPageContent() {
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
     [selectedConversation],
   );
+  const latestSelectedMessageId =
+    selectedConversation?.messages?.length
+      ? selectedConversation.messages[selectedConversation.messages.length - 1]
+          ?.id
+      : null;
+
+  const isNearBottom = (container: HTMLDivElement) => {
+    const threshold = 80;
+    return (
+      container.scrollHeight - container.scrollTop - container.clientHeight <=
+      threshold
+    );
+  };
+
+  const scrollMessagesToBottom = () => {
+    const container = messagesScrollRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -652,25 +677,57 @@ function InboxPageContent() {
     }
 
     lastAutoScrolledConversationRef.current = selectedConversation.id;
-
-    const scrollToBottom = () => {
-      const container = messagesScrollRef.current;
-
-      if (!container) {
-        return;
-      }
-
-      container.scrollTop = container.scrollHeight;
-    };
+    shouldStickToBottomRef.current = true;
 
     // Wait one frame so the messages list is fully painted before measuring height.
     const frame = window.requestAnimationFrame(() => {
-      scrollToBottom();
-      window.setTimeout(scrollToBottom, 0);
+      scrollMessagesToBottom();
+      window.setTimeout(scrollMessagesToBottom, 0);
     });
 
     return () => window.cancelAnimationFrame(frame);
   }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    const container = messagesScrollRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const updateStickiness = () => {
+      shouldStickToBottomRef.current = isNearBottom(container);
+    };
+
+    updateStickiness();
+    container.addEventListener('scroll', updateStickiness, { passive: true });
+
+    return () => container.removeEventListener('scroll', updateStickiness);
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    if (!selectedConversation?.id) {
+      return;
+    }
+
+    const isComposerFocused =
+      typeof document !== 'undefined' &&
+      document.activeElement === composerTextareaRef.current;
+
+    if (!shouldStickToBottomRef.current && !isComposerFocused) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollMessagesToBottom();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.messages?.length,
+    latestSelectedMessageId,
+  ]);
 
   useEffect(() => {
     if (!isRecording || recordingPaused) {
@@ -1175,6 +1232,7 @@ function InboxPageContent() {
                   {!isRecording ? (
                     <>
                       <Textarea
+                        ref={composerTextareaRef}
                         value={messageDraft}
                         onChange={(event) => setMessageDraft(event.target.value)}
                         onKeyDown={handleComposerKeyDown}
