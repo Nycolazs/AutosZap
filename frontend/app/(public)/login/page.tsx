@@ -40,7 +40,10 @@ export default function LoginPage() {
       accent="WhatsApp"
       description="Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas com a mesma sofisticação visual de uma plataforma enterprise."
     >
-      <div className="flex w-full max-w-[420px] flex-col gap-2">
+      <div
+        className="flex w-full max-w-[420px] flex-col gap-2"
+        data-deploy-marker="frontend-2026-03-14-01"
+      >
         <Card className="w-full rounded-[20px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.95),rgba(4,15,29,0.99))] p-0 shadow-[0_16px_38px_rgba(2,10,22,0.34)] backdrop-blur-xl">
           <CardHeader className="p-4 pb-1">
             <CardTitle className="text-[19px] font-semibold leading-snug tracking-tight">Bem-vindo de volta</CardTitle>
