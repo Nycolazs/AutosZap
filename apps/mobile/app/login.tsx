@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -21,11 +22,12 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-    >
-      <View style={styles.hero}>
+    <ScreenTransition>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.select({ ios: 'padding', android: undefined })}
+      >
+        <View style={styles.hero}>
         <Text style={styles.eyebrow}>APP MOBILE</Text>
         <Text style={styles.title}>AutoZap no ritmo do atendimento.</Text>
         <Text style={styles.description}>
@@ -33,7 +35,7 @@ export default function LoginScreen() {
         </Text>
       </View>
 
-      <View style={styles.card}>
+        <View style={styles.card}>
         <Text style={styles.cardTitle}>Entrar</Text>
         <Text style={styles.cardDescription}>
           Use sua conta do AutoZap para acessar o app do vendedor.
@@ -85,8 +87,9 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>Entrar</Text>
           )}
         </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+        </View>
+      </KeyboardAvoidingView>
+    </ScreenTransition>
   );
 }
 

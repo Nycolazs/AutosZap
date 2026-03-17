@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -30,7 +31,8 @@ export default function ConversationsScreen() {
   );
 
   return (
-    <View style={styles.screen}>
+    <ScreenTransition>
+      <View style={styles.screen}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.eyebrow}>INBOX</Text>
@@ -104,7 +106,8 @@ export default function ConversationsScreen() {
           )}
         />
       )}
-    </View>
+      </View>
+    </ScreenTransition>
   );
 }
 

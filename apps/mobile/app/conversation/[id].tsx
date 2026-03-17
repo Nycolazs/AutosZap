@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -45,18 +46,21 @@ export default function ConversationScreen() {
 
   if (conversationQuery.isLoading || !conversation) {
     return (
-      <View style={styles.centerState}>
-        <ActivityIndicator color={palette.primary} />
-      </View>
+      <ScreenTransition>
+        <View style={styles.centerState}>
+          <ActivityIndicator color={palette.primary} />
+        </View>
+      </ScreenTransition>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-      keyboardVerticalOffset={96}
-    >
+    <ScreenTransition>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.select({ ios: 'padding', android: undefined })}
+        keyboardVerticalOffset={96}
+      >
       <View style={styles.headerCard}>
         <View style={{ flex: 1 }}>
           <Text style={styles.contactName}>{conversation.contact.name}</Text>
@@ -317,7 +321,8 @@ export default function ConversationScreen() {
           </View>
         </ScrollView>
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenTransition>
   );
 }
 

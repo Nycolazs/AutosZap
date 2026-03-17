@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { AccessDenied } from '@/components/shared/access-denied';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav';
+import { RouteTransition } from '@/components/layout/route-transition';
 import { Topbar } from '@/components/layout/topbar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest } from '@/lib/api-client';
@@ -111,12 +112,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <div
             className={cn(
-              'motion-enter h-full px-3 py-3 sm:p-4 lg:p-5',
+              'h-full px-3 py-3 sm:p-4 lg:p-5',
               shouldShowMobileBottomNav && 'pb-24',
               isInboxRoute && 'overflow-hidden',
             )}
           >
-            {children}
+            <RouteTransition className="h-full">{children}</RouteTransition>
           </div>
         </main>
         {shouldShowMobileBottomNav ? (

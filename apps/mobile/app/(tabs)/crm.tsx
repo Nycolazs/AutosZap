@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -35,7 +36,8 @@ export default function CrmScreen() {
   const groups = Object.entries(grouped);
 
   return (
-    <View style={styles.screen}>
+    <ScreenTransition>
+      <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>CRM</Text>
         <Text style={styles.title}>Pipeline</Text>
@@ -109,7 +111,8 @@ export default function CrmScreen() {
           }}
         />
       )}
-    </View>
+      </View>
+    </ScreenTransition>
   );
 }
 

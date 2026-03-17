@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -22,7 +23,8 @@ export default function NotificationsScreen() {
   });
 
   return (
-    <View style={styles.screen}>
+    <ScreenTransition>
+      <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>ALERTAS</Text>
         <Text style={styles.title}>Notificações</Text>
@@ -81,7 +83,8 @@ export default function NotificationsScreen() {
           )}
         />
       )}
-    </View>
+      </View>
+    </ScreenTransition>
   );
 }
 

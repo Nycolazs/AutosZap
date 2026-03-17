@@ -73,6 +73,7 @@ function RootNavigation() {
       <StatusBar style="light" />
       <Stack
         screenOptions={{
+          animation: 'fade_from_bottom',
           headerStyle: {
             backgroundColor: palette.background,
           },

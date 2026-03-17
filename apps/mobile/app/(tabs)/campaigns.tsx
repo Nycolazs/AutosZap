@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
@@ -28,7 +29,8 @@ export default function CampaignsScreen() {
   });
 
   return (
-    <View style={styles.screen}>
+    <ScreenTransition>
+      <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>DISPAROS</Text>
         <Text style={styles.title}>Campanhas</Text>
@@ -94,7 +96,8 @@ export default function CampaignsScreen() {
           )}
         />
       )}
-    </View>
+      </View>
+    </ScreenTransition>
   );
 }
 

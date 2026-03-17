@@ -287,7 +287,7 @@ export function App() {
 
       <main className="desktop-main">
         {selectedConversation ? (
-          <>
+          <div key={selectedConversation.id} className="desktop-main-transition">
             <header className="desktop-main__header">
               <div>
                 <h2>{selectedConversation.contact.name}</h2>
@@ -464,7 +464,7 @@ export function App() {
                 </section>
               </aside>
             </div>
-          </>
+          </div>
         ) : (
           <div className="desktop-center">Escolha uma conversa para começar.</div>
         )}
