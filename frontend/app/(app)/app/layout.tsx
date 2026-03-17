@@ -111,7 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <div
             className={cn(
-              'h-full px-3 py-3 sm:p-4 lg:p-5',
+              'motion-enter h-full px-3 py-3 sm:p-4 lg:p-5',
               shouldShowMobileBottomNav && 'pb-24',
               isInboxRoute && 'overflow-hidden',
             )}
