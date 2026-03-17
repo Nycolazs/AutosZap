@@ -725,9 +725,19 @@ export class ConversationWorkflowService {
           assignedUserId: {
             not: null,
           },
-          waitingSince: {
-            lte: threshold,
-          },
+          OR: [
+            {
+              waitingSince: {
+                lte: threshold,
+              },
+            },
+            {
+              waitingSince: null,
+              statusChangedAt: {
+                lte: threshold,
+              },
+            },
+          ],
           status: {
             in: [ConversationStatus.IN_PROGRESS, ConversationStatus.OPEN],
           },
@@ -749,14 +759,18 @@ export class ConversationWorkflowService {
             lockedConversation.status,
             lockedConversation.assignedUserId,
           );
+          const timeoutAnchor =
+            lockedConversation.waitingSince ??
+            lockedConversation.statusChangedAt;
 
           if (
             currentStatus !== ConversationStatus.IN_PROGRESS ||
-            !lockedConversation.waitingSince ||
-            lockedConversation.waitingSince > threshold
+            timeoutAnchor > threshold
           ) {
             return false;
           }
+
+          const now = new Date();
 
           await tx.conversation.update({
             where: {
@@ -765,7 +779,8 @@ export class ConversationWorkflowService {
             data: {
               status: ConversationStatus.WAITING,
               ownership: ConversationOwnership.TEAM,
-              statusChangedAt: new Date(),
+              waitingSince: now,
+              statusChangedAt: now,
             },
           });
 
@@ -777,7 +792,7 @@ export class ConversationWorkflowService {
             fromStatus: currentStatus,
             toStatus: ConversationStatus.WAITING,
             metadata: {
-              waitingSince: lockedConversation.waitingSince.toISOString(),
+              timeoutAnchor: timeoutAnchor.toISOString(),
               timeoutMinutes: settings.inactivityTimeoutMinutes,
               assignedUserId: lockedConversation.assignedUserId,
             },
@@ -808,9 +823,19 @@ export class ConversationWorkflowService {
         where: {
           workspaceId: workspace.id,
           deletedAt: null,
-          waitingSince: {
-            lte: waitingAutoCloseThreshold,
-          },
+          OR: [
+            {
+              waitingSince: {
+                lte: waitingAutoCloseThreshold,
+              },
+            },
+            {
+              waitingSince: null,
+              statusChangedAt: {
+                lte: waitingAutoCloseThreshold,
+              },
+            },
+          ],
           status: ConversationStatus.WAITING,
         },
         select: {
@@ -830,11 +855,13 @@ export class ConversationWorkflowService {
             lockedConversation.status,
             lockedConversation.assignedUserId,
           );
+          const timeoutAnchor =
+            lockedConversation.waitingSince ??
+            lockedConversation.statusChangedAt;
 
           if (
             currentStatus !== ConversationStatus.WAITING ||
-            !lockedConversation.waitingSince ||
-            lockedConversation.waitingSince > waitingAutoCloseThreshold
+            timeoutAnchor > waitingAutoCloseThreshold
           ) {
             return false;
           }
@@ -867,7 +894,7 @@ export class ConversationWorkflowService {
             metadata: {
               closeReason: 'UNANSWERED',
               triggeredBy: 'waiting_auto_close_timeout',
-              waitingSince: lockedConversation.waitingSince.toISOString(),
+              timeoutAnchor: timeoutAnchor.toISOString(),
               timeoutMinutes: settings.waitingAutoCloseTimeoutMinutes,
             },
           });
