@@ -370,6 +370,10 @@ export interface WorkspaceConversationSettings {
   businessHoursAutoReply?: string | null;
   sendOutOfHoursAutoReply: boolean;
   outOfHoursAutoReply?: string | null;
+  sendResolvedAutoReply: boolean;
+  resolvedAutoReplyMessage?: string | null;
+  sendClosedAutoReply: boolean;
+  closedAutoReplyMessage?: string | null;
   sendWindowClosedTemplateReply: boolean;
   windowClosedTemplateName?: string | null;
   windowClosedTemplateLanguageCode?: string | null;

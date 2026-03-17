@@ -38,6 +38,32 @@ export function normalizePhone(value?: string | null) {
   return nationalDigits;
 }
 
+export function normalizeContactPhoneForComparison(value?: string | null) {
+  const digits = (value ?? '').replace(/\D/g, '');
+
+  if (!digits) {
+    return '';
+  }
+
+  const nationalDigits =
+    digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+      ? digits.slice(2)
+      : digits;
+
+  if (nationalDigits.length === 10 || nationalDigits.length === 11) {
+    if (
+      nationalDigits.length === 10 &&
+      /^[6-9]$/.test(nationalDigits.charAt(2))
+    ) {
+      return `+55${nationalDigits.slice(0, 2)}9${nationalDigits.slice(2)}`;
+    }
+
+    return `+55${nationalDigits}`;
+  }
+
+  return `+${digits}`;
+}
+
 export function formatBrazilPhone(value?: string | null) {
   const digits = normalizePhone(value);
 

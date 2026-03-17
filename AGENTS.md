@@ -85,3 +85,32 @@ Do not store raw secrets in repository files. Use environment variables and secu
 - If workspace is dirty, avoid reverting unrelated user changes.
 - Prefer minimal patches.
 - Validate with logs and database checks when changing automation logic.
+
+## 9) Production Backend Update Procedure (VPS)
+Use this exact flow when asked to update backend in production.
+
+1. Connect to production VPS:
+
+```bash
+ssh root@<SERVER_IP>
+```
+
+2. Run official backend deploy from `/opt/autozap`:
+
+```bash
+cd /opt/autozap
+bash scripts/deploy/deploy.sh
+```
+
+3. Validate backend health after deploy:
+
+```bash
+bash scripts/ops/healthcheck.sh
+docker compose -f docker-compose.prod.yml --env-file .env.production ps
+curl -sS https://api.autoszap.com/api/health
+```
+
+Notes:
+- In production, backend port `4000` is internal to Compose (`4000/tcp`) and is usually not exposed on host, so prefer public health check via `https://api.autoszap.com/api/health` and container health state.
+- If `deploy.sh` reports timeout at step 4 but container becomes `healthy` shortly after, treat deploy as successful only after confirming container health + public health endpoint + backend logs.
+- Always use `.env.production` on server; do not rely on shell defaults for required variables.

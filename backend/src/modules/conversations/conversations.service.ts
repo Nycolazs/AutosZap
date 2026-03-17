@@ -1,9 +1,16 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import {
+  AutoMessageType,
+  ConversationStatus,
+  MessageDirection,
+  Prisma,
+} from '@prisma/client';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -14,20 +21,52 @@ import {
 } from '../../common/utils/pagination';
 import { normalizeSearchPhone } from '../../common/utils/phone';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
+import { WorkspaceSettingsService } from '../workspace-settings/workspace-settings.service';
 import { ConversationWorkflowService } from './conversation-workflow.service';
 import { normalizeConversationStatus } from './conversation-workflow.utils';
 
 const INBOX_MESSAGES_PRELOAD_LIMIT = 120;
 
-type ConversationIncludeToken = 'messages' | 'notes' | 'reminders' | 'contactTags';
+type ConversationIncludeToken =
+  | 'messages'
+  | 'notes'
+  | 'reminders'
+  | 'contactTags';
+
+type FinalAutoMessageDeliveryResult = {
+  attempted: boolean;
+  sent: boolean;
+  skippedReason?:
+    | 'feature-disabled'
+    | 'message-empty'
+    | 'status-mismatch'
+    | 'already-sent'
+    | 'in-progress';
+  error?: string;
+};
+
+type LockedFinalizationConversationRecord = {
+  id: string;
+  status: ConversationStatus;
+  assignedUserId: string | null;
+  resolvedAutoMessageSentAt: Date | null;
+  resolvedAutoMessageDispatchToken: string | null;
+  resolvedAutoMessageDispatchStartedAt: Date | null;
+  closedAutoMessageSentAt: Date | null;
+  closedAutoMessageDispatchToken: string | null;
+  closedAutoMessageDispatchStartedAt: Date | null;
+};
 
 @Injectable()
 export class ConversationsService {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly metaWhatsAppService: MetaWhatsAppService,
     private readonly inboxEventsService: InboxEventsService,
     private readonly conversationWorkflowService: ConversationWorkflowService,
+    private readonly workspaceSettingsService: WorkspaceSettingsService,
   ) {}
 
   stream(user: CurrentAuthUser) {
@@ -255,7 +294,8 @@ export class ConversationsService {
       return undefined;
     }
 
-    const tagLinks = (contact as { tagLinks?: Array<{ tag: unknown }> }).tagLinks;
+    const tagLinks = (contact as { tagLinks?: Array<{ tag: unknown }> })
+      .tagLinks;
 
     return tagLinks?.map((item) => item.tag);
   }
@@ -623,23 +663,51 @@ export class ConversationsService {
   }
 
   async resolveConversation(id: string, user: CurrentAuthUser) {
-    await this.conversationWorkflowService.resolveConversation(
+    const finalizeResult = await this.conversationWorkflowService.resolveConversation(
       id,
       user.workspaceId,
       user.sub,
     );
 
-    return this.findOne(id, user);
+    const autoFinalMessage =
+      await this.maybeSendFinalizationAutoMessage({
+        conversationId: id,
+        workspaceId: user.workspaceId,
+        actorUserId: user.sub,
+        targetStatus: ConversationStatus.RESOLVED,
+        currentStatus: finalizeResult.status,
+      });
+
+    const conversation = await this.findOne(id, user);
+
+    return {
+      ...conversation,
+      autoFinalMessage,
+    };
   }
 
   async closeConversation(id: string, user: CurrentAuthUser) {
-    await this.conversationWorkflowService.closeConversation(
+    const finalizeResult = await this.conversationWorkflowService.closeConversation(
       id,
       user.workspaceId,
       user.sub,
     );
 
-    return this.findOne(id, user);
+    const autoFinalMessage =
+      await this.maybeSendFinalizationAutoMessage({
+        conversationId: id,
+        workspaceId: user.workspaceId,
+        actorUserId: user.sub,
+        targetStatus: ConversationStatus.CLOSED,
+        currentStatus: finalizeResult.status,
+      });
+
+    const conversation = await this.findOne(id, user);
+
+    return {
+      ...conversation,
+      autoFinalMessage,
+    };
   }
 
   async reopenConversation(id: string, user: CurrentAuthUser) {
@@ -682,5 +750,262 @@ export class ConversationsService {
       user.workspaceId,
       messageId,
     );
+  }
+
+  private async maybeSendFinalizationAutoMessage(payload: {
+    conversationId: string;
+    workspaceId: string;
+    actorUserId: string;
+    targetStatus: 'RESOLVED' | 'CLOSED';
+    currentStatus: ConversationStatus;
+  }): Promise<FinalAutoMessageDeliveryResult> {
+    if (payload.currentStatus !== payload.targetStatus) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'status-mismatch',
+      };
+    }
+
+    const settings = await this.workspaceSettingsService.getConversationSettings(
+      payload.workspaceId,
+    );
+    const isResolvedTarget = payload.targetStatus === ConversationStatus.RESOLVED;
+    const enabled = isResolvedTarget
+      ? settings.sendResolvedAutoReply
+      : settings.sendClosedAutoReply;
+    const message = isResolvedTarget
+      ? settings.resolvedAutoReplyMessage?.trim()
+      : settings.closedAutoReplyMessage?.trim();
+
+    if (!enabled) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'feature-disabled',
+      };
+    }
+
+    if (!message) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'message-empty',
+      };
+    }
+
+    const dispatchToken = `${payload.targetStatus}-${randomUUID()}`;
+    const lockDecision = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<LockedFinalizationConversationRecord[]>`
+        SELECT
+          id,
+          status,
+          "assignedUserId",
+          "resolvedAutoMessageSentAt",
+          "resolvedAutoMessageDispatchToken",
+          "resolvedAutoMessageDispatchStartedAt",
+          "closedAutoMessageSentAt",
+          "closedAutoMessageDispatchToken",
+          "closedAutoMessageDispatchStartedAt"
+        FROM "Conversation"
+        WHERE id = ${payload.conversationId}
+          AND "workspaceId" = ${payload.workspaceId}
+          AND "deletedAt" IS NULL
+        FOR UPDATE
+      `;
+
+      const conversation = rows[0];
+
+      if (!conversation) {
+        throw new NotFoundException('Conversa nao encontrada.');
+      }
+
+      const currentStatus = normalizeConversationStatus(
+        conversation.status,
+        conversation.assignedUserId,
+      );
+
+      if (currentStatus !== payload.targetStatus) {
+        return {
+          shouldSend: false,
+          skippedReason: 'status-mismatch' as const,
+        };
+      }
+
+      const alreadySentAt = isResolvedTarget
+        ? conversation.resolvedAutoMessageSentAt
+        : conversation.closedAutoMessageSentAt;
+      const currentDispatchToken = isResolvedTarget
+        ? conversation.resolvedAutoMessageDispatchToken
+        : conversation.closedAutoMessageDispatchToken;
+      const currentDispatchStartedAt = isResolvedTarget
+        ? conversation.resolvedAutoMessageDispatchStartedAt
+        : conversation.closedAutoMessageDispatchStartedAt;
+
+      if (alreadySentAt) {
+        return {
+          shouldSend: false,
+          skippedReason: 'already-sent' as const,
+        };
+      }
+
+      const dispatchInProgressCutoff = Date.now() - 2 * 60_000;
+      const hasRecentInProgressDispatch =
+        Boolean(currentDispatchToken) &&
+        currentDispatchStartedAt !== null &&
+        currentDispatchStartedAt.getTime() > dispatchInProgressCutoff;
+
+      if (hasRecentInProgressDispatch) {
+        return {
+          shouldSend: false,
+          skippedReason: 'in-progress' as const,
+        };
+      }
+
+      await tx.conversation.update({
+        where: {
+          id: payload.conversationId,
+        },
+        data: isResolvedTarget
+          ? {
+              resolvedAutoMessageDispatchToken: dispatchToken,
+              resolvedAutoMessageDispatchStartedAt: new Date(),
+              resolvedAutoMessageLastError: null,
+            }
+          : {
+              closedAutoMessageDispatchToken: dispatchToken,
+              closedAutoMessageDispatchStartedAt: new Date(),
+              closedAutoMessageLastError: null,
+            },
+      });
+
+      return {
+        shouldSend: true,
+      };
+    });
+
+    if (!lockDecision.shouldSend) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: lockDecision.skippedReason,
+      };
+    }
+
+    const autoMessageType = isResolvedTarget
+      ? AutoMessageType.FINAL_RESOLVED
+      : AutoMessageType.FINAL_CLOSED;
+
+    try {
+      const sentMessage = await this.metaWhatsAppService.sendConversationMessage(
+        payload.workspaceId,
+        payload.conversationId,
+        payload.actorUserId,
+        message,
+        {
+          direction: MessageDirection.SYSTEM,
+          isAutomated: true,
+          autoMessageType,
+        },
+      );
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.conversation.updateMany({
+          where: {
+            id: payload.conversationId,
+            ...(isResolvedTarget
+              ? { resolvedAutoMessageDispatchToken: dispatchToken }
+              : { closedAutoMessageDispatchToken: dispatchToken }),
+          },
+          data: isResolvedTarget
+            ? {
+                resolvedAutoMessageSentAt: new Date(),
+                resolvedAutoMessageLastError: null,
+                resolvedAutoMessageDispatchToken: null,
+                resolvedAutoMessageDispatchStartedAt: null,
+              }
+            : {
+                closedAutoMessageSentAt: new Date(),
+                closedAutoMessageLastError: null,
+                closedAutoMessageDispatchToken: null,
+                closedAutoMessageDispatchStartedAt: null,
+              },
+        });
+
+        await tx.conversationEvent.create({
+          data: {
+            workspaceId: payload.workspaceId,
+            conversationId: payload.conversationId,
+            actorUserId: payload.actorUserId,
+            type: 'AUTO_MESSAGE_SENT' as never,
+            toStatus: payload.targetStatus,
+            metadata: {
+              result: 'SENT',
+              autoMessageType,
+              conversationStatus: payload.targetStatus,
+              messageId: sentMessage.id,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      });
+
+      return {
+        attempted: true,
+        sent: true,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Falha desconhecida ao enviar mensagem automatica final.';
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.conversation.updateMany({
+          where: {
+            id: payload.conversationId,
+            ...(isResolvedTarget
+              ? { resolvedAutoMessageDispatchToken: dispatchToken }
+              : { closedAutoMessageDispatchToken: dispatchToken }),
+          },
+          data: isResolvedTarget
+            ? {
+                resolvedAutoMessageLastError: errorMessage.slice(0, 500),
+                resolvedAutoMessageDispatchToken: null,
+                resolvedAutoMessageDispatchStartedAt: null,
+              }
+            : {
+                closedAutoMessageLastError: errorMessage.slice(0, 500),
+                closedAutoMessageDispatchToken: null,
+                closedAutoMessageDispatchStartedAt: null,
+              },
+        });
+
+        await tx.conversationEvent.create({
+          data: {
+            workspaceId: payload.workspaceId,
+            conversationId: payload.conversationId,
+            actorUserId: payload.actorUserId,
+            type: 'AUTO_MESSAGE_SENT' as never,
+            toStatus: payload.targetStatus,
+            metadata: {
+              result: 'FAILED',
+              autoMessageType,
+              conversationStatus: payload.targetStatus,
+              error: errorMessage,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      });
+
+      this.logger.error(
+        `Falha ao enviar mensagem automatica final para a conversa ${payload.conversationId}: ${errorMessage}`,
+      );
+
+      return {
+        attempted: true,
+        sent: false,
+        error: errorMessage,
+      };
+    }
   }
 }

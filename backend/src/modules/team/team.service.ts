@@ -110,11 +110,14 @@ export class TeamService {
       ? payload.status && payload.status !== UserStatus.PENDING
         ? payload.status
         : UserStatus.ACTIVE
-      : payload.status ?? UserStatus.PENDING;
+      : (payload.status ?? UserStatus.PENDING);
 
     const member = shouldCreateLogin
       ? await this.prisma.$transaction(async (tx) => {
-          const passwordHash = await bcrypt.hash(payload.password as string, 10);
+          const passwordHash = await bcrypt.hash(
+            payload.password as string,
+            10,
+          );
           const user = await tx.user.create({
             data: {
               workspaceId,
@@ -217,7 +220,10 @@ export class TeamService {
         select: { id: true },
       });
 
-      if (existingUser && (!member.user || existingUser.id !== member.user.id)) {
+      if (
+        existingUser &&
+        (!member.user || existingUser.id !== member.user.id)
+      ) {
         throw new BadRequestException('Ja existe uma conta com este email.');
       }
     }

@@ -1325,7 +1325,11 @@ export class MetaWhatsAppService {
       return false;
     }
 
-    if (headerParameterCount !== null && headerParameterCount !== undefined && headerParameterCount > 0) {
+    if (
+      headerParameterCount !== null &&
+      headerParameterCount !== undefined &&
+      headerParameterCount > 0
+    ) {
       return false;
     }
 

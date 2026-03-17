@@ -20,8 +20,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
 import { Contact, PaginatedResponse, Tag } from '@/lib/types';
-import { applyBrazilPhoneMask, cn, formatBrazilPhone, formatDate, normalizePhone } from '@/lib/utils';
+import {
+  applyBrazilPhoneMask,
+  cn,
+  formatBrazilPhone,
+  formatDate,
+  normalizeContactPhoneForComparison,
+  normalizePhone,
+} from '@/lib/utils';
 import { ContactRound } from 'lucide-react';
+
+const DUPLICATE_CONTACT_MESSAGE =
+  'Ja existe um contato cadastrado com este numero.';
 
 const schema = z.object({
   name: z.string().min(2),
@@ -92,26 +102,53 @@ export default function ContactsPage() {
     control: form.control,
     name: 'tagIds',
   });
+  const contacts = contactsQuery.data?.data ?? [];
 
   const saveMutation = useMutation({
-    mutationFn: (values: FormValues) =>
-      apiRequest(selectedContact ? `contacts/${selectedContact.id}` : 'contacts', {
+    mutationFn: async (values: FormValues) => {
+      const normalizedDraftPhone = normalizeContactPhoneForComparison(
+        values.phone,
+      );
+      const duplicateFromList = contacts.find(
+        (contact) =>
+          contact.id !== selectedContact?.id &&
+          normalizeContactPhoneForComparison(contact.phone) ===
+            normalizedDraftPhone,
+      );
+
+      if (normalizedDraftPhone && duplicateFromList) {
+        throw new Error(DUPLICATE_CONTACT_MESSAGE);
+      }
+
+      return apiRequest(selectedContact ? `contacts/${selectedContact.id}` : 'contacts', {
         method: selectedContact ? 'PATCH' : 'POST',
         body: {
           ...values,
           phone: normalizePhone(values.phone),
           tagIds: values.tagIds ?? [],
         },
-      }),
+      });
+    },
     onSuccess: async () => {
       setDialogOpen(false);
       await queryClient.invalidateQueries({ queryKey: ['contacts'] });
       toast.success('Contato salvo.');
     },
-    onError: (error: Error) => toast.error(error.message),
-  });
+    onError: (error: Error) => {
+      const isDuplicatePhoneError = /contato|telefone|numero/i.test(
+        error.message,
+      );
 
-  const contacts = contactsQuery.data?.data ?? [];
+      if (isDuplicatePhoneError) {
+        form.setError('phone', {
+          type: 'manual',
+          message: DUPLICATE_CONTACT_MESSAGE,
+        });
+      }
+
+      toast.error(error.message);
+    },
+  });
   const detail = contactDetailQuery.data;
   const availableTags = tagsQuery.data ?? [];
 
@@ -249,6 +286,11 @@ export default function ContactsPage() {
                 <Label>Telefone</Label>
                 <Input
                   placeholder="(99) 99999-9999"
+                  className={cn(
+                    form.formState.errors.phone
+                      ? 'border-danger/70 ring-1 ring-danger/30 focus-visible:ring-danger/40'
+                      : undefined,
+                  )}
                   {...form.register('phone', {
                     onChange: (event) => {
                       const masked = applyBrazilPhoneMask(event.target.value);

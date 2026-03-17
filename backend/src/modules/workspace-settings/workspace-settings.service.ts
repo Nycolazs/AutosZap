@@ -65,6 +65,10 @@ export class WorkspaceSettingsService {
       businessHoursAutoReply?: string | null;
       sendOutOfHoursAutoReply?: boolean;
       outOfHoursAutoReply?: string | null;
+      sendResolvedAutoReply?: boolean;
+      resolvedAutoReplyMessage?: string | null;
+      sendClosedAutoReply?: boolean;
+      closedAutoReplyMessage?: string | null;
       sendWindowClosedTemplateReply?: boolean;
       windowClosedTemplateName?: string | null;
       windowClosedTemplateLanguageCode?: string | null;
@@ -116,6 +120,15 @@ export class WorkspaceSettingsService {
       currentSettings.sendOutOfHoursAutoReply;
     const outOfHoursAutoReply =
       payload.outOfHoursAutoReply ?? currentSettings.outOfHoursAutoReply;
+    const sendResolvedAutoReply =
+      payload.sendResolvedAutoReply ?? currentSettings.sendResolvedAutoReply;
+    const resolvedAutoReplyMessage =
+      payload.resolvedAutoReplyMessage ??
+      currentSettings.resolvedAutoReplyMessage;
+    const sendClosedAutoReply =
+      payload.sendClosedAutoReply ?? currentSettings.sendClosedAutoReply;
+    const closedAutoReplyMessage =
+      payload.closedAutoReplyMessage ?? currentSettings.closedAutoReplyMessage;
     const sendWindowClosedTemplateReply =
       payload.sendWindowClosedTemplateReply ??
       currentSettings.sendWindowClosedTemplateReply;
@@ -135,6 +148,18 @@ export class WorkspaceSettingsService {
     if (sendOutOfHoursAutoReply && !outOfHoursAutoReply?.trim()) {
       throw new BadRequestException(
         'Informe a mensagem automatica para fora do horario de atendimento.',
+      );
+    }
+
+    if (sendResolvedAutoReply && !resolvedAutoReplyMessage?.trim()) {
+      throw new BadRequestException(
+        'Informe a mensagem automatica para conversas resolvidas.',
+      );
+    }
+
+    if (sendClosedAutoReply && !closedAutoReplyMessage?.trim()) {
+      throw new BadRequestException(
+        'Informe a mensagem automatica para conversas encerradas.',
       );
     }
 
@@ -183,6 +208,10 @@ export class WorkspaceSettingsService {
           businessHoursAutoReply,
           sendOutOfHoursAutoReply,
           outOfHoursAutoReply,
+          sendResolvedAutoReply,
+          resolvedAutoReplyMessage: resolvedAutoReplyMessage?.trim() || null,
+          sendClosedAutoReply,
+          closedAutoReplyMessage: closedAutoReplyMessage?.trim() || null,
           sendWindowClosedTemplateReply,
           windowClosedTemplateName: windowClosedTemplateName?.trim() || null,
           windowClosedTemplateLanguageCode:

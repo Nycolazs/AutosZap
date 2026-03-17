@@ -124,7 +124,11 @@ export class DashboardService {
         actorEmail: activity.actor?.email ?? null,
         actionLabel: this.mapAuditActionLabel(activity.action),
         entityLabel: this.mapAuditEntityLabel(activity.entityType),
-        detail: this.buildAuditDetail(activity.action, activity.entityType, metadata),
+        detail: this.buildAuditDetail(
+          activity.action,
+          activity.entityType,
+          metadata,
+        ),
       };
     });
 
@@ -387,19 +391,31 @@ export class DashboardService {
       return `${this.mapAuditEntityLabel(entityType)} • sem detalhes adicionais`;
     }
 
-    const userAgent = typeof metadata.userAgent === 'string' ? metadata.userAgent : '';
-    const ipAddress = typeof metadata.ipAddress === 'string' ? metadata.ipAddress : '';
+    const userAgent =
+      typeof metadata.userAgent === 'string' ? metadata.userAgent : '';
+    const ipAddress =
+      typeof metadata.ipAddress === 'string' ? metadata.ipAddress : '';
     const email = typeof metadata.email === 'string' ? metadata.email : '';
     const status = typeof metadata.status === 'string' ? metadata.status : '';
 
     if (action === AuditAction.LOGIN) {
-      const loginDetails = [ipAddress ? `IP ${ipAddress}` : null, userAgent ? userAgent : null].filter(Boolean);
-      return loginDetails.length ? loginDetails.join(' • ') : 'Login realizado com sucesso';
+      const loginDetails = [
+        ipAddress ? `IP ${ipAddress}` : null,
+        userAgent ? userAgent : null,
+      ].filter(Boolean);
+      return loginDetails.length
+        ? loginDetails.join(' • ')
+        : 'Login realizado com sucesso';
     }
 
     if (action === AuditAction.INVITE) {
-      const inviteDetails = [email ? `Email ${email}` : null, status ? `Status ${status}` : null].filter(Boolean);
-      return inviteDetails.length ? inviteDetails.join(' • ') : 'Convite enviado';
+      const inviteDetails = [
+        email ? `Email ${email}` : null,
+        status ? `Status ${status}` : null,
+      ].filter(Boolean);
+      return inviteDetails.length
+        ? inviteDetails.join(' • ')
+        : 'Convite enviado';
     }
 
     if (email) {

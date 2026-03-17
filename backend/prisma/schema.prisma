@@ -100,6 +100,8 @@ enum PermissionKey {
 enum AutoMessageType {
   IN_BUSINESS_HOURS
   OUT_OF_BUSINESS_HOURS
+  FINAL_RESOLVED
+  FINAL_CLOSED
 }
 
 enum ConversationEventType {
@@ -525,6 +527,14 @@ model Conversation {
   lastInboundAt         DateTime?
   waitingSince          DateTime?
   statusChangedAt       DateTime                  @default(now())
+  resolvedAutoMessageSentAt DateTime?
+  resolvedAutoMessageLastError String?
+  resolvedAutoMessageDispatchToken String?
+  resolvedAutoMessageDispatchStartedAt DateTime?
+  closedAutoMessageSentAt DateTime?
+  closedAutoMessageLastError String?
+  closedAutoMessageDispatchToken String?
+  closedAutoMessageDispatchStartedAt DateTime?
   resolvedAt            DateTime?
   resolvedById          String?
   closedAt              DateTime?
@@ -640,6 +650,10 @@ model WorkspaceConversationSettings {
   businessHoursAutoReply     String?
   sendOutOfHoursAutoReply    Boolean                 @default(false)
   outOfHoursAutoReply        String?
+  sendResolvedAutoReply      Boolean                 @default(false)
+  resolvedAutoReplyMessage   String?
+  sendClosedAutoReply        Boolean                 @default(false)
+  closedAutoReplyMessage     String?
   sendWindowClosedTemplateReply Boolean              @default(false)
   windowClosedTemplateName      String?
   windowClosedTemplateLanguageCode String?

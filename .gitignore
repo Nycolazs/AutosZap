@@ -15,6 +15,11 @@ backend/coverage
 apps/mobile/.expo/
 .codex-local
 
+# Artefatos locais de execucao (nao versionar)
+.logs/
+.pids/
+.tmp_*.sql.gz
+
 # Scripts temporários de operação / deploy ad-hoc.
 # Nunca devem entrar no repositório pois podem conter credenciais.
 tmp-deploy.py

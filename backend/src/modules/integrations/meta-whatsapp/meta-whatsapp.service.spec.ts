@@ -202,28 +202,26 @@ describe('MetaWhatsAppService automatic replies', () => {
       .mockRejectedValueOnce(new Error('template not found'))
       .mockResolvedValueOnce({ id: 'msg-template-2' } as never);
 
-    jest
-      .spyOn(service, 'listTemplates')
-      .mockResolvedValue([
-        {
-          name: 'retomada_atendimento_autozap',
-          language: 'pt_BR',
-          status: 'APPROVED',
-          bodyParameterCount: 1,
-          headerParameterCount: 0,
-          headerFormat: 'TEXT',
-        },
-        {
-          name: 'retomada_atendimento_padrao',
-          language: 'pt_BR',
-          status: 'APPROVED',
-          category: 'UTILITY',
-          qualityScore: 'GREEN',
-          bodyParameterCount: 1,
-          headerParameterCount: 0,
-          headerFormat: 'TEXT',
-        },
-      ] as never);
+    jest.spyOn(service, 'listTemplates').mockResolvedValue([
+      {
+        name: 'retomada_atendimento_autozap',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        bodyParameterCount: 1,
+        headerParameterCount: 0,
+        headerFormat: 'TEXT',
+      },
+      {
+        name: 'retomada_atendimento_padrao',
+        language: 'pt_BR',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        qualityScore: 'GREEN',
+        bodyParameterCount: 1,
+        headerParameterCount: 0,
+        headerFormat: 'TEXT',
+      },
+    ] as never);
 
     prisma.conversation.findFirst.mockResolvedValue({
       id: 'conv-1',
@@ -283,9 +281,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       }),
     );
 
-    expect(
-      prisma.workspaceConversationSettings.update,
-    ).toHaveBeenCalledWith({
+    expect(prisma.workspaceConversationSettings.update).toHaveBeenCalledWith({
       where: {
         workspaceId: 'ws-1',
       },

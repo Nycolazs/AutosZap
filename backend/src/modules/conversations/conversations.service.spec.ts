@@ -21,6 +21,7 @@ describe('ConversationsService summary', () => {
       {} as never,
       {} as never,
       workflow as never,
+      {} as never,
     );
 
     return {

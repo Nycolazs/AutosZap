@@ -413,6 +413,25 @@ export default function CampaignsPage() {
               }
             />
 
+            <Field
+              label="Mensagem"
+              error={formErrors.message}
+              helper="A prévia interpreta formatação do WhatsApp em tempo real, incluindo *negrito*, _itálico_, ~tachado~, blocos monoespaçados e placeholders como {{nome}}."
+              input={
+                <Textarea
+                  value={formValues.message}
+                  onChange={(event) =>
+                    setFormValues((current) => ({
+                      ...current,
+                      message: event.target.value,
+                    }))
+                  }
+                  placeholder="Escreva aqui a mensagem da campanha..."
+                  className="min-h-32"
+                />
+              }
+            />
+
             <div className="grid gap-4 lg:grid-cols-[0.62fr_0.38fr]">
               <Field
                 label="Público"
@@ -474,25 +493,6 @@ export default function CampaignsPage() {
                       targetIds: next,
                     }))
                   }
-                />
-              }
-            />
-
-            <Field
-              label="Mensagem"
-              error={formErrors.message}
-              helper="A prévia interpreta formatação do WhatsApp em tempo real, incluindo *negrito*, _itálico_, ~tachado~, blocos monoespaçados e placeholders como {{nome}}."
-              input={
-                <Textarea
-                  value={formValues.message}
-                  onChange={(event) =>
-                    setFormValues((current) => ({
-                      ...current,
-                      message: event.target.value,
-                    }))
-                  }
-                  placeholder="Escreva aqui a mensagem da campanha..."
-                  className="min-h-32"
                 />
               }
             />

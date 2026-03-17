@@ -34,6 +34,10 @@ type WorkspaceConversationSettingsPayload = {
   businessHoursAutoReply?: string | null;
   sendOutOfHoursAutoReply: boolean;
   outOfHoursAutoReply?: string | null;
+  sendResolvedAutoReply: boolean;
+  resolvedAutoReplyMessage?: string | null;
+  sendClosedAutoReply: boolean;
+  closedAutoReplyMessage?: string | null;
   sendWindowClosedTemplateReply: boolean;
   windowClosedTemplateName?: string | null;
   windowClosedTemplateLanguageCode?: string | null;
@@ -60,6 +64,10 @@ function sanitizeWorkspaceConversationSettings(
     businessHoursAutoReply: settings.businessHoursAutoReply ?? null,
     sendOutOfHoursAutoReply: settings.sendOutOfHoursAutoReply,
     outOfHoursAutoReply: settings.outOfHoursAutoReply ?? null,
+    sendResolvedAutoReply: settings.sendResolvedAutoReply,
+    resolvedAutoReplyMessage: settings.resolvedAutoReplyMessage ?? null,
+    sendClosedAutoReply: settings.sendClosedAutoReply,
+    closedAutoReplyMessage: settings.closedAutoReplyMessage ?? null,
     sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
     windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
     windowClosedTemplateLanguageCode:
@@ -88,6 +96,10 @@ function toWorkspaceConversationSettingsPayload(
     businessHoursAutoReply: settings.businessHoursAutoReply ?? null,
     sendOutOfHoursAutoReply: settings.sendOutOfHoursAutoReply,
     outOfHoursAutoReply: settings.outOfHoursAutoReply ?? null,
+    sendResolvedAutoReply: settings.sendResolvedAutoReply,
+    resolvedAutoReplyMessage: settings.resolvedAutoReplyMessage ?? null,
+    sendClosedAutoReply: settings.sendClosedAutoReply,
+    closedAutoReplyMessage: settings.closedAutoReplyMessage ?? null,
     sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
     windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
     windowClosedTemplateLanguageCode:
@@ -152,10 +164,7 @@ export default function ConversationFlowPage() {
         body: toWorkspaceConversationSettingsPayload(conversationSettings),
       });
     },
-    onSuccess: async (updatedSettings) => {
-      setConversationSettingsDraft(
-        sanitizeWorkspaceConversationSettings(updatedSettings),
-      );
+    onSuccess: async () => {
       toast.success('Horários e automações salvos.');
       await queryClient.invalidateQueries({
         queryKey: ['workspace-conversation-settings'],
@@ -219,68 +228,23 @@ export default function ConversationFlowPage() {
                     <Label htmlFor="inactivity-timeout">
                       Tempo de inatividade do vendedor
                     </Label>
-                    <div className="flex items-center gap-2 rounded-2xl border border-border bg-background-panel/70 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="h-9 w-9 rounded-xl"
-                        disabled={!canEditRouting}
-                        onClick={() =>
-                          updateDraft((current) => ({
-                            ...current,
-                            inactivityTimeoutMinutes: clampInactivityTimeout(
-                              current.inactivityTimeoutMinutes - 1,
-                            ),
-                          }))
+                    <MinutesStepperInput
+                      id="inactivity-timeout"
+                      value={conversationSettings.inactivityTimeoutMinutes}
+                      min={1}
+                      max={1440}
+                      disabled={!canEditRouting}
+                      onChange={(value) => {
+                        if (value === null) {
+                          return;
                         }
-                        aria-label="Diminuir tempo de inatividade"
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </Button>
 
-                      <div className="relative flex-1">
-                        <Input
-                          id="inactivity-timeout"
-                          type="number"
-                          min={1}
-                          max={1440}
-                          value={conversationSettings.inactivityTimeoutMinutes}
-                          onChange={(event) =>
-                            updateDraft((current) => ({
-                              ...current,
-                              inactivityTimeoutMinutes: clampInactivityTimeout(
-                                Number(event.target.value || 15),
-                              ),
-                            }))
-                          }
-                          disabled={!canEditRouting}
-                          className="h-10 rounded-xl border-white/10 bg-background/70 pl-4 pr-14 text-base font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        />
-                        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">
-                          min
-                        </span>
-                      </div>
-
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="h-9 w-9 rounded-xl"
-                        disabled={!canEditRouting}
-                        onClick={() =>
-                          updateDraft((current) => ({
-                            ...current,
-                            inactivityTimeoutMinutes: clampInactivityTimeout(
-                              current.inactivityTimeoutMinutes + 1,
-                            ),
-                          }))
-                        }
-                        aria-label="Aumentar tempo de inatividade"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                        updateDraft((current) => ({
+                          ...current,
+                          inactivityTimeoutMinutes: clampInactivityTimeout(value),
+                        }));
+                      }}
+                    />
                     <p className="text-xs text-muted-foreground">
                       Após esse período sem resposta do responsável, a conversa
                       volta para <strong>AGUARDANDO</strong> e fica disponível
@@ -292,31 +256,44 @@ export default function ConversationFlowPage() {
                     <Label htmlFor="waiting-auto-close-timeout">
                       Encerramento automático no AGUARDANDO
                     </Label>
-                    <Input
+                    <MinutesStepperInput
                       id="waiting-auto-close-timeout"
-                      type="number"
+                      value={conversationSettings.waitingAutoCloseTimeoutMinutes ?? null}
                       min={1}
                       max={10080}
-                      value={
-                        conversationSettings.waitingAutoCloseTimeoutMinutes ??
-                        ''
-                      }
-                      onChange={(event) =>
-                        updateDraft((current) => {
-                          const rawValue = event.target.value.trim();
-
-                          return {
-                            ...current,
-                            waitingAutoCloseTimeoutMinutes: rawValue
-                              ? clampWaitingAutoCloseTimeout(Number(rawValue))
-                              : null,
-                          };
-                        })
+                      allowEmpty
+                      onChange={(value) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          waitingAutoCloseTimeoutMinutes:
+                            value === null
+                              ? null
+                              : clampWaitingAutoCloseTimeout(value),
+                        }))
                       }
                       placeholder="Desativado"
                       disabled={!canEditRouting}
-                      className="h-10 rounded-xl border-white/10 bg-background/70"
                     />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={
+                          !canEditRouting ||
+                          conversationSettings.waitingAutoCloseTimeoutMinutes ===
+                            null
+                        }
+                        onClick={() =>
+                          updateDraft((current) => ({
+                            ...current,
+                            waitingAutoCloseTimeoutMinutes: null,
+                          }))
+                        }
+                      >
+                        Desativar encerramento automático
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Defina em minutos para fechar automaticamente conversas em
                       <strong> AGUARDANDO</strong> como
@@ -410,6 +387,58 @@ export default function ConversationFlowPage() {
                       }))
                     }
                     placeholder="Ex.: Estamos fora do horario agora, mas retornaremos assim que a operacao abrir."
+                    disabled={!canEditAutoMessages}
+                    className="min-h-24"
+                  />
+
+                  <AutomationToggle
+                    checked={Boolean(
+                      conversationSettings.sendResolvedAutoReply,
+                    )}
+                    disabled={!canEditAutoMessages}
+                    label="Mensagem automatica ao resolver conversa"
+                    description="Enviada automaticamente quando uma conversa for marcada como RESOLVIDA."
+                    onCheckedChange={(checked) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sendResolvedAutoReply: checked,
+                      }))
+                    }
+                  />
+                  <Textarea
+                    value={conversationSettings.resolvedAutoReplyMessage ?? ''}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        resolvedAutoReplyMessage: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex.: Atendimento resolvido! Se precisar de algo mais, estamos a disposicao."
+                    disabled={!canEditAutoMessages}
+                    className="min-h-24"
+                  />
+
+                  <AutomationToggle
+                    checked={Boolean(conversationSettings.sendClosedAutoReply)}
+                    disabled={!canEditAutoMessages}
+                    label="Mensagem automatica ao encerrar conversa"
+                    description="Enviada automaticamente quando uma conversa for ENCERRADA manualmente."
+                    onCheckedChange={(checked) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sendClosedAutoReply: checked,
+                      }))
+                    }
+                  />
+                  <Textarea
+                    value={conversationSettings.closedAutoReplyMessage ?? ''}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        closedAutoReplyMessage: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex.: Conversa encerrada. Obrigado pelo contato e ate a proxima!"
                     disabled={!canEditAutoMessages}
                     className="min-h-24"
                   />
@@ -622,6 +651,95 @@ function AutomationToggle({
         disabled={disabled}
         onCheckedChange={onCheckedChange}
       />
+    </div>
+  );
+}
+
+function MinutesStepperInput({
+  id,
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+  allowEmpty = false,
+  placeholder,
+}: {
+  id: string;
+  value: number | null;
+  min: number;
+  max: number;
+  disabled?: boolean;
+  onChange: (value: number | null) => void;
+  allowEmpty?: boolean;
+  placeholder?: string;
+}) {
+  const hasValue = value !== null;
+
+  const clamp = (nextValue: number) => Math.min(max, Math.max(min, nextValue));
+
+  const handleInputChange = (rawValue: string) => {
+    const trimmedValue = rawValue.trim();
+
+    if (!trimmedValue) {
+      if (allowEmpty) {
+        onChange(null);
+      }
+
+      return;
+    }
+
+    const parsedValue = Number(trimmedValue);
+
+    if (!Number.isFinite(parsedValue)) {
+      return;
+    }
+
+    onChange(clamp(parsedValue));
+  };
+
+  return (
+    <div className="flex items-center gap-2 rounded-2xl border border-border bg-background-panel/70 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        className="h-9 w-9 rounded-xl"
+        disabled={disabled || (allowEmpty && !hasValue)}
+        onClick={() => onChange(clamp((value ?? min) - 1))}
+        aria-label="Diminuir valor em minutos"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </Button>
+
+      <div className="relative flex-1">
+        <Input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          value={value ?? ''}
+          onChange={(event) => handleInputChange(event.target.value)}
+          disabled={disabled}
+          placeholder={placeholder}
+          className="h-10 rounded-xl border-white/10 bg-background/70 pl-4 pr-14 text-base font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">
+          min
+        </span>
+      </div>
+
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        className="h-9 w-9 rounded-xl"
+        disabled={disabled}
+        onClick={() => onChange(clamp((value ?? min) + 1))}
+        aria-label="Aumentar valor em minutos"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }

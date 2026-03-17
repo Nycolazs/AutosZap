@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ContactSource, Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
@@ -15,6 +16,9 @@ import {
   getPagination,
   paginatedResponse,
 } from '../../common/utils/pagination';
+
+const DUPLICATE_CONTACT_PHONE_MESSAGE =
+  'Ja existe um contato cadastrado com este numero.';
 
 type ContactPayload = {
   name: string;
@@ -170,33 +174,51 @@ export class ContactsService {
 
   async create(workspaceId: string, payload: ContactPayload) {
     const normalizedPhone = normalizeContactPhone(payload.phone);
-    const equivalentPhones = buildEquivalentContactPhones(payload.phone);
+    const equivalentPhones = this.buildPhoneCandidates(payload.phone);
+
+    if (!normalizedPhone) {
+      throw new BadRequestException('Informe um numero de telefone valido.');
+    }
+
     const existing = await this.prisma.contact.findFirst({
       where: {
         workspaceId,
         phone: {
-          in: equivalentPhones.length ? equivalentPhones : [normalizedPhone],
+          in: equivalentPhones,
         },
         deletedAt: null,
       },
     });
 
     if (existing) {
-      throw new BadRequestException('Ja existe um contato com este telefone.');
+      throw new BadRequestException(DUPLICATE_CONTACT_PHONE_MESSAGE);
     }
 
-    const contact = await this.prisma.contact.create({
-      data: {
-        workspaceId,
-        name: payload.name,
-        phone: normalizedPhone,
-        email: payload.email,
-        company: payload.company,
-        jobTitle: payload.jobTitle,
-        source: payload.source as never,
-        notes: payload.notes,
-      },
-    });
+    let contact;
+
+    try {
+      contact = await this.prisma.contact.create({
+        data: {
+          workspaceId,
+          name: payload.name,
+          phone: normalizedPhone,
+          email: payload.email,
+          company: payload.company,
+          jobTitle: payload.jobTitle,
+          source: payload.source as never,
+          notes: payload.notes,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(DUPLICATE_CONTACT_PHONE_MESSAGE);
+      }
+
+      throw error;
+    }
 
     if (payload.tagIds?.length) {
       await this.syncTags(contact.id, payload.tagIds);
@@ -222,8 +244,12 @@ export class ContactsService {
       ? normalizeContactPhone(payload.phone)
       : contact.phone;
     const equivalentPhones = payload.phone
-      ? buildEquivalentContactPhones(payload.phone)
+      ? this.buildPhoneCandidates(payload.phone)
       : [contact.phone];
+
+    if (payload.phone && !normalizedPhone) {
+      throw new BadRequestException('Informe um numero de telefone valido.');
+    }
 
     if (normalizedPhone !== contact.phone) {
       const existing = await this.prisma.contact.findFirst({
@@ -240,24 +266,33 @@ export class ContactsService {
       });
 
       if (existing) {
-        throw new BadRequestException(
-          'Ja existe um contato com este telefone.',
-        );
+        throw new BadRequestException(DUPLICATE_CONTACT_PHONE_MESSAGE);
       }
     }
 
-    await this.prisma.contact.update({
-      where: { id },
-      data: {
-        name: payload.name ?? contact.name,
-        phone: normalizedPhone,
-        email: payload.email ?? contact.email,
-        company: payload.company ?? contact.company,
-        jobTitle: payload.jobTitle ?? contact.jobTitle,
-        source: (payload.source as never) ?? contact.source,
-        notes: payload.notes ?? contact.notes,
-      },
-    });
+    try {
+      await this.prisma.contact.update({
+        where: { id },
+        data: {
+          name: payload.name ?? contact.name,
+          phone: normalizedPhone,
+          email: payload.email ?? contact.email,
+          company: payload.company ?? contact.company,
+          jobTitle: payload.jobTitle ?? contact.jobTitle,
+          source: (payload.source as never) ?? contact.source,
+          notes: payload.notes ?? contact.notes,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(DUPLICATE_CONTACT_PHONE_MESSAGE);
+      }
+
+      throw error;
+    }
 
     if (payload.tagIds) {
       await this.syncTags(id, payload.tagIds);
@@ -294,5 +329,12 @@ export class ContactsService {
         skipDuplicates: true,
       });
     }
+  }
+
+  private buildPhoneCandidates(phone: string) {
+    const normalizedPhone = normalizeContactPhone(phone);
+    const equivalentPhones = buildEquivalentContactPhones(phone);
+
+    return [...new Set([normalizedPhone, ...equivalentPhones].filter(Boolean))];
   }
 }

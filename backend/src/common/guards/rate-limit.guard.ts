@@ -58,7 +58,10 @@ export class RateLimitGuard implements CanActivate {
         );
       }
     } catch (err) {
-      if (err instanceof HttpException && err.getStatus() === HttpStatus.TOO_MANY_REQUESTS) {
+      if (
+        err instanceof HttpException &&
+        err.getStatus() === HttpStatus.TOO_MANY_REQUESTS
+      ) {
         throw err;
       }
       // Redis unavailable — fail open to avoid blocking legitimate traffic

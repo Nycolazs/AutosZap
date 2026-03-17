@@ -957,7 +957,9 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       );
 
       templates.push(...(response.data ?? []));
-      after = response.paging?.next ? response.paging.cursors?.after : undefined;
+      after = response.paging?.next
+        ? response.paging.cursors?.after
+        : undefined;
       pageCount += 1;
     } while (after && pageCount < 100);
 

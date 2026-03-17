@@ -56,6 +56,11 @@ type LockedConversationRecord = {
   statusChangedAt: Date;
 };
 
+type FinalizeConversationResult = {
+  status: ConversationStatus;
+  changed: boolean;
+};
+
 @Injectable()
 export class ConversationWorkflowService {
   constructor(
@@ -542,6 +547,14 @@ export class ConversationWorkflowService {
           resolvedById: null,
           closedAt: null,
           closedById: null,
+          resolvedAutoMessageSentAt: null,
+          resolvedAutoMessageLastError: null,
+          resolvedAutoMessageDispatchToken: null,
+          resolvedAutoMessageDispatchStartedAt: null,
+          closedAutoMessageSentAt: null,
+          closedAutoMessageLastError: null,
+          closedAutoMessageDispatchToken: null,
+          closedAutoMessageDispatchStartedAt: null,
           statusChangedAt: now,
         },
       });
@@ -615,6 +628,14 @@ export class ConversationWorkflowService {
             resolvedById: null,
             closedAt: null,
             closedById: null,
+            resolvedAutoMessageSentAt: null,
+            resolvedAutoMessageLastError: null,
+            resolvedAutoMessageDispatchToken: null,
+            resolvedAutoMessageDispatchStartedAt: null,
+            closedAutoMessageSentAt: null,
+            closedAutoMessageLastError: null,
+            closedAutoMessageDispatchToken: null,
+            closedAutoMessageDispatchStartedAt: null,
             statusChangedAt: now,
           },
         });
@@ -976,7 +997,7 @@ export class ConversationWorkflowService {
     workspaceId: string,
     actorId: string,
     finalStatus: 'RESOLVED' | 'CLOSED',
-  ) {
+  ): Promise<FinalizeConversationResult> {
     const actor = await this.getActorContext(actorId, workspaceId);
     const requiredPermission =
       finalStatus === ConversationStatus.RESOLVED
@@ -1008,7 +1029,7 @@ export class ConversationWorkflowService {
       'finalizar esta conversa',
     );
 
-    await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const lockedConversation = await this.lockConversation(
         tx,
         conversationId,
@@ -1023,7 +1044,10 @@ export class ConversationWorkflowService {
         currentStatus === ConversationStatus.RESOLVED ||
         currentStatus === ConversationStatus.CLOSED
       ) {
-        return;
+        return {
+          status: currentStatus,
+          changed: false,
+        } satisfies FinalizeConversationResult;
       }
 
       if (
@@ -1085,13 +1109,22 @@ export class ConversationWorkflowService {
             now.getTime() - lockedConversation.currentCycleStartedAt.getTime(),
         },
       });
+
+      return {
+        status: finalStatus,
+        changed: true,
+      } satisfies FinalizeConversationResult;
     });
 
-    await this.emitConversationRealtimeEvent(
-      workspaceId,
-      conversationId,
-      'conversation.updated',
-    );
+    if (result.changed) {
+      await this.emitConversationRealtimeEvent(
+        workspaceId,
+        conversationId,
+        'conversation.updated',
+      );
+    }
+
+    return result;
   }
 
   private async canUserPerformAction(

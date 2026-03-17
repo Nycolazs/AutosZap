@@ -190,8 +190,7 @@ describe('MetaWhatsAppProvider', () => {
             cursors: {
               after: 'cursor-2',
             },
-            next:
-              'https://graph.facebook.com/v23.0/business-1/message_templates?after=cursor-2',
+            next: 'https://graph.facebook.com/v23.0/business-1/message_templates?after=cursor-2',
           },
         },
       })
