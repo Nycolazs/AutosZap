@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build:web",
+  "installCommand": "npm install",
+  "outputDirectory": "frontend/.next",
+  "github": {
+    "autoAlias": false
+  }
+}
+
+

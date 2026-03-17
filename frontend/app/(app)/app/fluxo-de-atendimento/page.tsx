@@ -1,5 +1,6 @@
 'use client';
 
+// Version: 1.0.1 - Spinner UI with min/max controls (March 17, 2026 - Final)
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock3, MessageCircleReply, Minus, Plus, Save } from 'lucide-react';
