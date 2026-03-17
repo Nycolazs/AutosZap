@@ -23,6 +23,19 @@ type StoredSession = {
 
 let mainWindow: BrowserWindow | null = null;
 
+const DEFAULT_DEV_WEB_URL = 'http://localhost:3000';
+const DEFAULT_PROD_WEB_URL = 'https://autoszap.com';
+
+function getDesktopWebUrl() {
+  const configured = process.env.DESKTOP_WEB_URL?.trim();
+
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  return app.isPackaged ? DEFAULT_PROD_WEB_URL : DEFAULT_DEV_WEB_URL;
+}
+
 function getSessionPath() {
   return join(app.getPath('userData'), 'session.json');
 }
@@ -60,17 +73,43 @@ async function createWindow() {
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: '#03101f',
+    autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
     },
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173';
+  mainWindow.setMenuBarVisibility(false);
 
-  if (!app.isPackaged) {
-    await mainWindow.loadURL(devServerUrl);
-  } else {
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
+    if (!mainWindow) {
+      return;
+    }
+
+    const currentUrl = mainWindow.webContents.getURL();
+    const currentOrigin = currentUrl ? new URL(currentUrl).origin : null;
+    const nextOrigin = new URL(targetUrl).origin;
+
+    if (currentOrigin && currentOrigin !== nextOrigin) {
+      event.preventDefault();
+      void shell.openExternal(targetUrl);
+    }
+  });
+
+  const targetUrl = getDesktopWebUrl();
+
+  try {
+    await mainWindow.loadURL(targetUrl);
+  } catch {
     await mainWindow.loadFile(join(__dirname, '../dist-renderer/index.html'));
   }
 }

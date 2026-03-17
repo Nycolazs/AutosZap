@@ -1,7 +1,9 @@
 appId: com.autoszap.desktop
 productName: AutoZap Desktop
+artifactName: AutoZap-Desktop-${version}-${os}-${arch}.${ext}
 directories:
   output: release
+asar: true
 files:
   - dist-renderer/**
   - dist-electron/**
@@ -9,11 +11,15 @@ files:
 extraMetadata:
   main: dist-electron/main.js
 mac:
+  category: public.app-category.business
   target:
     - dmg
 win:
   target:
     - nsis
+linux:
+  target:
+    - AppImage
 publish:
   provider: generic
   url: ${env.DESKTOP_UPDATES_BASE_URL}

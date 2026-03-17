@@ -107,7 +107,13 @@ O app mobile usa `EXPO_PUBLIC_API_URL` em `apps/mobile/app.config.ts` e persiste
 npm run dev:desktop
 ```
 
-O app desktop persiste sessao no `userData` do Electron, usa notificacoes locais do sistema operacional e consome SSE do backend para atualizacao de inbox e alertas.
+Para abrir o frontend web completo dentro do Electron (modo shell desktop), rode o frontend e depois:
+
+```bash
+npm run dev:web
+```
+
+O app desktop usa o frontend web como interface principal e abre links externos no navegador padrao, mantendo o fluxo completo da plataforma em uma janela nativa.
 
 ## Área de desenvolvimento no app
 
@@ -166,8 +172,15 @@ Se a mudanca for somente JS/assets, prefira `eas update`. Se houver mudanca nati
 Builds do Electron:
 
 ```bash
+npm run release:desktop:linux
 npm run release:desktop:win
 npm run release:desktop:mac
+```
+
+Build de todas as plataformas (quando o host tiver os prerequisitos de cross-build):
+
+```bash
+npm run release:desktop:all
 ```
 
 Configure `DESKTOP_UPDATES_BASE_URL` para apontar para o feed HTTP das builds publicadas. O `electron-updater` verifica novas versoes no boot quando o app esta empacotado.

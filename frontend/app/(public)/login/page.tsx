@@ -25,6 +25,9 @@ type FormValues = z.infer<typeof schema>;
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const isElectronRuntime =
+    typeof navigator !== 'undefined' &&
+    navigator.userAgent.toLowerCase().includes('electron');
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -132,7 +135,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <PlatformDownloads />
+        {isElectronRuntime ? null : <PlatformDownloads />}
       </div>
     </AuthShell>
   );

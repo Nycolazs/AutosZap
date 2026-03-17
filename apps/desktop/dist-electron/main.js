@@ -56,6 +56,15 @@ var import_electron_updater = require("electron-updater");
 var import_node_fs = require("fs");
 var import_node_path = require("path");
 var mainWindow = null;
+var DEFAULT_DEV_WEB_URL = "http://localhost:3000";
+var DEFAULT_PROD_WEB_URL = "https://autoszap.com";
+function getDesktopWebUrl() {
+  const configured = process.env.DESKTOP_WEB_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+  return import_electron.app.isPackaged ? DEFAULT_PROD_WEB_URL : DEFAULT_DEV_WEB_URL;
+}
 function getSessionPath() {
   return (0, import_node_path.join)(import_electron.app.getPath("userData"), "session.json");
 }
@@ -86,15 +95,36 @@ async function createWindow() {
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: "#03101f",
+    autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
     webPreferences: {
-      preload: (0, import_node_path.join)(__dirname, "preload.js")
+      preload: (0, import_node_path.join)(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
     }
   });
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://localhost:5173";
-  if (!import_electron.app.isPackaged) {
-    await mainWindow.loadURL(devServerUrl);
-  } else {
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void import_electron.shell.openExternal(url);
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, targetUrl2) => {
+    if (!mainWindow) {
+      return;
+    }
+    const currentUrl = mainWindow.webContents.getURL();
+    const currentOrigin = currentUrl ? new URL(currentUrl).origin : null;
+    const nextOrigin = new URL(targetUrl2).origin;
+    if (currentOrigin && currentOrigin !== nextOrigin) {
+      event.preventDefault();
+      void import_electron.shell.openExternal(targetUrl2);
+    }
+  });
+  const targetUrl = getDesktopWebUrl();
+  try {
+    await mainWindow.loadURL(targetUrl);
+  } catch {
     await mainWindow.loadFile((0, import_node_path.join)(__dirname, "../dist-renderer/index.html"));
   }
 }

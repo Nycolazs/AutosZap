@@ -2,14 +2,19 @@
   "name": "@autoszap/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Desktop shell do AutoZap com Electron",
+  "author": "AutoZap",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch\" \"wait-on dist-electron/main.js tcp:5173 && electron .\"",
+    "dev:web": "concurrently -k \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch\" \"wait-on dist-electron/main.js tcp:3000 && cross-env DESKTOP_WEB_URL=http://localhost:3000 electron .\"",
     "build": "vite build && tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron",
     "lint": "tsc --noEmit",
     "package": "npm run build && electron-builder --config electron-builder.yml",
+    "package:linux": "npm run build && electron-builder --config electron-builder.yml --linux",
     "package:mac": "npm run build && electron-builder --config electron-builder.yml --mac",
-    "package:win": "npm run build && electron-builder --config electron-builder.yml --win"
+    "package:win": "npm run build && electron-builder --config electron-builder.yml --win",
+    "package:all": "npm run build && electron-builder --config electron-builder.yml --linux --mac --win"
   },
   "dependencies": {
     "@autoszap/platform-client": "*",
@@ -25,7 +30,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.0",
     "concurrently": "^9.2.1",
-    "electron": "^41.0.2",
+    "cross-env": "^10.1.0",
+    "electron": "41.0.2",
     "electron-builder": "^26.8.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
