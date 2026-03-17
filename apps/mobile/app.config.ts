@@ -40,7 +40,12 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
   },
-  plugins: ['expo-router', 'expo-notifications', 'expo-secure-store'],
+  plugins: [
+    'expo-router',
+    'expo-notifications',
+    'expo-secure-store',
+    'expo-font',
+  ],
 };
 
 export default config;
