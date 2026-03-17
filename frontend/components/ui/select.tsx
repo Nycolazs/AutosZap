@@ -15,7 +15,7 @@ export function NativeSelect({
   return (
     <select
       className={cn(
-        'h-9 w-full rounded-xl border border-border bg-background-panel px-3 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/20',
+        'h-11 w-full rounded-xl border border-border bg-background-panel px-3 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/20',
         className,
       )}
       {...props}
@@ -33,7 +33,7 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'flex h-9 w-full items-center justify-between rounded-xl border border-border bg-background-panel px-3 text-sm text-foreground',
+        'flex h-11 w-full items-center justify-between rounded-xl border border-border bg-background-panel px-3 text-sm text-foreground',
         className,
       )}
       {...props}

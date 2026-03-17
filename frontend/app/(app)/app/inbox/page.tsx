@@ -1116,6 +1116,48 @@ function InboxPageContent() {
                 </div>
               </div>
 
+              <div className="sticky top-0 z-10 border-b border-border bg-background/92 px-3.5 py-2.5 backdrop-blur xl:hidden sm:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!canResolveConversation || isConversationClosed || resolveConversationMutation.isPending}
+                    onClick={() => resolveConversationMutation.mutate()}
+                  >
+                    Resolver
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!canCloseConversation || isConversationClosed || closeConversationMutation.isPending}
+                    onClick={() => closeConversationMutation.mutate()}
+                  >
+                    Encerrar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={!canReopenConversation || !isConversationClosed || reopenConversationMutation.isPending}
+                    onClick={() => reopenConversationMutation.mutate()}
+                  >
+                    Reabrir
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto"
+                    onClick={() => setDetailsOpen(true)}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Detalhes
+                  </Button>
+                </div>
+              </div>
+
               <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
                 {selectedConversation.messages?.map((message) => (
                   <div

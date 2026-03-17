@@ -31,6 +31,24 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="crm"
+        options={{
+          title: 'CRM',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="briefcase-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="campaigns"
+        options={{
+          title: 'Disparos',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="notifications"
         options={{
           title: 'Alertas',

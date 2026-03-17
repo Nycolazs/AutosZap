@@ -134,10 +134,12 @@ export function EntityFormDialog<TFormValues extends FieldValues>({
             })}
           </div>
           <div className="mt-4 flex shrink-0 flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={form.formState.isSubmitting}>
               Cancelar
             </Button>
-            <Button type="submit">{submitLabel}</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Salvando...' : submitLabel}
+            </Button>
           </div>
         </form>
       </DialogContent>

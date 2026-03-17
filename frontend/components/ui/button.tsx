@@ -16,10 +16,10 @@ const buttonVariants = cva(
         danger: 'bg-danger/90 text-white hover:bg-danger',
       },
       size: {
-        default: 'h-9 px-3.5',
-        sm: 'h-8 rounded-lg px-3',
-        lg: 'h-10 rounded-xl px-4',
-        icon: 'h-9 w-9 rounded-xl',
+        default: 'h-11 px-3.5',
+        sm: 'h-10 rounded-lg px-3',
+        lg: 'h-11 rounded-xl px-4',
+        icon: 'h-11 w-11 rounded-xl',
       },
     },
     defaultVariants: {

@@ -153,6 +153,7 @@ export default function CampaignsPage() {
   const [formErrors, setFormErrors] = useState<CampaignFormErrors>({});
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
+  const [editorStep, setEditorStep] = useState<1 | 2 | 3>(1);
 
   const campaignsQuery = useQuery({
     queryKey: ['campaigns'],
@@ -305,6 +306,7 @@ export default function CampaignsPage() {
     setFormErrors({});
     setSelectedImageFile(null);
     setRemoveExistingImage(false);
+    setEditorStep(1);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -323,6 +325,7 @@ export default function CampaignsPage() {
       scheduledAt: campaign.scheduledAt ? campaign.scheduledAt.slice(0, 16) : '',
       status: (campaign.status as CampaignFormState['status']) ?? 'DRAFT',
     });
+    setEditorStep(1);
     setFormErrors({});
     setSelectedImageFile(null);
     setRemoveExistingImage(false);
@@ -356,233 +359,276 @@ export default function CampaignsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Field
-                label="Nome"
-                error={formErrors.name}
-                input={
-                  <Input
-                    value={formValues.name}
-                    onChange={(event) =>
-                      setFormValues((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Ex.: Reativação de leads quentes"
-                  />
-                }
-              />
-
-              <Field
-                label="Status"
-                input={
-                  <NativeSelect
-                    value={formValues.status}
-                    onChange={(event) =>
-                      setFormValues((current) => ({
-                        ...current,
-                        status: event.target.value as CampaignFormState['status'],
-                      }))
-                    }
-                  >
-                    {STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                }
-              />
+            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-border bg-white/[0.03] p-2">
+              <Button type="button" size="sm" variant={editorStep === 1 ? 'default' : 'secondary'} onClick={() => setEditorStep(1)}>
+                1. Base
+              </Button>
+              <Button type="button" size="sm" variant={editorStep === 2 ? 'default' : 'secondary'} onClick={() => setEditorStep(2)}>
+                2. Público
+              </Button>
+              <Button type="button" size="sm" variant={editorStep === 3 ? 'default' : 'secondary'} onClick={() => setEditorStep(3)}>
+                3. Revisão
+              </Button>
             </div>
 
-            <Field
-              label="Descrição"
-              input={
-                <Textarea
-                  value={formValues.description}
-                  onChange={(event) =>
-                    setFormValues((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                  placeholder="Contexto interno da campanha, objetivo e observações para a equipe."
-                  className="min-h-24"
-                />
-              }
-            />
-
-            <Field
-              label="Mensagem"
-              error={formErrors.message}
-              helper="A prévia interpreta formatação do WhatsApp em tempo real, incluindo *negrito*, _itálico_, ~tachado~, blocos monoespaçados e placeholders como {{nome}}."
-              input={
-                <Textarea
-                  value={formValues.message}
-                  onChange={(event) =>
-                    setFormValues((current) => ({
-                      ...current,
-                      message: event.target.value,
-                    }))
-                  }
-                  placeholder="Escreva aqui a mensagem da campanha..."
-                  className="min-h-32"
-                />
-              }
-            />
-
-            <div className="grid gap-4 lg:grid-cols-[0.62fr_0.38fr]">
-              <Field
-                label="Público"
-                input={
-                  <NativeSelect
-                    value={formValues.audienceType}
-                    onChange={(event) =>
-                      setFormValues((current) => ({
-                        ...current,
-                        audienceType: event.target.value as CampaignFormState['audienceType'],
-                        targetIds: [],
-                      }))
-                    }
-                  >
-                    {AUDIENCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                }
-              />
-
-              <Field
-                label="Instância"
-                error={formErrors.instanceId}
-                input={
-                  <NativeSelect
-                    value={formValues.instanceId}
-                    onChange={(event) =>
-                      setFormValues((current) => ({
-                        ...current,
-                        instanceId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Selecione</option>
-                    {(instancesQuery.data ?? []).map((instance) => (
-                      <option key={instance.id} value={instance.id}>
-                        {instance.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                }
-              />
-            </div>
-
-            <Field
-              label="Público-alvo"
-              error={formErrors.targetIds}
-              helper="Selecione contatos, listas, tags ou grupos com base no tipo de audiência acima."
-              input={
-                <MultiOptionSelector
-                  options={targetOptions[formValues.audienceType]}
-                  value={formValues.targetIds}
-                  onChange={(next) =>
-                    setFormValues((current) => ({
-                      ...current,
-                      targetIds: next,
-                    }))
-                  }
-                />
-              }
-            />
-
-            <div className="grid gap-4 lg:grid-cols-[0.52fr_0.48fr]">
-              <Field
-                label="Agendamento"
-                error={formErrors.scheduledAt}
-                helper="Preencha apenas se a campanha for disparada em outro momento."
-                input={
-                  <Input
-                    type="datetime-local"
-                    value={formValues.scheduledAt}
-                    onChange={(event) =>
-                      setFormValues((current) => ({
-                        ...current,
-                        scheduledAt: event.target.value,
-                      }))
-                    }
-                  />
-                }
-              />
-
-              <Field
-                label="Imagem da campanha"
-                error={formErrors.image}
-                helper="A imagem aparece na prévia em tempo real e é reaproveitada quando a campanha for enviada."
-                input={
-                  <div className="space-y-3 rounded-[22px] border border-border bg-white/[0.03] p-4">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        setSelectedImageFile(file);
-                        setRemoveExistingImage(false);
-                      }}
+            <div className={cn('space-y-5', editorStep !== 1 && 'hidden')}>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field
+                  label="Nome"
+                  error={formErrors.name}
+                  input={
+                    <Input
+                      value={formValues.name}
+                      onChange={(event) =>
+                        setFormValues((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="Ex.: Reativação de leads quentes"
                     />
+                  }
+                />
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <ImageIcon className="h-4 w-4" />
-                        {selectedImageFile || editingCampaign?.hasMedia
-                          ? 'Trocar imagem'
-                          : 'Adicionar imagem'}
-                      </Button>
+                <Field
+                  label="Status"
+                  input={
+                    <NativeSelect
+                      value={formValues.status}
+                      onChange={(event) =>
+                        setFormValues((current) => ({
+                          ...current,
+                          status: event.target.value as CampaignFormState['status'],
+                        }))
+                      }
+                    >
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  }
+                />
+              </div>
 
-                      {selectedImageFile || editingCampaign?.hasMedia ? (
+              <Field
+                label="Descrição"
+                input={
+                  <Textarea
+                    value={formValues.description}
+                    onChange={(event) =>
+                      setFormValues((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    placeholder="Contexto interno da campanha, objetivo e observações para a equipe."
+                    className="min-h-24"
+                  />
+                }
+              />
+
+              <Field
+                label="Mensagem"
+                error={formErrors.message}
+                helper="A prévia interpreta formatação do WhatsApp em tempo real, incluindo *negrito*, _itálico_, ~tachado~, blocos monoespaçados e placeholders como {{nome}}."
+                input={
+                  <Textarea
+                    value={formValues.message}
+                    onChange={(event) =>
+                      setFormValues((current) => ({
+                        ...current,
+                        message: event.target.value,
+                      }))
+                    }
+                    placeholder="Escreva aqui a mensagem da campanha..."
+                    className="min-h-32"
+                  />
+                }
+              />
+            </div>
+
+            <div className={cn('space-y-5', editorStep !== 2 && 'hidden')}>
+              <div className="grid gap-4 lg:grid-cols-[0.62fr_0.38fr]">
+                <Field
+                  label="Público"
+                  input={
+                    <NativeSelect
+                      value={formValues.audienceType}
+                      onChange={(event) =>
+                        setFormValues((current) => ({
+                          ...current,
+                          audienceType: event.target.value as CampaignFormState['audienceType'],
+                          targetIds: [],
+                        }))
+                      }
+                    >
+                      {AUDIENCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  }
+                />
+
+                <Field
+                  label="Instância"
+                  error={formErrors.instanceId}
+                  input={
+                    <NativeSelect
+                      value={formValues.instanceId}
+                      onChange={(event) =>
+                        setFormValues((current) => ({
+                          ...current,
+                          instanceId: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      {(instancesQuery.data ?? []).map((instance) => (
+                        <option key={instance.id} value={instance.id}>
+                          {instance.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  }
+                />
+              </div>
+
+              <Field
+                label="Público-alvo"
+                error={formErrors.targetIds}
+                helper="Selecione contatos, listas, tags ou grupos com base no tipo de audiência acima."
+                input={
+                  <MultiOptionSelector
+                    options={targetOptions[formValues.audienceType]}
+                    value={formValues.targetIds}
+                    onChange={(next) =>
+                      setFormValues((current) => ({
+                        ...current,
+                        targetIds: next,
+                      }))
+                    }
+                  />
+                }
+              />
+            </div>
+
+            <div className={cn('space-y-5', editorStep !== 3 && 'hidden')}>
+              <div className="grid gap-4 lg:grid-cols-[0.52fr_0.48fr]">
+                <Field
+                  label="Agendamento"
+                  error={formErrors.scheduledAt}
+                  helper="Preencha apenas se a campanha for disparada em outro momento."
+                  input={
+                    <Input
+                      type="datetime-local"
+                      value={formValues.scheduledAt}
+                      onChange={(event) =>
+                        setFormValues((current) => ({
+                          ...current,
+                          scheduledAt: event.target.value,
+                        }))
+                      }
+                    />
+                  }
+                />
+
+                <Field
+                  label="Imagem da campanha"
+                  error={formErrors.image}
+                  helper="A imagem aparece na prévia em tempo real e é reaproveitada quando a campanha for enviada."
+                  input={
+                    <div className="space-y-3 rounded-[22px] border border-border bg-white/[0.03] p-4">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          setSelectedImageFile(file);
+                          setRemoveExistingImage(false);
+                        }}
+                      />
+
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button
                           type="button"
-                          variant="ghost"
-                          onClick={() => {
-                            setSelectedImageFile(null);
-                            setRemoveExistingImage(true);
-                            if (fileInputRef.current) {
-                              fileInputRef.current.value = '';
-                            }
-                          }}
+                          variant="secondary"
+                          onClick={() => fileInputRef.current?.click()}
                         >
-                          <X className="h-4 w-4" />
-                          Remover
+                          <ImageIcon className="h-4 w-4" />
+                          {selectedImageFile || editingCampaign?.hasMedia
+                            ? 'Trocar imagem'
+                            : 'Adicionar imagem'}
                         </Button>
-                      ) : null}
-                    </div>
 
-                    {selectedImageFile ? (
-                      <p className="text-sm text-muted-foreground">
-                        {selectedImageFile.name}
-                      </p>
-                    ) : editingCampaign?.hasMedia && !removeExistingImage ? (
-                      <p className="text-sm text-muted-foreground">
-                        Imagem já vinculada a esta campanha.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma imagem selecionada.
-                      </p>
-                    )}
-                  </div>
-                }
-              />
+                        {selectedImageFile || editingCampaign?.hasMedia ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedImageFile(null);
+                              setRemoveExistingImage(true);
+                              if (fileInputRef.current) {
+                                fileInputRef.current.value = '';
+                              }
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                            Remover
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      {selectedImageFile ? (
+                        <p className="text-sm text-muted-foreground">
+                          {selectedImageFile.name}
+                        </p>
+                      ) : editingCampaign?.hasMedia && !removeExistingImage ? (
+                        <p className="text-sm text-muted-foreground">
+                          Imagem já vinculada a esta campanha.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma imagem selecionada.
+                        </p>
+                      )}
+                    </div>
+                  }
+                />
+              </div>
+
+              <div className="rounded-[20px] border border-border bg-background-panel/65 p-3.5 text-sm text-muted-foreground">
+                <p><strong>Resumo</strong></p>
+                <p className="mt-2">Público: {getAudienceLabel(formValues.audienceType)} ({formValues.targetIds.length})</p>
+                <p>Instância: {formValues.instanceId ? 'Selecionada' : 'Pendente'}</p>
+                <p>Status: {getStatusLabel(formValues.status)}</p>
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end">
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setEditorStep((current) => (current === 1 ? 1 : ((current - 1) as 1 | 2 | 3)))}
+                      disabled={editorStep === 1}
+                    >
+                      Voltar etapa
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setEditorStep((current) => (current === 3 ? 3 : ((current + 1) as 1 | 2 | 3)))}
+                      disabled={editorStep === 3}
+                    >
+                      Próxima etapa
+                    </Button>
+                  </div>
               {editingCampaign ? (
                 <Button type="button" variant="ghost" onClick={clearEditor}>
                   Limpar edição
@@ -594,7 +640,11 @@ export default function CampaignsPage() {
                 disabled={saveMutation.isPending}
               >
                 <Save className="h-4 w-4" />
-                {editingCampaign ? 'Salvar alterações' : 'Criar campanha'}
+                    {saveMutation.isPending
+                      ? 'Salvando...'
+                      : editingCampaign
+                        ? 'Salvar alterações'
+                        : 'Criar campanha'}
               </Button>
             </div>
           </CardContent>

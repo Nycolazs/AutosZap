@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { AccessDenied } from '@/components/shared/access-denied';
 import { AppSidebar } from '@/components/layout/app-sidebar';
+import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav';
 import { Topbar } from '@/components/layout/topbar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest } from '@/lib/api-client';
@@ -20,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isInboxRoute = pathname.startsWith('/app/inbox');
+  const shouldShowMobileBottomNav = !isInboxRoute;
   const meQuery = useQuery({
     queryKey: ['auth-me'],
     queryFn: () => apiRequest<AuthMeResponse>('auth/me'),
@@ -110,12 +112,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               'h-full px-3 py-3 sm:p-4 lg:p-5',
+              shouldShowMobileBottomNav && 'pb-24',
               isInboxRoute && 'overflow-hidden',
             )}
           >
             {children}
           </div>
         </main>
+        {shouldShowMobileBottomNav ? (
+          <MobileBottomNav permissionMap={me?.permissionMap} />
+        ) : null}
       </div>
     </div>
   );

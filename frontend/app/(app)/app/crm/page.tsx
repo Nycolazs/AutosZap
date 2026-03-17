@@ -10,6 +10,7 @@ import { KanbanBoard } from '@/components/crm/kanban-board';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { MultiOptionSelector } from '@/components/shared/multi-option-selector';
 import { PageHeader } from '@/components/shared/page-header';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -51,6 +52,7 @@ type ContactOption = { id: string; name: string; company?: string | null };
 export default function CrmPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [boardMode, setBoardMode] = useState<'KANBAN' | 'LIST'>('LIST');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -174,6 +176,25 @@ export default function CrmPage() {
 
       <FilterBar search={search} onSearchChange={setSearch} />
 
+      <div className="flex flex-wrap items-center gap-2 rounded-[22px] border border-border bg-white/[0.03] p-2.5">
+        <Button
+          type="button"
+          size="sm"
+          variant={boardMode === 'LIST' ? 'default' : 'secondary'}
+          onClick={() => setBoardMode('LIST')}
+        >
+          Lista mobile
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={boardMode === 'KANBAN' ? 'default' : 'secondary'}
+          onClick={() => setBoardMode('KANBAN')}
+        >
+          Kanban
+        </Button>
+      </div>
+
       <Card className="p-0">
         <CardContent className="p-3 sm:p-4">
           <div className="-mx-1 flex gap-3 overflow-x-auto px-1">
@@ -198,28 +219,118 @@ export default function CrmPage() {
         </CardContent>
       </Card>
 
-      <KanbanBoard
-        stages={stages}
-        leads={leadsForBoard}
-        onMoveLead={(leadId, stageId, order) => moveMutation.mutate({ leadId, stageId, order })}
-        onCardClick={(lead) => {
-          const fullLead = leads.find((item) => item.id === lead.id);
-          if (!fullLead) return;
-          setSelectedLead(fullLead);
-          form.reset({
-            pipelineId: pipelineQuery.data?.id ?? '',
-            stageId: fullLead.stage.id,
-            contactId: '',
-            assignedToId: fullLead.assignedTo?.id,
-            name: fullLead.name,
-            company: fullLead.company ?? '',
-            value: fullLead.value,
-            notes: fullLead.notes ?? '',
-            tagIds: fullLead.tags.map((tag) => tag.id),
-          });
-          setDialogOpen(true);
-        }}
-      />
+      {boardMode === 'KANBAN' ? (
+        <KanbanBoard
+          stages={stages}
+          leads={leadsForBoard}
+          onMoveLead={(leadId, stageId, order) => moveMutation.mutate({ leadId, stageId, order })}
+          onCardClick={(lead) => {
+            const fullLead = leads.find((item) => item.id === lead.id);
+            if (!fullLead) return;
+            setSelectedLead(fullLead);
+            form.reset({
+              pipelineId: pipelineQuery.data?.id ?? '',
+              stageId: fullLead.stage.id,
+              contactId: '',
+              assignedToId: fullLead.assignedTo?.id,
+              name: fullLead.name,
+              company: fullLead.company ?? '',
+              value: fullLead.value,
+              notes: fullLead.notes ?? '',
+              tagIds: fullLead.tags.map((tag) => tag.id),
+            });
+            setDialogOpen(true);
+          }}
+        />
+      ) : (
+        <div className="space-y-4">
+          {stages.map((stage) => {
+            const stageLeads = leadsForBoard
+              .filter((lead) => lead.stage.id === stage.id)
+              .sort((left, right) => left.order - right.order);
+
+            return (
+              <Card key={stage.id} className="p-0">
+                <CardContent className="space-y-3 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                      <p className="text-sm font-semibold">{stage.name}</p>
+                    </div>
+                    <Badge variant="secondary">{stageLeads.length}</Badge>
+                  </div>
+
+                  {stageLeads.length ? (
+                    <div className="space-y-2.5">
+                      {stageLeads.map((lead) => (
+                        <div key={lead.id} className="rounded-[18px] border border-border bg-background-panel/70 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{lead.name}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{lead.company ?? 'Sem empresa'}</p>
+                            </div>
+                            <Badge>{lead.value}</Badge>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                            <NativeSelect
+                              value={lead.stage.id}
+                              onChange={(event) => {
+                                const nextStageId = event.target.value;
+                                const destinationOrder = leadsForBoard.filter((item) => item.stage.id === nextStageId).length;
+                                moveMutation.mutate({
+                                  leadId: lead.id,
+                                  stageId: nextStageId,
+                                  order: destinationOrder,
+                                });
+                              }}
+                            >
+                              {stages.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.name}
+                                </option>
+                              ))}
+                            </NativeSelect>
+
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                const fullLead = leads.find((item) => item.id === lead.id);
+                                if (!fullLead) return;
+                                setSelectedLead(fullLead);
+                                form.reset({
+                                  pipelineId: pipelineQuery.data?.id ?? '',
+                                  stageId: fullLead.stage.id,
+                                  contactId: '',
+                                  assignedToId: fullLead.assignedTo?.id,
+                                  name: fullLead.name,
+                                  company: fullLead.company ?? '',
+                                  value: fullLead.value,
+                                  notes: fullLead.notes ?? '',
+                                  tagIds: fullLead.tags.map((tag) => tag.id),
+                                });
+                                setDialogOpen(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-[16px] border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                      Nenhum lead nesta etapa.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[720px]">

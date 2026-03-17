@@ -137,6 +137,35 @@ export interface ConversationDetail extends ConversationSummary {
   }>;
 }
 
+export interface LeadSummary {
+  id: string;
+  name: string;
+  company?: string | null;
+  value: string;
+  order: number;
+  stage: {
+    id: string;
+    name: string;
+    color?: string | null;
+    order: number;
+  };
+  assignedTo?: UserSummary | null;
+}
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  audienceType: string;
+  message: string;
+  status: string;
+  scheduledAt?: string | null;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  hasMedia?: boolean;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   meta: {

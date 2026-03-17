@@ -4,8 +4,10 @@ import type {
   ConversationDetail,
   ConversationReminder,
   ConversationSummary,
+  LeadSummary,
   NotificationsResponse,
   PaginatedResponse,
+  CampaignSummary,
   PlatformReleasesManifest,
   RegisteredDevice,
   RegisterDevicePayload,
@@ -160,6 +162,23 @@ export function createPlatformClient(config: ClientConfig) {
     },
     listNotifications(limit = 20) {
       return request<NotificationsResponse>(`notifications?limit=${limit}`);
+    },
+    listLeads(params?: { search?: string }) {
+      const query = new URLSearchParams();
+      query.set('limit', '100');
+      if (params?.search) {
+        query.set('search', params.search);
+      }
+
+      return request<PaginatedResponse<LeadSummary>>(`leads?${query.toString()}`);
+    },
+    listCampaigns() {
+      return request<CampaignSummary[]>('campaigns');
+    },
+    sendCampaign(campaignId: string) {
+      return request<{ success?: boolean }>(`campaigns/${campaignId}/send`, {
+        method: 'POST',
+      });
     },
     markNotificationRead(notificationId: string) {
       return request<{ success: boolean }>(`notifications/${notificationId}/read`, {

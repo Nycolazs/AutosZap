@@ -127,6 +127,7 @@ export default function SettingsPage() {
           description="Dados do usuário autenticado."
           onSubmit={() => updateProfileMutation.mutate()}
           disabled={updateProfileMutation.isPending}
+          pending={updateProfileMutation.isPending}
         >
           <Field label="Nome" value={resolvedProfileValues.name} onChange={(value) => setProfileValues((current) => ({ ...current, name: value }))} />
           <Field label="Email" value={resolvedProfileValues.email} onChange={(value) => setProfileValues((current) => ({ ...current, email: value }))} />
@@ -138,6 +139,7 @@ export default function SettingsPage() {
           description="Dados principais da empresa."
           onSubmit={() => updateWorkspaceMutation.mutate()}
           disabled={updateWorkspaceMutation.isPending}
+          pending={updateWorkspaceMutation.isPending}
         >
           <Field label="Nome da workspace" value={resolvedWorkspaceValues.name} onChange={(value) => setWorkspaceValues((current) => ({ ...current, name: value }))} />
           <Field label="Empresa / razão social" value={resolvedWorkspaceValues.companyName} onChange={(value) => setWorkspaceValues((current) => ({ ...current, companyName: value }))} />
@@ -148,6 +150,7 @@ export default function SettingsPage() {
           description="Altere sua senha atual."
           onSubmit={() => changePasswordMutation.mutate()}
           disabled={changePasswordMutation.isPending}
+          pending={changePasswordMutation.isPending}
         >
           <Field
             label="Senha atual"
@@ -233,12 +236,14 @@ function SettingsFormCard({
   title,
   description,
   disabled,
+  pending,
   onSubmit,
   children,
 }: {
   title: string;
   description: string;
   disabled?: boolean;
+  pending?: boolean;
   onSubmit: () => void;
   children: React.ReactNode;
 }) {
@@ -252,7 +257,7 @@ function SettingsFormCard({
         {children}
         <div className="flex">
           <Button onClick={onSubmit} disabled={disabled} className="w-full sm:w-auto">
-            Salvar
+            {pending ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
       </CardContent>
