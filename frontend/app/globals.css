@@ -138,7 +138,7 @@ select {
 
 @keyframes mobile-menu-drawer-in {
   from {
-    transform: translate3d(24px, 0, 0);
+    transform: translate3d(-24px, 0, 0);
     opacity: 0;
   }
   to {
@@ -153,7 +153,7 @@ select {
     opacity: 1;
   }
   to {
-    transform: translate3d(24px, 0, 0);
+    transform: translate3d(-24px, 0, 0);
     opacity: 0;
   }
 }

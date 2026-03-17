@@ -4,8 +4,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bot,
-  BrainCircuit,
   BriefcaseBusiness,
   Building2,
   Clock3,
@@ -16,7 +14,6 @@ import {
   MessageSquareText,
   RadioTower,
   Settings,
-  Wrench,
   Tags,
   Users,
   Workflow,
@@ -102,29 +99,6 @@ export const APP_NAV_SECTIONS: Array<{
         label: 'Contatos',
         icon: ContactRound,
         requirement: { permission: 'CONTACTS_VIEW' },
-      },
-    ],
-  },
-  {
-    label: 'IA',
-    items: [
-      {
-        href: '/app/assistentes',
-        label: 'Assistentes',
-        icon: Bot,
-        requirement: { permission: 'ASSISTANTS_VIEW' },
-      },
-      {
-        href: '/app/bases-de-conhecimento',
-        label: 'Bases de conhecimento',
-        icon: BrainCircuit,
-        requirement: { permission: 'KNOWLEDGE_BASES_VIEW' },
-      },
-      {
-        href: '/app/ferramentas-ia',
-        label: 'Ferramentas de IA',
-        icon: Wrench,
-        requirement: { permission: 'AI_TOOLS_VIEW' },
       },
     ],
   },

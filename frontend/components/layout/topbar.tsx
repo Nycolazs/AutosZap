@@ -232,7 +232,7 @@ export function Topbar({
       </div>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent className="mobile-menu-drawer left-auto right-0 top-0 bottom-auto h-dvh max-h-dvh w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-l border-border border-r-0 bg-background-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-none sm:border-l sm:border-r-0">
+        <DialogContent className="mobile-menu-drawer left-0 right-auto top-0 bottom-auto h-dvh max-h-dvh w-[min(88vw,320px)] translate-x-0 translate-y-0 rounded-none border-r border-border border-l-0 bg-background-elevated p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-none sm:border-r sm:border-l-0">
           <DialogHeader>
             <DialogTitle>Navegação</DialogTitle>
             <DialogDescription>
