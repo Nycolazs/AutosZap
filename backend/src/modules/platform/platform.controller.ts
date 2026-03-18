@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Redirect } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -33,5 +33,13 @@ export class PlatformController {
   @Get('releases')
   listReleases(@Query() query: PlatformReleasesQueryDto) {
     return this.platformService.listReleases(query);
+  }
+
+  @Public()
+  @Get('releases/download/windows')
+  @Redirect(undefined, 302)
+  async downloadWindowsInstaller() {
+    const url = await this.platformService.resolveWindowsInstallerDownloadUrl();
+    return { url };
   }
 }

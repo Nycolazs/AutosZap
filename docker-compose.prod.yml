@@ -44,6 +44,9 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
       PLATFORM_RELEASES_MANIFEST_PATH: /deploy/platform-releases.json
+      GITHUB_RELEASES_TOKEN: ${GITHUB_RELEASES_TOKEN:-}
+      GITHUB_RELEASES_REPO: ${GITHUB_RELEASES_REPO:-Nycolazs/AutosZap}
+      GITHUB_WINDOWS_ASSET_NAME: ${GITHUB_WINDOWS_ASSET_NAME:-autoszap-setup-latest.exe}
       DATABASE_URL: postgresql://${POSTGRES_USER:-autoszap}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-autoszap}?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}

@@ -1,9 +1,26 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PlatformReleasesQueryDto, RegisterDeviceDto } from './platform.dto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+const DEFAULT_GITHUB_RELEASES_REPO = 'Nycolazs/AutosZap';
+const DEFAULT_WINDOWS_INSTALLER_ASSET_NAME = 'autoszap-setup-latest.exe';
+
+type GitHubReleaseAsset = {
+  id: number;
+  name: string;
+};
+
+type GitHubLatestReleaseResponse = {
+  assets?: GitHubReleaseAsset[];
+};
 
 type ReleaseArtifact = {
   id: string;
@@ -126,6 +143,110 @@ export class PlatformService {
       artifacts: filteredArtifacts,
       recommended,
     };
+  }
+
+  async resolveWindowsInstallerDownloadUrl() {
+    const token = process.env.GITHUB_RELEASES_TOKEN?.trim();
+
+    if (!token) {
+      this.logger.warn(
+        'GITHUB_RELEASES_TOKEN nao definido; download do desktop indisponivel.',
+      );
+      throw new ServiceUnavailableException('Download indisponivel no momento.');
+    }
+
+    const repo = (
+      process.env.GITHUB_RELEASES_REPO ?? DEFAULT_GITHUB_RELEASES_REPO
+    ).trim();
+    const assetName = (
+      process.env.GITHUB_WINDOWS_ASSET_NAME ?? DEFAULT_WINDOWS_INSTALLER_ASSET_NAME
+    ).trim();
+
+    const latestRelease = await this.fetchGitHubJson<GitHubLatestReleaseResponse>(
+      `https://api.github.com/repos/${repo}/releases/latest`,
+      token,
+    );
+
+    const assets = Array.isArray(latestRelease.assets)
+      ? latestRelease.assets
+      : [];
+    const asset = assets.find((candidate) => candidate.name === assetName);
+
+    if (!asset) {
+      throw new NotFoundException(
+        'Arquivo de download do Windows nao encontrado.',
+      );
+    }
+
+    let assetResponse: Response;
+
+    try {
+      assetResponse = await fetch(
+        `https://api.github.com/repos/${repo}/releases/assets/${asset.id}`,
+        {
+          redirect: 'manual',
+          headers: {
+            Accept: 'application/octet-stream',
+            Authorization: `Bearer ${token}`,
+            'User-Agent': 'autoszap-backend',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        'Falha ao consultar redirect do asset no GitHub.',
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new ServiceUnavailableException(
+        'Nao foi possivel gerar link de download.',
+      );
+    }
+
+    const location = assetResponse.headers.get('location');
+
+    if (!location) {
+      this.logger.error(
+        `Nao foi possivel resolver redirect do asset do GitHub (status ${assetResponse.status}).`,
+      );
+      throw new ServiceUnavailableException(
+        'Nao foi possivel gerar link de download.',
+      );
+    }
+
+    return location;
+  }
+
+  private async fetchGitHubJson<T>(url: string, token: string): Promise<T> {
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'autoszap-backend',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Falha ao chamar GitHub API (${url}).`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new ServiceUnavailableException(
+        'Nao foi possivel consultar o GitHub agora.',
+      );
+    }
+
+    if (!response.ok) {
+      this.logger.error(`GitHub API error (${response.status}) em ${url}.`);
+      throw new ServiceUnavailableException(
+        'Nao foi possivel consultar o GitHub agora.',
+      );
+    }
+
+    return (await response.json()) as T;
   }
 
   private readManifest(): ReleasesManifest {
