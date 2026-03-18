@@ -1,11 +1,27 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
+import Constants from 'expo-constants';
 import { Stack, router, useSegments } from 'expo-router';
-import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { AppProviders } from '@/providers/app-providers';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
+
+async function loadNotificationsModule() {
+  if (
+    Platform.OS === 'android' &&
+    Constants.executionEnvironment === 'storeClient'
+  ) {
+    return null;
+  }
+
+  try {
+    const module = await import('expo-notifications');
+    return module;
+  } catch {
+    return null;
+  }
+}
 
 function RootNavigation() {
   const segments = useSegments();
@@ -28,29 +44,44 @@ function RootNavigation() {
   }, [ready, segments, session]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data as {
-          linkHref?: string;
-          conversationId?: string;
-        };
+    let removeListener: (() => void) | null = null;
+    let cancelled = false;
 
-        if (data.linkHref?.includes('conversationId=')) {
-          const conversationId = data.linkHref.split('conversationId=').pop();
+    void (async () => {
+      const notifications = await loadNotificationsModule();
 
-          if (conversationId) {
-            router.push(`/conversation/${conversationId}`);
-            return;
+      if (!notifications || cancelled) {
+        return;
+      }
+
+      const subscription =
+        notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data as {
+            linkHref?: string;
+            conversationId?: string;
+          };
+
+          if (data.linkHref?.includes('conversationId=')) {
+            const conversationId = data.linkHref.split('conversationId=').pop();
+
+            if (conversationId) {
+              router.push(`/conversation/${conversationId}`);
+              return;
+            }
           }
-        }
 
-        if (data.conversationId) {
-          router.push(`/conversation/${String(data.conversationId)}`);
-        }
-      },
-    );
+          if (data.conversationId) {
+            router.push(`/conversation/${String(data.conversationId)}`);
+          }
+        });
 
-    return () => subscription.remove();
+      removeListener = () => subscription.remove();
+    })();
+
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
   }, []);
 
   if (!ready) {

@@ -7,20 +7,42 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { api } = useSession();
+  const queryClient = useQueryClient();
+  const { api, session } = useSession();
   const notificationsQuery = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.listNotifications(50),
     refetchInterval: 15000,
   });
+
+  useEffect(() => {
+    if (!session?.accessToken || typeof EventSource === 'undefined') {
+      return;
+    }
+
+    const streamUrl = api.buildSseUrl('notifications/stream', session.accessToken);
+    const eventSource = new EventSource(streamUrl);
+
+    const handleMessage = () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+
+    eventSource.addEventListener('message', handleMessage);
+
+    return () => {
+      eventSource.removeEventListener('message', handleMessage);
+      eventSource.close();
+    };
+  }, [api, queryClient, session?.accessToken]);
 
   return (
     <ScreenTransition>
@@ -68,6 +90,7 @@ export default function NotificationsScreen() {
               ]}
               onPress={async () => {
                 await api.markNotificationRead(item.id);
+                await notificationsQuery.refetch();
 
                 if (item.metadata && typeof item.metadata === 'object' && 'conversationId' in item.metadata) {
                   router.push(`/conversation/${String(item.metadata.conversationId)}`);

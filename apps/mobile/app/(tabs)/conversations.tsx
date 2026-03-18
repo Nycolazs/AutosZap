@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,25 +10,71 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
+type StatusFilter = 'ALL' | 'NEW' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED' | 'CLOSED';
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'ALL', label: 'Todas' },
+  { value: 'NEW', label: 'Novo' },
+  { value: 'IN_PROGRESS', label: 'Em atendimento' },
+  { value: 'WAITING', label: 'Aguardando' },
+  { value: 'RESOLVED', label: 'Resolvido' },
+  { value: 'CLOSED', label: 'Encerrado' },
+];
+
 export default function ConversationsScreen() {
   const router = useRouter();
-  const { api, me, logout } = useSession();
+  const queryClient = useQueryClient();
+  const { api, me, session, logout } = useSession();
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const conversationsQuery = useQuery({
-    queryKey: ['conversations', search],
-    queryFn: () => api.listConversations({ search }),
+    queryKey: ['conversations', search, statusFilter],
+    queryFn: () =>
+      api.listConversations({
+        search,
+        status: statusFilter === 'ALL' ? undefined : statusFilter,
+      }),
     refetchInterval: 10000,
   });
+
+  const summaryQuery = useQuery({
+    queryKey: ['conversations-summary', search],
+    queryFn: () => api.listConversationSummary({ search }),
+    refetchInterval: 20000,
+  });
+
+  useEffect(() => {
+    if (!session?.accessToken || typeof EventSource === 'undefined') {
+      return;
+    }
+
+    const streamUrl = api.buildSseUrl('conversations/stream', session.accessToken);
+    const eventSource = new EventSource(streamUrl);
+
+    const handleMessage = () => {
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['conversations-summary'] });
+    };
+
+    eventSource.addEventListener('message', handleMessage);
+
+    return () => {
+      eventSource.removeEventListener('message', handleMessage);
+      eventSource.close();
+    };
+  }, [api, queryClient, session?.accessToken]);
 
   const conversations = useMemo(
     () => conversationsQuery.data?.data ?? [],
     [conversationsQuery.data],
   );
+
+  const counts = summaryQuery.data;
 
   return (
     <ScreenTransition>
@@ -52,6 +98,36 @@ export default function ConversationsScreen() {
         placeholder="Buscar contato ou telefone"
         placeholderTextColor={palette.textMuted}
         style={styles.search}
+      />
+
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={STATUS_FILTERS}
+        keyExtractor={(item) => item.value}
+        contentContainerStyle={styles.filtersList}
+        renderItem={({ item }) => {
+          const selected = statusFilter === item.value;
+          const count = counts ? counts[item.value] : undefined;
+
+          return (
+            <Pressable
+              style={[styles.filterChip, selected && styles.filterChipSelected]}
+              onPress={() => setStatusFilter(item.value)}
+            >
+              <Text style={[styles.filterChipLabel, selected && styles.filterChipLabelSelected]}>
+                {item.label}
+              </Text>
+              {typeof count === 'number' ? (
+                <View style={[styles.filterCount, selected && styles.filterCountSelected]}>
+                  <Text style={[styles.filterCountText, selected && styles.filterCountTextSelected]}>
+                    {count}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        }}
       />
 
       {conversationsQuery.isLoading ? (
@@ -189,6 +265,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 16,
     marginBottom: 14,
+  },
+  filtersList: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  filterChip: {
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterChipSelected: {
+    borderColor: palette.primary,
+    backgroundColor: palette.primarySoft,
+  },
+  filterChipLabel: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterChipLabelSelected: {
+    color: palette.primary,
+  },
+  filterCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.backgroundElevated,
+    paddingHorizontal: 6,
+  },
+  filterCountSelected: {
+    backgroundColor: 'rgba(61, 150, 255, 0.2)',
+  },
+  filterCountText: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  filterCountTextSelected: {
+    color: palette.primary,
   },
   centerState: {
     flex: 1,

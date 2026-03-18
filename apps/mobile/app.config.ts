@@ -4,6 +4,10 @@ const version = process.env.APP_VERSION ?? '0.1.0';
 const buildNumber = process.env.APP_BUILD_NUMBER ?? '1';
 const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 const hasEasProject = Boolean(projectId);
+const defaultApiUrl =
+  process.env.NODE_ENV === 'development'
+    ? 'http://localhost:4000'
+    : 'https://api.autoszap.com';
 
 const config: ExpoConfig = {
   name: 'AutoZap',
@@ -32,7 +36,7 @@ const config: ExpoConfig = {
     buildNumber,
   },
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://api.autoszap.com',
+    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? defaultApiUrl,
     eas: {
       projectId,
     },

@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -12,9 +13,12 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
@@ -22,7 +26,12 @@ import { palette } from '@/theme';
 export default function ConversationScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const conversationId = String(params.id);
-  const { api } = useSession();
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const listRef = useRef<FlatList<ConversationMessageItem> | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const pendingInitialScrollRef = useRef(true);
+  const previousConversationIdRef = useRef<string | null>(null);
   const [message, setMessage] = useState('');
   const [remindersVisible, setRemindersVisible] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
@@ -32,17 +41,104 @@ export default function ConversationScreen() {
   const [reminderDate, setReminderDate] = useState('');
   const [reminderTime, setReminderTime] = useState('');
 
+  const { api, me } = useSession();
+
+  const canResolveConversation = Boolean(me?.permissionMap?.RESOLVE_CONVERSATION);
+  const canCloseConversation = Boolean(me?.permissionMap?.CLOSE_CONVERSATION);
+  const canReopenConversation = Boolean(me?.permissionMap?.REOPEN_CONVERSATION);
+
   const conversationQuery = useQuery({
     queryKey: ['conversation', conversationId],
     queryFn: () => api.getConversation(conversationId),
     refetchInterval: 8000,
   });
 
+  const statusMutation = useMutation({
+    mutationFn: async (action: 'resolve' | 'close' | 'reopen') => {
+      if (action === 'resolve') {
+        return api.resolveConversation(conversationId);
+      }
+
+      if (action === 'close') {
+        return api.closeConversation(conversationId);
+      }
+
+      return api.reopenConversation(conversationId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        conversationQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      Alert.alert('Falha ao atualizar conversa', error.message);
+    },
+  });
+
+  useEffect(() => {
+    if (previousConversationIdRef.current === conversationId) {
+      return;
+    }
+
+    previousConversationIdRef.current = conversationId;
+    pendingInitialScrollRef.current = true;
+    shouldAutoScrollRef.current = true;
+  }, [conversationId]);
+
   const conversation = conversationQuery.data;
   const reminders = useMemo(
     () => conversation?.reminders ?? [],
     [conversation?.reminders],
   );
+  const messages = useMemo(
+    () => [...(conversation?.messages ?? [])].sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+    ),
+    [conversation?.messages],
+  );
+
+  const isConversationClosed =
+    conversation?.status === 'RESOLVED' || conversation?.status === 'CLOSED';
+
+  const scrollToBottom = useCallback((animated: boolean) => {
+    if (!listRef.current || !messages.length) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated });
+    });
+  }, [messages.length]);
+
+  const handleMessagesScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - contentOffset.y - layoutMeasurement.height;
+      shouldAutoScrollRef.current = distanceFromBottom < 80;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!messages.length) {
+      return;
+    }
+
+    if (pendingInitialScrollRef.current) {
+      pendingInitialScrollRef.current = false;
+      scrollToBottom(false);
+      setTimeout(() => scrollToBottom(false), 0);
+      return;
+    }
+
+    if (shouldAutoScrollRef.current) {
+      scrollToBottom(true);
+    }
+  }, [messages.length, scrollToBottom]);
 
   if (conversationQuery.isLoading || !conversation) {
     return (
@@ -54,6 +150,8 @@ export default function ConversationScreen() {
     );
   }
 
+  const statusLabel = mapStatus(conversation.status, conversation.closeReason);
+
   return (
     <ScreenTransition>
       <KeyboardAvoidingView
@@ -61,270 +159,362 @@ export default function ConversationScreen() {
         behavior={Platform.select({ ios: 'padding', android: undefined })}
         keyboardVerticalOffset={96}
       >
-      <View style={styles.headerCard}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.contactName}>{conversation.contact.name}</Text>
-          <Text style={styles.contactMeta}>
-            {conversation.assignedUser?.name || 'Equipe disponivel'} • {mapStatus(conversation.status)}
-          </Text>
-        </View>
-        <Pressable
-          style={styles.headerAction}
-          onPress={() => setRemindersVisible(true)}
-        >
-          <Text style={styles.headerActionText}>Lembretes</Text>
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={conversation.messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesContent}
-        refreshControl={
-          <RefreshControl
-            tintColor={palette.primary}
-            refreshing={conversationQuery.isRefetching}
-            onRefresh={() => void conversationQuery.refetch()}
-          />
-        }
-        renderItem={({ item }) => {
-          const outbound = item.direction !== 'INBOUND';
-          return (
-            <View
-              style={[
-                styles.bubble,
-                outbound ? styles.bubbleOutbound : styles.bubbleInbound,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.messageText,
-                  outbound && { color: palette.text },
-                ]}
-              >
-                {item.content}
-              </Text>
-              <Text style={styles.messageMeta}>
-                {new Date(item.createdAt).toLocaleString('pt-BR')}
-              </Text>
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyMessages}>
-            <Text style={styles.emptyTitle}>Ainda sem histórico.</Text>
-            <Text style={styles.emptyDescription}>
-              Assim que esta conversa receber mensagens, o histórico aparece aqui.
+        <View style={styles.headerCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.contactName}>{conversation.contact.name}</Text>
+            <Text style={styles.contactMeta}>
+              {conversation.assignedUser?.name || 'Equipe disponivel'} • {statusLabel}
             </Text>
           </View>
-        }
-      />
+          <Pressable
+            style={styles.headerAction}
+            onPress={() => setRemindersVisible(true)}
+          >
+            <Text style={styles.headerActionText}>Lembretes</Text>
+          </Pressable>
+        </View>
 
-      <View style={styles.composer}>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          multiline
-          placeholder="Digite sua mensagem"
-          placeholderTextColor={palette.textMuted}
-          style={styles.composerInput}
-        />
-        <Pressable
-          style={[styles.sendButton, sending && styles.sendButtonDisabled]}
-          disabled={sending}
-          onPress={async () => {
-            if (!message.trim()) {
-              return;
-            }
+        <View style={styles.conversationActions}>
+          <Pressable
+            style={[styles.actionButton, (!canResolveConversation || isConversationClosed || statusMutation.isPending) && styles.actionButtonDisabled]}
+            disabled={!canResolveConversation || isConversationClosed || statusMutation.isPending}
+            onPress={() => statusMutation.mutate('resolve')}
+          >
+            <Text style={styles.actionButtonText}>Resolver</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionButton, (!canCloseConversation || isConversationClosed || statusMutation.isPending) && styles.actionButtonDisabled]}
+            disabled={!canCloseConversation || isConversationClosed || statusMutation.isPending}
+            onPress={() => statusMutation.mutate('close')}
+          >
+            <Text style={styles.actionButtonText}>Encerrar</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionButton, (!canReopenConversation || !isConversationClosed || statusMutation.isPending) && styles.actionButtonDisabled]}
+            disabled={!canReopenConversation || !isConversationClosed || statusMutation.isPending}
+            onPress={() => statusMutation.mutate('reopen')}
+          >
+            <Text style={styles.actionButtonText}>Reabrir</Text>
+          </Pressable>
+        </View>
 
-            try {
-              setSending(true);
-              await api.sendConversationMessage(conversationId, message);
-              setMessage('');
-              await conversationQuery.refetch();
-            } finally {
-              setSending(false);
+        {isConversationClosed ? (
+          <View style={styles.closedBanner}>
+            <Text style={styles.closedBannerTitle}>Conversa encerrada para envio</Text>
+            <Text style={styles.closedBannerDescription}>
+              Reabra a conversa para voltar a responder mensagens neste atendimento.
+            </Text>
+          </View>
+        ) : null}
+
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesContent}
+          keyboardShouldPersistTaps="handled"
+          onScroll={handleMessagesScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (pendingInitialScrollRef.current) {
+              scrollToBottom(false);
             }
           }}
-        >
-          <Text style={styles.sendButtonText}>
-            {sending ? 'Enviando...' : 'Enviar'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <Modal
-        visible={remindersVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setRemindersVisible(false)}
-      >
-        <ScrollView style={styles.modalScreen} contentContainerStyle={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalTitle}>Lembretes da conversa</Text>
-              <Text style={styles.modalSubtitle}>
-                Agende retornos e destaque prioridades para este cliente.
+          refreshControl={
+            <RefreshControl
+              tintColor={palette.primary}
+              refreshing={conversationQuery.isRefetching}
+              onRefresh={() => void conversationQuery.refetch()}
+            />
+          }
+          renderItem={({ item }) => {
+            const outbound = item.direction !== 'INBOUND';
+            return (
+              <View
+                style={[
+                  styles.bubble,
+                  outbound ? styles.bubbleOutbound : styles.bubbleInbound,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    outbound && { color: palette.text },
+                  ]}
+                >
+                  {item.content}
+                </Text>
+                <Text style={styles.messageMeta}>
+                  {new Date(item.createdAt).toLocaleString('pt-BR')}
+                </Text>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyMessages}>
+              <Text style={styles.emptyTitle}>Ainda sem histórico.</Text>
+              <Text style={styles.emptyDescription}>
+                Assim que esta conversa receber mensagens, o histórico aparece aqui.
               </Text>
             </View>
-            <Pressable
-              style={styles.modalClose}
-              onPress={() => setRemindersVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Fechar</Text>
-            </Pressable>
-          </View>
+          }
+        />
 
-          <View style={styles.metricsRow}>
-            <Metric label="Total" value={String(reminders.length)} />
-            <Metric
-              label="Ativos"
-              value={String(
-                reminders.filter(
-                  (item) =>
-                    item.status === 'PENDING' || item.status === 'NOTIFIED',
-                ).length,
-              )}
-            />
-            <Metric
-              label="Vencidos"
-              value={String(
-                reminders.filter(
-                  (item) =>
-                    item.status === 'NOTIFIED' &&
-                    new Date(item.remindAt).getTime() < Date.now(),
-                ).length,
-              )}
-            />
-          </View>
-
-          <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>Novo lembrete</Text>
-            <TextInput
-              value={reminderDescription}
-              onChangeText={setReminderDescription}
-              placeholder="Descricao interna"
-              placeholderTextColor={palette.textMuted}
-              style={styles.input}
-            />
-            <TextInput
-              value={reminderMessage}
-              onChangeText={setReminderMessage}
-              multiline
-              placeholder="Mensagem prevista para o cliente"
-              placeholderTextColor={palette.textMuted}
-              style={[styles.input, styles.textarea]}
-            />
-            <View style={styles.row}>
-              <TextInput
-                value={reminderDate}
-                onChangeText={setReminderDate}
-                placeholder="2026-03-13"
-                placeholderTextColor={palette.textMuted}
-                style={[styles.input, styles.rowInput]}
-              />
-              <TextInput
-                value={reminderTime}
-                onChangeText={setReminderTime}
-                placeholder="18:30"
-                placeholderTextColor={palette.textMuted}
-                style={[styles.input, styles.rowInput]}
-              />
+        <View style={[styles.composer, { paddingBottom: Math.max(18, insets.bottom + 8) }]}>
+          {isConversationClosed ? (
+            <View style={[styles.composerInput, styles.composerInputDisabled]}>
+              <Text style={styles.composerInputDisabledText}>
+                Conversa fechada para envio. Reabra para responder.
+              </Text>
             </View>
-            <Pressable
-              style={[
-                styles.primaryButton,
-                savingReminder && styles.sendButtonDisabled,
-              ]}
-              disabled={savingReminder}
-              onPress={async () => {
-                if (!reminderMessage.trim() || !reminderDate.trim() || !reminderTime.trim()) {
+          ) : (
+            <TextInput
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              placeholder="Digite sua mensagem"
+              placeholderTextColor={palette.textMuted}
+              style={styles.composerInput}
+            />
+          )}
+          <Pressable
+            style={[
+              styles.sendButton,
+              (sending || isConversationClosed || !message.trim()) &&
+                styles.sendButtonDisabled,
+            ]}
+            disabled={sending || isConversationClosed || !message.trim()}
+            onPress={async () => {
+              if (!message.trim()) {
+                return;
+              }
+
+              try {
+                setSending(true);
+                const latestConversation = await api.getConversation(conversationId);
+                const latestClosed =
+                  latestConversation.status === 'RESOLVED' ||
+                  latestConversation.status === 'CLOSED';
+
+                if (latestClosed) {
+                  await conversationQuery.refetch();
+                  Alert.alert(
+                    'Conversa encerrada',
+                    'Esta conversa nao esta aberta para envio. Reabra para responder.',
+                  );
                   return;
                 }
 
-                try {
-                  setSavingReminder(true);
-                  await api.createReminder(conversationId, {
-                    internalDescription: reminderDescription,
-                    messageToSend: reminderMessage,
-                    remindAt: `${reminderDate}T${reminderTime}:00`,
-                  });
-                  setReminderDescription('');
-                  setReminderMessage('');
-                  setReminderDate('');
-                  setReminderTime('');
-                  await conversationQuery.refetch();
-                } finally {
-                  setSavingReminder(false);
-                }
-              }}
-            >
-              <Text style={styles.primaryButtonText}>
-                {savingReminder ? 'Salvando...' : 'Criar lembrete'}
-              </Text>
-            </Pressable>
-          </View>
+                await api.sendConversationMessage(conversationId, message);
+                setMessage('');
+                await Promise.all([
+                  conversationQuery.refetch(),
+                  queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+                  queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
+                ]);
+                shouldAutoScrollRef.current = true;
+                scrollToBottom(true);
+              } catch (error) {
+                Alert.alert(
+                  'Falha ao enviar mensagem',
+                  error instanceof Error
+                    ? error.message
+                    : 'Nao foi possivel enviar agora.',
+                );
+              } finally {
+                setSending(false);
+              }
+            }}
+          >
+            <Text style={styles.sendButtonText}>
+              {sending ? 'Enviando...' : 'Enviar'}
+            </Text>
+          </Pressable>
+        </View>
 
-          <View style={styles.listCard}>
-            <Text style={styles.sectionTitle}>Pendentes e historico</Text>
-            {reminders.length ? (
-              reminders.map((item) => (
-                <View key={item.id} style={styles.reminderCard}>
-                  <View style={styles.reminderTop}>
-                    <Text style={styles.reminderTitle} numberOfLines={2}>
-                      {item.internalDescription || item.messageToSend}
-                    </Text>
-                    <View style={[styles.statusPill, reminderStatusStyle(item)]}>
-                      <Text style={styles.statusText}>{mapReminderStatus(item)}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.reminderBody} numberOfLines={3}>
-                    {item.messageToSend}
-                  </Text>
-                  <Text style={styles.reminderMeta}>
-                    {new Date(item.remindAt).toLocaleString('pt-BR')}
-                  </Text>
-                  <View style={styles.reminderActions}>
-                    {item.status !== 'COMPLETED' && item.status !== 'CANCELED' ? (
-                      <Pressable
-                        style={styles.secondaryButton}
-                        onPress={async () => {
-                          await api.completeReminder(conversationId, item.id);
-                          await conversationQuery.refetch();
-                        }}
-                      >
-                        <Text style={styles.secondaryButtonText}>Concluir</Text>
-                      </Pressable>
-                    ) : null}
-                    {item.status !== 'CANCELED' && item.status !== 'COMPLETED' ? (
-                      <Pressable
-                        style={styles.secondaryButton}
-                        onPress={async () => {
-                          await api.cancelReminder(conversationId, item.id);
-                          await conversationQuery.refetch();
-                        }}
-                      >
-                        <Text style={styles.secondaryButtonText}>Cancelar</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyMessages}>
-                <Text style={styles.emptyTitle}>Nenhum lembrete nesta conversa.</Text>
-                <Text style={styles.emptyDescription}>
-                  Crie um retorno programado para avisar a equipe na hora certa.
+        <Modal
+          visible={remindersVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setRemindersVisible(false)}
+        >
+          <ScrollView style={styles.modalScreen} contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Lembretes da conversa</Text>
+                <Text style={styles.modalSubtitle}>
+                  Agende retornos e destaque prioridades para este cliente.
                 </Text>
               </View>
-            )}
-          </View>
-        </ScrollView>
-      </Modal>
+              <Pressable
+                style={styles.modalClose}
+                onPress={() => setRemindersVisible(false)}
+              >
+                <Text style={styles.modalCloseText}>Fechar</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.metricsRow}>
+              <Metric label="Total" value={String(reminders.length)} />
+              <Metric
+                label="Ativos"
+                value={String(
+                  reminders.filter(
+                    (item) =>
+                      item.status === 'PENDING' || item.status === 'NOTIFIED',
+                  ).length,
+                )}
+              />
+              <Metric
+                label="Vencidos"
+                value={String(
+                  reminders.filter(
+                    (item) =>
+                      item.status === 'NOTIFIED' &&
+                      new Date(item.remindAt).getTime() < Date.now(),
+                  ).length,
+                )}
+              />
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Novo lembrete</Text>
+              <TextInput
+                value={reminderDescription}
+                onChangeText={setReminderDescription}
+                placeholder="Descricao interna"
+                placeholderTextColor={palette.textMuted}
+                style={styles.input}
+              />
+              <TextInput
+                value={reminderMessage}
+                onChangeText={setReminderMessage}
+                multiline
+                placeholder="Mensagem prevista para o cliente"
+                placeholderTextColor={palette.textMuted}
+                style={[styles.input, styles.textarea]}
+              />
+              <View style={styles.row}>
+                <TextInput
+                  value={reminderDate}
+                  onChangeText={setReminderDate}
+                  placeholder="2026-03-13"
+                  placeholderTextColor={palette.textMuted}
+                  style={[styles.input, styles.rowInput]}
+                />
+                <TextInput
+                  value={reminderTime}
+                  onChangeText={setReminderTime}
+                  placeholder="18:30"
+                  placeholderTextColor={palette.textMuted}
+                  style={[styles.input, styles.rowInput]}
+                />
+              </View>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  savingReminder && styles.sendButtonDisabled,
+                ]}
+                disabled={savingReminder}
+                onPress={async () => {
+                  if (
+                    !reminderMessage.trim() ||
+                    !reminderDate.trim() ||
+                    !reminderTime.trim()
+                  ) {
+                    return;
+                  }
+
+                  try {
+                    setSavingReminder(true);
+                    await api.createReminder(conversationId, {
+                      internalDescription: reminderDescription,
+                      messageToSend: reminderMessage,
+                      remindAt: `${reminderDate}T${reminderTime}:00`,
+                    });
+                    setReminderDescription('');
+                    setReminderMessage('');
+                    setReminderDate('');
+                    setReminderTime('');
+                    await conversationQuery.refetch();
+                  } finally {
+                    setSavingReminder(false);
+                  }
+                }}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {savingReminder ? 'Salvando...' : 'Criar lembrete'}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.listCard}>
+              <Text style={styles.sectionTitle}>Pendentes e historico</Text>
+              {reminders.length ? (
+                reminders.map((item) => (
+                  <View key={item.id} style={styles.reminderCard}>
+                    <View style={styles.reminderTop}>
+                      <Text style={styles.reminderTitle} numberOfLines={2}>
+                        {item.internalDescription || item.messageToSend}
+                      </Text>
+                      <View style={[styles.statusPill, reminderStatusStyle(item)]}>
+                        <Text style={styles.statusText}>{mapReminderStatus(item)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.reminderBody} numberOfLines={3}>
+                      {item.messageToSend}
+                    </Text>
+                    <Text style={styles.reminderMeta}>
+                      {new Date(item.remindAt).toLocaleString('pt-BR')}
+                    </Text>
+                    <View style={styles.reminderActions}>
+                      {item.status !== 'COMPLETED' && item.status !== 'CANCELED' ? (
+                        <Pressable
+                          style={styles.secondaryButton}
+                          onPress={async () => {
+                            await api.completeReminder(conversationId, item.id);
+                            await conversationQuery.refetch();
+                          }}
+                        >
+                          <Text style={styles.secondaryButtonText}>Concluir</Text>
+                        </Pressable>
+                      ) : null}
+                      {item.status !== 'CANCELED' && item.status !== 'COMPLETED' ? (
+                        <Pressable
+                          style={styles.secondaryButton}
+                          onPress={async () => {
+                            await api.cancelReminder(conversationId, item.id);
+                            await conversationQuery.refetch();
+                          }}
+                        >
+                          <Text style={styles.secondaryButtonText}>Cancelar</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyMessages}>
+                  <Text style={styles.emptyTitle}>Nenhum lembrete nesta conversa.</Text>
+                  <Text style={styles.emptyDescription}>
+                    Crie um retorno programado para avisar a equipe na hora certa.
+                  </Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </Modal>
       </KeyboardAvoidingView>
     </ScreenTransition>
   );
 }
+
+type ConversationMessageItem = {
+  id: string;
+  direction: string;
+  content: string;
+  createdAt: string;
+};
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -335,10 +525,11 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function mapStatus(status: string) {
+function mapStatus(status: string, closeReason?: string | null) {
   if (status === 'IN_PROGRESS') return 'Em atendimento';
   if (status === 'WAITING') return 'Aguardando';
   if (status === 'RESOLVED') return 'Resolvido';
+  if (status === 'CLOSED' && closeReason === 'UNANSWERED') return 'Nao respondido';
   if (status === 'CLOSED') return 'Encerrado';
   return 'Novo';
 }
@@ -414,6 +605,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  conversationActions: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
+    backgroundColor: palette.background,
+  },
+  actionButton: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+  },
+  actionButtonDisabled: {
+    opacity: 0.45,
+  },
+  actionButtonText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  closedBanner: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 141, 155, 0.4)',
+    backgroundColor: 'rgba(255, 141, 155, 0.1)',
+    gap: 3,
+  },
+  closedBannerTitle: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  closedBannerDescription: {
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   messagesContent: {
     paddingHorizontal: 16,
     paddingVertical: 18,
@@ -468,7 +704,6 @@ const styles = StyleSheet.create({
     borderTopColor: palette.border,
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 18,
     backgroundColor: palette.background,
     gap: 10,
   },
@@ -484,6 +719,14 @@ const styles = StyleSheet.create({
     borderColor: palette.border,
     color: palette.text,
     fontSize: 15,
+  },
+  composerInputDisabled: {
+    opacity: 0.62,
+    justifyContent: 'center',
+  },
+  composerInputDisabledText: {
+    color: palette.textMuted,
+    fontSize: 14,
   },
   sendButton: {
     height: 50,

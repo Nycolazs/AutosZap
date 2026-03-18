@@ -1,26 +1,68 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+let notificationHandlerConfigured = false;
+
+async function loadNotificationsModule() {
+  // Android push notifications are not supported in Expo Go (store client).
+  // Returning null avoids runtime crashes while preserving behavior in dev builds.
+  if (
+    Platform.OS === 'android' &&
+    Constants.executionEnvironment === 'storeClient'
+  ) {
+    return null;
+  }
+
+  try {
+    const module = await import('expo-notifications');
+    return module;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureNotificationHandler() {
+  if (notificationHandlerConfigured) {
+    return;
+  }
+
+  const notifications = await loadNotificationsModule();
+
+  if (!notifications) {
+    return;
+  }
+
+  notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
+  notificationHandlerConfigured = true;
+}
 
 export async function registerForPushToken() {
+  const notifications = await loadNotificationsModule();
+
+  if (!notifications) {
+    return null;
+  }
+
+  await ensureNotificationHandler();
+
   if (!Device.isDevice) {
     return null;
   }
 
-  const permissions = await Notifications.getPermissionsAsync();
+  const permissions = await notifications.getPermissionsAsync();
   let status = permissions.status;
 
   if (status !== 'granted') {
-    const requested = await Notifications.requestPermissionsAsync();
+    const requested = await notifications.requestPermissionsAsync();
     status = requested.status;
   }
 
@@ -36,7 +78,7 @@ export async function registerForPushToken() {
     return null;
   }
 
-  const token = await Notifications.getExpoPushTokenAsync({
+  const token = await notifications.getExpoPushTokenAsync({
     projectId,
   });
 

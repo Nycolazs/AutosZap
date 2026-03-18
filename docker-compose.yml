@@ -46,7 +46,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000,http://localhost:3001}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000,http://localhost:3001,http://localhost:8081,http://127.0.0.1:8081,http://localhost:8082,http://127.0.0.1:8082,http://localhost:19006,http://127.0.0.1:19006}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/autoszap?schema=public
       REDIS_URL: redis://redis:6379

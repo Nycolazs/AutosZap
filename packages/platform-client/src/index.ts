@@ -3,6 +3,7 @@ import type {
   AuthSession,
   ConversationDetail,
   ConversationReminder,
+  ConversationStatusSummary,
   ConversationSummary,
   LeadSummary,
   NotificationsResponse,
@@ -129,13 +130,41 @@ export function createPlatformClient(config: ClientConfig) {
       if (params?.status) query.set('status', params.status);
       return request<PaginatedResponse<ConversationSummary>>(`conversations?${query.toString()}`);
     },
+    listConversationSummary(params?: { search?: string }) {
+      const query = new URLSearchParams();
+      if (params?.search) query.set('search', params.search);
+
+      const suffix = query.size ? `?${query.toString()}` : '';
+      return request<ConversationStatusSummary>(`conversations/summary${suffix}`);
+    },
     getConversation(conversationId: string) {
       return request<ConversationDetail>(`conversations/${conversationId}`);
+    },
+    resolveConversation(conversationId: string) {
+      return request<ConversationDetail>(`conversations/${conversationId}/resolve`, {
+        method: 'POST',
+      });
+    },
+    closeConversation(conversationId: string) {
+      return request<ConversationDetail>(`conversations/${conversationId}/close`, {
+        method: 'POST',
+      });
+    },
+    reopenConversation(conversationId: string) {
+      return request<ConversationDetail>(`conversations/${conversationId}/reopen`, {
+        method: 'POST',
+      });
     },
     sendConversationMessage(conversationId: string, content: string) {
       return request(`messages`, {
         method: 'POST',
         body: { conversationId, content },
+      });
+    },
+    addConversationNote(conversationId: string, content: string) {
+      return request(`conversations/${conversationId}/notes`, {
+        method: 'POST',
+        body: { content },
       });
     },
     createReminder(conversationId: string, payload: { messageToSend: string; internalDescription?: string; remindAt: string }) {

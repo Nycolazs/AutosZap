@@ -9,6 +9,12 @@ export type ConversationStatus =
   | 'RESOLVED'
   | 'CLOSED';
 
+export type ConversationCloseReason =
+  | 'USER_CLOSED'
+  | 'UNANSWERED'
+  | 'SYSTEM_TIMEOUT'
+  | string;
+
 export type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
 
 export type ReminderStatus = 'PENDING' | 'NOTIFIED' | 'COMPLETED' | 'CANCELED';
@@ -115,6 +121,7 @@ export interface ConversationReminder {
 export interface ConversationSummary {
   id: string;
   status: ConversationStatus;
+  closeReason?: ConversationCloseReason | null;
   unreadCount: number;
   lastMessageAt?: string | null;
   lastMessagePreview?: string | null;
@@ -190,6 +197,15 @@ export interface NotificationItem {
 export interface NotificationsResponse {
   items: NotificationItem[];
   unreadCount: number;
+}
+
+export interface ConversationStatusSummary {
+  ALL: number;
+  NEW: number;
+  IN_PROGRESS: number;
+  WAITING: number;
+  RESOLVED: number;
+  CLOSED: number;
 }
 
 export interface RegisterDevicePayload {
