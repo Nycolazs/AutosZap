@@ -18,6 +18,9 @@ win:
   icon: ../../frontend/app/favicon.ico
   target:
     - nsis
+nsis:
+  installerIcon: ../../frontend/app/favicon.ico
+  uninstallerIcon: ../../frontend/app/favicon.ico
 linux:
   target:
     - AppImage

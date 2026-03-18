@@ -1,0 +1,81 @@
+name: Desktop (Windows) Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: "Criar release como draft?"
+        required: false
+        default: "false"
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          $version = node -p "require('./apps/desktop/package.json').version"
+
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+          } else {
+            $tag = "desktop-v$version-build${{ github.run_number }}"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Build Windows installer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run release:desktop:win
+
+      - name: Prepare release asset
+        run: |
+          $releaseDir = "apps/desktop/release"
+          if (!(Test-Path $releaseDir)) {
+            throw "Pasta de release não encontrada: $releaseDir"
+          }
+
+          $installer = Get-ChildItem $releaseDir -Filter *.exe |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+
+          if (!$installer) {
+            throw "Nenhum instalador .exe foi gerado em $releaseDir"
+          }
+
+          Copy-Item $installer.FullName "autoszap-setup-latest.exe" -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "AutoZap Desktop (Windows) v${{ steps.meta.outputs.version }}"
+          draft: ${{ github.event.inputs.draft == 'true' }}
+          files: |
+            autoszap-setup-latest.exe
