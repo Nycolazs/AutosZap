@@ -43,6 +43,7 @@ services:
       PORT: ${PORT:-4000}
       FRONTEND_URL: ${FRONTEND_URL}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-}
+      PLATFORM_RELEASES_MANIFEST_PATH: /deploy/platform-releases.json
       DATABASE_URL: postgresql://${POSTGRES_USER:-autoszap}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-autoszap}?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
@@ -60,6 +61,7 @@ services:
       - "4000"
     volumes:
       - backend_storage:/app/storage
+      - ./deploy:/deploy:ro
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s

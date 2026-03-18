@@ -14,6 +14,7 @@ backend/dist
 backend/coverage
 apps/mobile/.expo/
 .codex-local
+.tools/
 
 # Artefatos locais de execucao (nao versionar)
 .logs/

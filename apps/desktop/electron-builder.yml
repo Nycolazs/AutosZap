@@ -15,6 +15,7 @@ mac:
   target:
     - dmg
 win:
+  icon: ../../frontend/app/favicon.ico
   target:
     - nsis
 linux:

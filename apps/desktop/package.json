@@ -6,9 +6,9 @@
   "author": "AutoZap",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch\" \"wait-on dist-electron/main.js tcp:5173 && electron .\"",
-    "dev:web": "concurrently -k \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch\" \"wait-on dist-electron/main.js tcp:3000 && cross-env DESKTOP_WEB_URL=http://localhost:3000 electron .\"",
-    "build": "vite build && tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron",
+    "dev": "concurrently -k \"vite\" \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch --external electron --external electron-updater\" \"wait-on dist-electron/main.js tcp:5173 && electron .\"",
+    "dev:web": "concurrently -k \"tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --watch --external electron --external electron-updater\" \"wait-on dist-electron/main.js tcp:3000 && cross-env DESKTOP_WEB_URL=http://localhost:3000 electron .\"",
+    "build": "vite build && tsup electron/main.ts electron/preload.ts --format cjs --out-dir dist-electron --external electron --external electron-updater",
     "lint": "tsc --noEmit",
     "package": "npm run build && electron-builder --config electron-builder.yml",
     "package:linux": "npm run build && electron-builder --config electron-builder.yml --linux",

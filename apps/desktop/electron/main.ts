@@ -26,6 +26,30 @@ let mainWindow: BrowserWindow | null = null;
 const DEFAULT_DEV_WEB_URL = 'http://localhost:3000';
 const DEFAULT_PROD_WEB_URL = 'https://autoszap.com';
 
+const DEBUG_LOGS = process.env.DESKTOP_DEBUG === 'true';
+function debugLog(message: string, extra?: Record<string, unknown>) {
+  if (!DEBUG_LOGS) {
+    return;
+  }
+
+  const payload = extra ? ` ${JSON.stringify(extra)}` : '';
+  // eslint-disable-next-line no-console
+  console.log(`[desktop] ${message}${payload}`);
+}
+
+function getWindowIconPath() {
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  if (app.isPackaged) {
+    return undefined;
+  }
+
+  const candidate = join(app.getAppPath(), '../../frontend/public/brand/autoszap-icon.png');
+  return existsSync(candidate) ? candidate : undefined;
+}
+
 function getDesktopWebUrl() {
   const configured = process.env.DESKTOP_WEB_URL?.trim();
 
@@ -67,6 +91,9 @@ function writeSession(session: StoredSession | null) {
 }
 
 async function createWindow() {
+  const icon = getWindowIconPath();
+  debugLog('createWindow', { icon, isPackaged: app.isPackaged, appPath: app.getAppPath() });
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -75,6 +102,7 @@ async function createWindow() {
     backgroundColor: '#03101f',
     autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
+    icon,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -84,6 +112,10 @@ async function createWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.on('closed', () => {
+    debugLog('mainWindow closed');
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -106,6 +138,7 @@ async function createWindow() {
   });
 
   const targetUrl = getDesktopWebUrl();
+  debugLog('loadURL', { targetUrl });
 
   try {
     await mainWindow.loadURL(targetUrl);
@@ -131,6 +164,11 @@ function setupAutoUpdates() {
 }
 
 app.whenReady().then(async () => {
+  debugLog('app ready');
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.autoszap.desktop');
+  }
+
   ipcMain.handle('session:get', () => readSession());
   ipcMain.handle('session:set', (_event, session: StoredSession) => {
     writeSession(session);
@@ -177,6 +215,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  debugLog('window-all-closed');
   if (process.platform !== 'darwin') {
     app.quit();
   }

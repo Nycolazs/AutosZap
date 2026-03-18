@@ -1,63 +1,31 @@
 "use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-
-// ../../node_modules/electron/index.js
-var require_electron = __commonJS({
-  "../../node_modules/electron/index.js"(exports2, module2) {
-    "use strict";
-    var fs = require("fs");
-    var path = require("path");
-    var pathFile = path.join(__dirname, "path.txt");
-    function getElectronPath() {
-      let executablePath;
-      if (fs.existsSync(pathFile)) {
-        executablePath = fs.readFileSync(pathFile, "utf-8");
-      }
-      if (process.env.ELECTRON_OVERRIDE_DIST_PATH) {
-        return path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, executablePath || "electron");
-      }
-      if (executablePath) {
-        return path.join(__dirname, "dist", executablePath);
-      } else {
-        throw new Error("Electron failed to install correctly, please delete node_modules/electron and try installing again");
-      }
-    }
-    module2.exports = getElectronPath();
-  }
-});
 
 // electron/main.ts
-var import_electron = __toESM(require_electron());
+var import_electron = require("electron");
 var import_electron_updater = require("electron-updater");
 var import_node_fs = require("fs");
 var import_node_path = require("path");
 var mainWindow = null;
 var DEFAULT_DEV_WEB_URL = "http://localhost:3000";
 var DEFAULT_PROD_WEB_URL = "https://autoszap.com";
+var DEBUG_LOGS = process.env.DESKTOP_DEBUG === "true";
+function debugLog(message, extra) {
+  if (!DEBUG_LOGS) {
+    return;
+  }
+  const payload = extra ? ` ${JSON.stringify(extra)}` : "";
+  console.log(`[desktop] ${message}${payload}`);
+}
+function getWindowIconPath() {
+  if (process.platform !== "win32") {
+    return void 0;
+  }
+  if (import_electron.app.isPackaged) {
+    return void 0;
+  }
+  const candidate = (0, import_node_path.join)(import_electron.app.getAppPath(), "../../frontend/public/brand/autoszap-icon.png");
+  return (0, import_node_fs.existsSync)(candidate) ? candidate : void 0;
+}
 function getDesktopWebUrl() {
   const configured = process.env.DESKTOP_WEB_URL?.trim();
   if (configured) {
@@ -89,6 +57,8 @@ function writeSession(session) {
   (0, import_node_fs.writeFileSync)(filePath, JSON.stringify(session, null, 2), "utf-8");
 }
 async function createWindow() {
+  const icon = getWindowIconPath();
+  debugLog("createWindow", { icon, isPackaged: import_electron.app.isPackaged, appPath: import_electron.app.getAppPath() });
   mainWindow = new import_electron.BrowserWindow({
     width: 1440,
     height: 900,
@@ -97,6 +67,7 @@ async function createWindow() {
     backgroundColor: "#03101f",
     autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
+    icon,
     webPreferences: {
       preload: (0, import_node_path.join)(__dirname, "preload.js"),
       contextIsolation: true,
@@ -105,6 +76,9 @@ async function createWindow() {
     }
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.on("closed", () => {
+    debugLog("mainWindow closed");
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void import_electron.shell.openExternal(url);
     return { action: "deny" };
@@ -122,6 +96,7 @@ async function createWindow() {
     }
   });
   const targetUrl = getDesktopWebUrl();
+  debugLog("loadURL", { targetUrl });
   try {
     await mainWindow.loadURL(targetUrl);
   } catch {
@@ -142,6 +117,10 @@ function setupAutoUpdates() {
   }
 }
 import_electron.app.whenReady().then(async () => {
+  debugLog("app ready");
+  if (process.platform === "win32") {
+    import_electron.app.setAppUserModelId("com.autoszap.desktop");
+  }
   import_electron.ipcMain.handle("session:get", () => readSession());
   import_electron.ipcMain.handle("session:set", (_event, session) => {
     writeSession(session);
@@ -183,6 +162,7 @@ import_electron.app.whenReady().then(async () => {
   });
 });
 import_electron.app.on("window-all-closed", () => {
+  debugLog("window-all-closed");
   if (process.platform !== "darwin") {
     import_electron.app.quit();
   }
