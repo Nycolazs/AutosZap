@@ -23,7 +23,13 @@ export function getBackendUrl() {
 }
 
 export function getBackendUnavailableMessage() {
+  const configuredUrl = process.env.BACKEND_URL?.trim();
+
   if (process.env.NODE_ENV === 'development') {
+    if (configuredUrl) {
+      return `Backend indisponivel em ${configuredUrl}.`;
+    }
+
     return 'Backend local indisponivel. Verifique se a API do AutosZap esta rodando na porta 4000.';
   }
 
