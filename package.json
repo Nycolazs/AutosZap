@@ -26,6 +26,12 @@
     "lint:web": "npm run lint --workspace frontend",
     "lint:backend": "npm run lint --workspace backend",
     "lint:mobile": "npm run lint --workspace @autoszap/mobile",
-    "lint:desktop": "npm run lint --workspace @autoszap/desktop"
+    "lint:desktop": "npm run lint --workspace @autoszap/desktop",
+    "mt:migrate:control-plane": "npm run mt:migrate:control-plane --workspace backend",
+    "mt:migrate:tenant": "npm run mt:migrate:tenant --workspace backend",
+    "mt:migrate:all-tenants": "npm run mt:migrate:all-tenants --workspace backend",
+    "mt:seed:control-plane": "npm run mt:seed:control-plane --workspace backend",
+    "mt:seed:tenant": "npm run mt:seed:tenant --workspace backend",
+    "mt:bootstrap:control-plane": "npm run mt:bootstrap:control-plane --workspace backend"
   }
 }

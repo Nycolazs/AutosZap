@@ -5,7 +5,7 @@ RUN apk add --no-cache openssl libc6-compat
 COPY package*.json ./
 RUN npm ci
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm run prisma:generate
 
 FROM deps AS builder
 

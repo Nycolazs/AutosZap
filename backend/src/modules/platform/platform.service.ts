@@ -152,20 +152,24 @@ export class PlatformService {
       this.logger.warn(
         'GITHUB_RELEASES_TOKEN nao definido; download do desktop indisponivel.',
       );
-      throw new ServiceUnavailableException('Download indisponivel no momento.');
+      throw new ServiceUnavailableException(
+        'Download indisponivel no momento.',
+      );
     }
 
     const repo = (
       process.env.GITHUB_RELEASES_REPO ?? DEFAULT_GITHUB_RELEASES_REPO
     ).trim();
     const assetName = (
-      process.env.GITHUB_WINDOWS_ASSET_NAME ?? DEFAULT_WINDOWS_INSTALLER_ASSET_NAME
+      process.env.GITHUB_WINDOWS_ASSET_NAME ??
+      DEFAULT_WINDOWS_INSTALLER_ASSET_NAME
     ).trim();
 
-    const latestRelease = await this.fetchGitHubJson<GitHubLatestReleaseResponse>(
-      `https://api.github.com/repos/${repo}/releases/latest`,
-      token,
-    );
+    const latestRelease =
+      await this.fetchGitHubJson<GitHubLatestReleaseResponse>(
+        `https://api.github.com/repos/${repo}/releases/latest`,
+        token,
+      );
 
     const assets = Array.isArray(latestRelease.assets)
       ? latestRelease.assets

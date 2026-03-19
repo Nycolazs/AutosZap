@@ -4,9 +4,38 @@ import { ACCESS_COOKIE } from './lib/auth-cookies';
 
 const publicPaths = ['/login', '/register', '/forgot-password'];
 
+function decodeJwtPayload(token?: string) {
+  if (!token) {
+    return null;
+  }
+
+  const [, payload] = token.split('.');
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    if (typeof atob !== 'function') {
+      return null;
+    }
+
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const decoded = atob(padded);
+    return JSON.parse(decoded) as {
+      platformRole?: string;
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  const tokenPayload = decodeJwtPayload(accessToken);
+  const authenticatedHome =
+    tokenPayload?.platformRole === 'SUPER_ADMIN' ? '/platform' : '/app';
   const isPublicRoute =
     publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
     pathname.startsWith('/reset-password/');
@@ -20,7 +49,9 @@ export function proxy(request: NextRequest) {
 
   if (pathname === '/') {
     return applyNoStore(
-      NextResponse.redirect(new URL(accessToken ? '/app' : '/login', request.url)),
+      NextResponse.redirect(
+        new URL(accessToken ? authenticatedHome : '/login', request.url),
+      ),
     );
   }
 
@@ -28,13 +59,27 @@ export function proxy(request: NextRequest) {
     return applyNoStore(NextResponse.redirect(new URL('/login', request.url)));
   }
 
+  if (pathname.startsWith('/platform') && !accessToken) {
+    return applyNoStore(NextResponse.redirect(new URL('/login', request.url)));
+  }
+
   if (isPublicRoute && accessToken) {
-    return applyNoStore(NextResponse.redirect(new URL('/app', request.url)));
+    return applyNoStore(
+      NextResponse.redirect(new URL(authenticatedHome, request.url)),
+    );
   }
 
   return applyNoStore(NextResponse.next());
 }
 
 export const config = {
-  matcher: ['/', '/login', '/register', '/forgot-password', '/reset-password/:path*', '/app/:path*'],
+  matcher: [
+    '/',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password/:path*',
+    '/app/:path*',
+    '/platform/:path*',
+  ],
 };

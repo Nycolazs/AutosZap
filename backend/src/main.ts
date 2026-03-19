@@ -11,6 +11,7 @@ import {
   isSwaggerEnabled,
   parseFrontendOrigins,
 } from './common/config/runtime-config';
+import { ControlPlanePrismaService } from './common/prisma/control-plane-prisma.service';
 import { PrismaService } from './common/prisma/prisma.service';
 
 type CorsOriginCallback = (error: Error | null, allow?: boolean) => void;
@@ -70,6 +71,8 @@ async function bootstrap() {
 
   const prismaService = app.get(PrismaService);
   prismaService.enableShutdownHooks(app);
+  const controlPlanePrismaService = app.get(ControlPlanePrismaService);
+  controlPlanePrismaService.enableShutdownHooks(app);
 
   await app.listen(configService.get<number>('PORT') ?? 4000);
 }

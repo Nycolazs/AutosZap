@@ -10,6 +10,9 @@ export interface CurrentAuthUser {
   name: string;
   workspaceId: string;
   role: 'ADMIN' | 'MANAGER' | 'AGENT' | 'SELLER';
+  companyId?: string;
+  membershipId?: string;
+  platformRole?: 'SUPER_ADMIN' | 'SUPPORT';
 }
 
 export const CurrentUser = createParamDecorator(

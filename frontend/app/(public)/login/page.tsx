@@ -65,7 +65,12 @@ export default function LoginPage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(values),
                   });
-                  const data = (await response.json()) as { message?: string | string[] };
+                  const data = (await response.json()) as {
+                    message?: string | string[];
+                    user?: {
+                      isPlatformAdmin?: boolean;
+                    };
+                  };
 
                   if (!response.ok) {
                     toast.error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Falha no login.');
@@ -73,7 +78,7 @@ export default function LoginPage() {
                   }
 
                   toast.success('Sessao iniciada com sucesso.');
-                  router.push('/app');
+                  router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : 'Falha no login.');
                 }

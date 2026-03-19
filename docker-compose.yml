@@ -52,7 +52,13 @@ services:
       GITHUB_RELEASES_TOKEN: ${GITHUB_RELEASES_TOKEN:-}
       GITHUB_RELEASES_REPO: ${GITHUB_RELEASES_REPO:-Nycolazs/AutosZap}
       GITHUB_WINDOWS_ASSET_NAME: ${GITHUB_WINDOWS_ASSET_NAME:-autoszap-setup-latest.exe}
+      CONTROL_PLANE_DATABASE_URL: ${CONTROL_PLANE_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/autoszap?schema=public}
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/autoszap?schema=public
+      TENANT_DATABASE_STRATEGY: ${TENANT_DATABASE_STRATEGY:-dedicated}
+      TENANT_DATABASE_BASE_URL: ${TENANT_DATABASE_BASE_URL:-postgresql://postgres:postgres@postgres:5432/autoszap?schema=public}
+      TENANT_DATABASE_ADMIN_URL: ${TENANT_DATABASE_ADMIN_URL:-postgresql://postgres:postgres@postgres:5432/postgres?schema=public}
+      TENANT_DATABASE_PREFIX: ${TENANT_DATABASE_PREFIX:-autozap_tenant}
+      TENANT_ALLOW_SHARED_FALLBACK: ${TENANT_ALLOW_SHARED_FALLBACK:-true}
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: autoszap-local-access-secret
       JWT_ACCESS_EXPIRES_IN: 15m

@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -8,9 +13,12 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { RateLimitGuard } from './common/guards/rate-limit.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { TenantContextGuard } from './common/guards/tenant-context.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RealtimeModule } from './common/realtime/realtime.module';
 import { RedisModule } from './common/redis/redis.module';
+import { TenantContextMiddleware } from './common/tenancy/tenant-context.middleware';
+import { TenancyModule } from './common/tenancy/tenancy.module';
 import { AccessControlModule } from './modules/access-control/access-control.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AssistantsModule } from './modules/assistants/assistants.module';
@@ -25,7 +33,9 @@ import { GroupsModule } from './modules/groups/groups.module';
 import { MetaWhatsAppModule } from './modules/integrations/meta-whatsapp/meta-whatsapp.module';
 import { InstancesModule } from './modules/instances/instances.module';
 import { ListsModule } from './modules/lists/lists.module';
+import { ControlPlaneModule } from './modules/control-plane/control-plane.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TeamModule } from './modules/team/team.module';
 import { UsersModule } from './modules/users/users.module';
@@ -37,6 +47,8 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
       isGlobal: true,
     }),
     PrismaModule,
+    TenancyModule,
+    ControlPlaneModule,
     RedisModule,
     CryptoModule,
     RealtimeModule,
@@ -51,6 +63,7 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     GroupsModule,
     MetaWhatsAppModule,
     PlatformModule,
+    PlatformAdminModule,
     DevelopmentModule,
     InstancesModule,
     ConversationWorkflowModule,
@@ -65,6 +78,10 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantContextGuard,
     },
     {
       provide: APP_GUARD,
@@ -84,4 +101,10 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TenantContextMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}

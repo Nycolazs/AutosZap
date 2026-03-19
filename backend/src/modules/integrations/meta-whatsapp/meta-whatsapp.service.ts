@@ -23,6 +23,7 @@ import {
 } from '@prisma/client';
 import { CryptoService } from '../../../common/crypto/crypto.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { TenantConnectionService } from '../../../common/tenancy/tenant-connection.service';
 import {
   buildEquivalentContactPhones,
   normalizeContactPhone,
@@ -47,6 +48,7 @@ export class MetaWhatsAppService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly tenantConnectionService: TenantConnectionService,
     private readonly cryptoService: CryptoService,
     private readonly provider: MetaWhatsAppProvider,
     private readonly configService: ConfigService,
@@ -617,25 +619,13 @@ export class MetaWhatsAppService {
       throw new BadRequestException('Parametros de verificacao ausentes.');
     }
 
-    const instances = await this.prisma.instance.findMany({
-      where: {
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        webhookVerifyTokenEncrypted: true,
-      },
-    });
-
     const envVerifyToken = this.configService.get<string>(
       'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN',
     );
-
-    const matchedInstanceToken = instances.some(
-      (instance) =>
-        this.cryptoService.decrypt(instance.webhookVerifyTokenEncrypted) ===
+    const matchedInstanceToken =
+      await this.tenantConnectionService.resolveTenantByWebhookVerifyToken(
         token,
-    );
+      );
 
     const matchedEnvToken = envVerifyToken === token;
 
@@ -654,6 +644,31 @@ export class MetaWhatsAppService {
     },
   ) {
     const parsed = this.provider.parseWebhook(payload);
+    const firstPhoneNumberId =
+      parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
+    const tenantResolution = firstPhoneNumberId
+      ? await this.tenantConnectionService.resolveTenantByPhoneNumberId(
+          firstPhoneNumberId,
+        )
+      : null;
+
+    if (tenantResolution?.companyId) {
+      return this.prisma.runWithTenant(tenantResolution.companyId, () =>
+        this.handleWebhookInTenantContext(payload, parsed, context),
+      );
+    }
+
+    return this.handleWebhookInTenantContext(payload, parsed, context);
+  }
+
+  private async handleWebhookInTenantContext(
+    payload: Record<string, unknown>,
+    parsed: ReturnType<MetaWhatsAppProvider['parseWebhook']>,
+    context?: {
+      signature?: string;
+      rawBody?: Buffer;
+    },
+  ) {
     const firstPhoneNumberId =
       parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
 
@@ -1282,7 +1297,7 @@ export class MetaWhatsAppService {
         templateName,
         languageCode,
       }));
-    } catch (error) {
+    } catch {
       this.logger.warn(
         `Falha ao listar templates aprovados para auto-configuracao (workspace=${payload.workspaceId}).`,
       );

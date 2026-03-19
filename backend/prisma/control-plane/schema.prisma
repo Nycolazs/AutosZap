@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/control-plane-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CONTROL_PLANE_DATABASE_URL")
+}
+
+enum GlobalUserStatus {
+  ACTIVE
+  BLOCKED
+  PENDING
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  SUPPORT
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+enum TenantRole {
+  ADMIN
+  MANAGER
+  AGENT
+  SELLER
+}
+
+enum TenantDatabaseStatus {
+  PROVISIONING
+  READY
+  FAILED
+  INACTIVE
+}
+
+enum ProvisioningJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum PlatformAuditAction {
+  LOGIN
+  LOGIN_FAILED
+  COMPANY_CREATED
+  COMPANY_UPDATED
+  COMPANY_PROVISIONED
+  USER_CREATED
+  USER_UPDATED
+  MEMBERSHIP_CREATED
+  MEMBERSHIP_UPDATED
+  SECURITY_EVENT
+}
+
+model GlobalUser {
+  id                       String                     @id @default(cuid())
+  email                    String                     @unique
+  name                     String
+  passwordHash             String
+  status                   GlobalUserStatus           @default(ACTIVE)
+  platformRole             PlatformRole?
+  blockedAt                DateTime?
+  lastLoginAt              DateTime?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  deletedAt                DateTime?
+  memberships              CompanyMembership[]
+  refreshTokens            GlobalRefreshToken[]
+  passwordResetTokens      GlobalPasswordResetToken[]
+  auditLogs                PlatformAuditLog[]         @relation("PlatformAuditActor")
+  requestedProvisioningJobs TenantProvisioningJob[]   @relation("ProvisioningRequestedBy")
+}
+
+model Company {
+  id               String                @id @default(cuid())
+  slug             String                @unique
+  name             String
+  legalName        String?
+  status           CompanyStatus         @default(ACTIVE)
+  workspaceId      String                @unique
+  featureFlags     Json?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  deactivatedAt    DateTime?
+  memberships      CompanyMembership[]
+  tenantDatabase   TenantDatabase?
+  provisioningJobs TenantProvisioningJob[]
+  refreshTokens    GlobalRefreshToken[]
+}
+
+model CompanyMembership {
+  id           String           @id @default(cuid())
+  companyId    String
+  globalUserId String
+  tenantRole   TenantRole       @default(SELLER)
+  status       MembershipStatus @default(ACTIVE)
+  isDefault    Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  revokedAt    DateTime?
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  globalUser   GlobalUser       @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, globalUserId])
+  @@index([globalUserId, status])
+  @@index([companyId, status])
+}
+
+model TenantDatabase {
+  id                   String               @id @default(cuid())
+  companyId            String               @unique
+  databaseName         String
+  databaseHost         String?
+  databasePort         Int?
+  databaseSchema       String?
+  connectionUrlEncrypted String
+  status               TenantDatabaseStatus @default(PROVISIONING)
+  provisionedAt        DateTime?
+  lastMigrationAt      DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model GlobalRefreshToken {
+  id          String    @id @default(cuid())
+  globalUserId String
+  companyId   String?
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  globalUser  GlobalUser @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+  company     Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([globalUserId, expiresAt])
+  @@index([companyId, expiresAt])
+}
+
+model GlobalPasswordResetToken {
+  id          String    @id @default(cuid())
+  globalUserId String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  globalUser  GlobalUser @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+
+  @@index([globalUserId, expiresAt])
+}
+
+model TenantProvisioningJob {
+  id            String               @id @default(cuid())
+  companyId     String
+  requestedById String?
+  status        ProvisioningJobStatus @default(QUEUED)
+  attempt       Int                  @default(1)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  errorMessage  String?
+  metadata      Json?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  company       Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy   GlobalUser?          @relation("ProvisioningRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+}
+
+model PlatformAuditLog {
+  id          String             @id @default(cuid())
+  actorId     String?
+  action      PlatformAuditAction
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime           @default(now())
+  actor       GlobalUser?        @relation("PlatformAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId, createdAt])
+}

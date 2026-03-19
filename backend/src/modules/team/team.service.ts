@@ -5,17 +5,25 @@ import {
 } from '@nestjs/common';
 import { AuditAction, PermissionKey, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { createAuditLog } from '../../common/utils/audit';
 import { generateSecureToken } from '../../common/utils/auth';
 import { AccessControlService } from '../access-control/access-control.service';
 import { normalizeRole } from '../access-control/permissions.constants';
+import {
+  CompanyStatus,
+  GlobalUserStatus,
+  MembershipStatus,
+  TenantRole,
+} from '../../generated/control-plane-client';
 
 @Injectable()
 export class TeamService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControlService: AccessControlService,
+    private readonly controlPlanePrisma: ControlPlanePrismaService,
   ) {}
 
   async list(workspaceId: string) {
@@ -169,6 +177,8 @@ export class TeamService {
         status: member.status,
       },
     );
+
+    await this.syncMemberWithControlPlane(workspaceId, member.id);
 
     return member;
   }
@@ -348,6 +358,8 @@ export class TeamService {
       },
     });
 
+    await this.syncMemberWithControlPlane(workspaceId, id);
+
     return this.list(workspaceId).then((items) =>
       items.find((teamMember) => teamMember.id === id),
     );
@@ -393,6 +405,8 @@ export class TeamService {
       });
     });
 
+    await this.syncMemberWithControlPlane(workspaceId, id);
+
     return this.list(workspaceId).then((items) =>
       items.find((teamMember) => teamMember.id === id),
     );
@@ -426,5 +440,134 @@ export class TeamService {
       workspaceId,
       permissions,
     );
+  }
+
+  private async syncMemberWithControlPlane(
+    workspaceId: string,
+    memberId: string,
+  ) {
+    const teamMember = await this.prisma.teamMember.findFirst({
+      where: {
+        id: memberId,
+        workspaceId,
+      },
+      include: {
+        user: true,
+        workspace: true,
+      },
+    });
+
+    if (!teamMember?.user) {
+      return;
+    }
+
+    const workspace = teamMember.workspace;
+    const user = teamMember.user;
+    const role = this.mapTenantRole(user.role);
+    const globalStatus = this.mapGlobalUserStatus(user.status);
+    const membershipStatus = this.mapMembershipStatus(user.status);
+
+    const company = await this.controlPlanePrisma.company.upsert({
+      where: {
+        id: workspaceId,
+      },
+      update: {
+        workspaceId,
+        name: workspace.companyName || workspace.name,
+        slug: workspace.slug,
+        status: CompanyStatus.ACTIVE,
+      },
+      create: {
+        id: workspaceId,
+        workspaceId,
+        name: workspace.companyName || workspace.name,
+        slug: workspace.slug,
+        status: CompanyStatus.ACTIVE,
+      },
+    });
+
+    const globalUser = await this.controlPlanePrisma.globalUser.upsert({
+      where: {
+        email: user.email,
+      },
+      update: {
+        name: user.name,
+        passwordHash: user.passwordHash,
+        status: globalStatus,
+        blockedAt:
+          globalStatus === GlobalUserStatus.BLOCKED ? new Date() : null,
+        deletedAt: null,
+      },
+      create: {
+        name: user.name,
+        email: user.email,
+        passwordHash: user.passwordHash,
+        status: globalStatus,
+        blockedAt:
+          globalStatus === GlobalUserStatus.BLOCKED ? new Date() : null,
+      },
+    });
+
+    if (!user.globalUserId || user.globalUserId !== globalUser.id) {
+      await this.prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          globalUserId: globalUser.id,
+        },
+      });
+    }
+
+    const hasActiveMembership =
+      await this.controlPlanePrisma.companyMembership.findFirst({
+        where: {
+          globalUserId: globalUser.id,
+          status: MembershipStatus.ACTIVE,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    await this.controlPlanePrisma.companyMembership.upsert({
+      where: {
+        companyId_globalUserId: {
+          companyId: company.id,
+          globalUserId: globalUser.id,
+        },
+      },
+      update: {
+        tenantRole: role,
+        status: membershipStatus,
+        isDefault: hasActiveMembership ? undefined : true,
+      },
+      create: {
+        companyId: company.id,
+        globalUserId: globalUser.id,
+        tenantRole: role,
+        status: membershipStatus,
+        isDefault: !hasActiveMembership,
+      },
+    });
+  }
+
+  private mapTenantRole(role: Role): TenantRole {
+    if (role === Role.ADMIN) return TenantRole.ADMIN;
+    if (role === Role.MANAGER) return TenantRole.MANAGER;
+    if (role === Role.AGENT) return TenantRole.AGENT;
+    return TenantRole.SELLER;
+  }
+
+  private mapGlobalUserStatus(status: UserStatus): GlobalUserStatus {
+    if (status === UserStatus.ACTIVE) return GlobalUserStatus.ACTIVE;
+    if (status === UserStatus.INACTIVE) return GlobalUserStatus.BLOCKED;
+    return GlobalUserStatus.PENDING;
+  }
+
+  private mapMembershipStatus(status: UserStatus): MembershipStatus {
+    if (status === UserStatus.ACTIVE) return MembershipStatus.ACTIVE;
+    if (status === UserStatus.INACTIVE) return MembershipStatus.INACTIVE;
+    return MembershipStatus.INVITED;
   }
 }

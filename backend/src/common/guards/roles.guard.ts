@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { normalizeRole } from '../../modules/access-control/permissions.constants';
+import { PLATFORM_ADMIN_KEY } from '../decorators/platform-admin.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { CurrentAuthUser } from '../decorators/current-user.decorator';
 
@@ -9,6 +10,15 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const isPlatformRoute = this.reflector.getAllAndOverride<boolean>(
+      PLATFORM_ADMIN_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (isPlatformRoute) {
+      return true;
+    }
+
     const roles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),

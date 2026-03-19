@@ -46,7 +46,8 @@ export class RateLimitGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const ip = this.resolveIp(request);
-    const route = `${request.method}:${request.route?.path ?? request.path}`;
+    const routePath = this.resolveRoutePath(request);
+    const route = `${request.method}:${routePath}`;
     const key = `rl:${route}:${ip}`;
 
     try {
@@ -58,10 +59,7 @@ export class RateLimitGuard implements CanActivate {
         );
       }
     } catch (err) {
-      if (
-        err instanceof HttpException &&
-        err.getStatus() === HttpStatus.TOO_MANY_REQUESTS
-      ) {
+      if (err instanceof HttpException && err.getStatus() === 429) {
         throw err;
       }
       // Redis unavailable — fail open to avoid blocking legitimate traffic
@@ -77,5 +75,20 @@ export class RateLimitGuard implements CanActivate {
       return forwarded.split(',')[0]?.trim() ?? 'unknown';
     }
     return request.ip ?? 'unknown';
+  }
+
+  private resolveRoutePath(request: Request): string {
+    if (
+      request.route &&
+      typeof request.route === 'object' &&
+      'path' in request.route
+    ) {
+      const path = (request.route as { path?: unknown }).path;
+      if (typeof path === 'string' && path.trim()) {
+        return path;
+      }
+    }
+
+    return request.path;
   }
 }

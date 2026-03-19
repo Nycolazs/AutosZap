@@ -5,6 +5,7 @@ import {
   PERMISSIONS_KEY,
   PermissionRequirement,
 } from '../decorators/permissions.decorator';
+import { PLATFORM_ADMIN_KEY } from '../decorators/platform-admin.decorator';
 import { CurrentAuthUser } from '../decorators/current-user.decorator';
 
 @Injectable()
@@ -15,6 +16,15 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPlatformRoute = this.reflector.getAllAndOverride<boolean>(
+      PLATFORM_ADMIN_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (isPlatformRoute) {
+      return true;
+    }
+
     const requirement = this.reflector.getAllAndOverride<PermissionRequirement>(
       PERMISSIONS_KEY,
       [context.getHandler(), context.getClass()],

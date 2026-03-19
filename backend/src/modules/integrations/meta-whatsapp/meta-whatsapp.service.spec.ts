@@ -46,6 +46,7 @@ describe('MetaWhatsAppService automatic replies', () => {
     const service = new MetaWhatsAppService(
       prisma as never,
       {} as never,
+      {} as never,
       provider as never,
       new ConfigService(),
       {} as never,

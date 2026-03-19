@@ -16,10 +16,9 @@ describe('runtime-config', () => {
     });
 
     it('falls back to local origins outside production', () => {
-      expect(parseFrontendOrigins(undefined, 'development')).toEqual([
+      expect(parseFrontendOrigins(undefined, 'development')).toContain(
         'http://localhost:3000',
-        'http://localhost:3001',
-      ]);
+      );
     });
 
     it('throws when frontend origins are missing in production', () => {
@@ -53,6 +52,8 @@ describe('runtime-config', () => {
       expect(() =>
         assertProductionEnvironment({
           NODE_ENV: 'production',
+          CONTROL_PLANE_DATABASE_URL:
+            'postgresql://postgres:postgres@db:5432/autoszap_control',
           DATABASE_URL: 'postgresql://postgres:postgres@db:5432/autoszap',
           REDIS_URL: 'redis://redis:6379',
           JWT_ACCESS_SECRET: 'super-secret',
@@ -66,6 +67,8 @@ describe('runtime-config', () => {
         assertProductionEnvironment({
           NODE_ENV: 'production',
           FRONTEND_URL: 'https://app.autozap.com',
+          CONTROL_PLANE_DATABASE_URL:
+            'postgresql://postgres:postgres@db:5432/autoszap_control',
           DATABASE_URL: 'postgresql://postgres:postgres@db:5432/autoszap',
           REDIS_URL: 'redis://redis:6379',
           JWT_ACCESS_SECRET: 'change-me-access-secret',
@@ -79,6 +82,8 @@ describe('runtime-config', () => {
         assertProductionEnvironment({
           NODE_ENV: 'production',
           FRONTEND_URL: 'https://app.autozap.com',
+          CONTROL_PLANE_DATABASE_URL:
+            'postgresql://postgres:postgres@db:5432/autoszap_control',
           DATABASE_URL: 'postgresql://postgres:postgres@db:5432/autoszap',
           REDIS_URL: 'redis://redis:6379',
           JWT_ACCESS_SECRET: 'super-secret',

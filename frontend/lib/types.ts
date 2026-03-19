@@ -402,4 +402,136 @@ export interface AuthMeResponse {
     slug: string;
     companyName: string;
   };
+  companies?: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    tenantRole: string;
+    isDefault: boolean;
+  }>;
+  platform?: {
+    role?: string | null;
+    isPlatformAdmin: boolean;
+  };
+  companyId?: string;
+  membershipId?: string;
+  globalUserId?: string;
+}
+
+export interface PlatformDashboardResponse {
+  totals: {
+    companies: number;
+    activeCompanies: number;
+    inactiveCompanies: number;
+    globalUsers: number;
+    blockedUsers: number;
+  };
+  provisioning: {
+    total: number;
+    byStatus: Record<string, number>;
+    recentJobs: Array<{
+      id: string;
+      companyId: string;
+      status: string;
+      errorMessage?: string | null;
+      createdAt: string;
+      finishedAt?: string | null;
+      company: {
+        id: string;
+        name: string;
+        slug: string;
+      };
+    }>;
+  };
+  securityAlerts: {
+    blockedUsers: number;
+    failedProvisioningJobs: number;
+    recentFailures: Array<{
+      id: string;
+      companyId: string;
+      companyName: string;
+      errorMessage?: string | null;
+      createdAt: string;
+    }>;
+  };
+}
+
+export interface PlatformCompany {
+  id: string;
+  workspaceId: string;
+  name: string;
+  legalName?: string | null;
+  slug: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  tenantDatabase?: {
+    id: string;
+    databaseName: string;
+    status: string;
+    lastMigrationAt?: string | null;
+    provisionedAt?: string | null;
+  } | null;
+  memberships?: Array<{ id: string }>;
+}
+
+export interface PlatformGlobalUser {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  platformRole?: string | null;
+  createdAt: string;
+  memberships: Array<{
+    id: string;
+    companyId: string;
+    tenantRole: string;
+    status: string;
+    isDefault: boolean;
+    company: {
+      id: string;
+      name: string;
+      slug: string;
+      status: string;
+    };
+  }>;
+}
+
+export interface PlatformAuditLog {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+}
+
+export interface PlatformMeResponse {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  platformRole?: string | null;
+  isPlatformAdmin: boolean;
+  memberships: Array<{
+    id: string;
+    companyId: string;
+    tenantRole: string;
+    status: string;
+    isDefault: boolean;
+    company: {
+      id: string;
+      name: string;
+      slug: string;
+      status: string;
+    };
+  }>;
 }

@@ -67,3 +67,8 @@ export class LogoutDto {
   @IsString()
   refreshToken?: string;
 }
+
+export class SwitchCompanyDto {
+  @IsString()
+  companyId!: string;
+}

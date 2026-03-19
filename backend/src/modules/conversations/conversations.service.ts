@@ -663,20 +663,20 @@ export class ConversationsService {
   }
 
   async resolveConversation(id: string, user: CurrentAuthUser) {
-    const finalizeResult = await this.conversationWorkflowService.resolveConversation(
-      id,
-      user.workspaceId,
-      user.sub,
-    );
+    const finalizeResult =
+      await this.conversationWorkflowService.resolveConversation(
+        id,
+        user.workspaceId,
+        user.sub,
+      );
 
-    const autoFinalMessage =
-      await this.maybeSendFinalizationAutoMessage({
-        conversationId: id,
-        workspaceId: user.workspaceId,
-        actorUserId: user.sub,
-        targetStatus: ConversationStatus.RESOLVED,
-        currentStatus: finalizeResult.status,
-      });
+    const autoFinalMessage = await this.maybeSendFinalizationAutoMessage({
+      conversationId: id,
+      workspaceId: user.workspaceId,
+      actorUserId: user.sub,
+      targetStatus: ConversationStatus.RESOLVED,
+      currentStatus: finalizeResult.status,
+    });
 
     const conversation = await this.findOne(id, user);
 
@@ -687,20 +687,20 @@ export class ConversationsService {
   }
 
   async closeConversation(id: string, user: CurrentAuthUser) {
-    const finalizeResult = await this.conversationWorkflowService.closeConversation(
-      id,
-      user.workspaceId,
-      user.sub,
-    );
+    const finalizeResult =
+      await this.conversationWorkflowService.closeConversation(
+        id,
+        user.workspaceId,
+        user.sub,
+      );
 
-    const autoFinalMessage =
-      await this.maybeSendFinalizationAutoMessage({
-        conversationId: id,
-        workspaceId: user.workspaceId,
-        actorUserId: user.sub,
-        targetStatus: ConversationStatus.CLOSED,
-        currentStatus: finalizeResult.status,
-      });
+    const autoFinalMessage = await this.maybeSendFinalizationAutoMessage({
+      conversationId: id,
+      workspaceId: user.workspaceId,
+      actorUserId: user.sub,
+      targetStatus: ConversationStatus.CLOSED,
+      currentStatus: finalizeResult.status,
+    });
 
     const conversation = await this.findOne(id, user);
 
@@ -767,10 +767,12 @@ export class ConversationsService {
       };
     }
 
-    const settings = await this.workspaceSettingsService.getConversationSettings(
-      payload.workspaceId,
-    );
-    const isResolvedTarget = payload.targetStatus === ConversationStatus.RESOLVED;
+    const settings =
+      await this.workspaceSettingsService.getConversationSettings(
+        payload.workspaceId,
+      );
+    const isResolvedTarget =
+      payload.targetStatus === ConversationStatus.RESOLVED;
     const enabled = isResolvedTarget
       ? settings.sendResolvedAutoReply
       : settings.sendClosedAutoReply;
@@ -897,17 +899,18 @@ export class ConversationsService {
       : AutoMessageType.FINAL_CLOSED;
 
     try {
-      const sentMessage = await this.metaWhatsAppService.sendConversationMessage(
-        payload.workspaceId,
-        payload.conversationId,
-        payload.actorUserId,
-        message,
-        {
-          direction: MessageDirection.SYSTEM,
-          isAutomated: true,
-          autoMessageType,
-        },
-      );
+      const sentMessage =
+        await this.metaWhatsAppService.sendConversationMessage(
+          payload.workspaceId,
+          payload.conversationId,
+          payload.actorUserId,
+          message,
+          {
+            direction: MessageDirection.SYSTEM,
+            isAutomated: true,
+            autoMessageType,
+          },
+        );
 
       await this.prisma.$transaction(async (tx) => {
         await tx.conversation.updateMany({

@@ -281,6 +281,7 @@ model Workspace {
 
 model User {
   id                  String                    @id @default(cuid())
+  globalUserId        String?                   @unique
   workspaceId         String
   name                String
   email               String                    @unique
@@ -318,6 +319,7 @@ model User {
   clientDevices       ClientDevice[]
 
   @@index([workspaceId, role])
+  @@index([workspaceId, globalUserId])
 }
 
 model ClientDevice {

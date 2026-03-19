@@ -6,10 +6,14 @@ import {
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly controlPlanePrisma: ControlPlanePrismaService,
+  ) {}
 
   async list(workspaceId: string) {
     return this.prisma.user.findMany({
@@ -53,6 +57,19 @@ export class UsersService {
       if (existing) {
         throw new BadRequestException('Ja existe um usuario com este email.');
       }
+
+      const existingGlobal =
+        await this.controlPlanePrisma.globalUser.findUnique({
+          where: { email: payload.email.toLowerCase() },
+        });
+
+      if (
+        existingGlobal &&
+        existingGlobal.id !== user.globalUserId &&
+        existingGlobal.deletedAt === null
+      ) {
+        throw new BadRequestException('Ja existe um usuario com este email.');
+      }
     }
 
     const updated = await this.prisma.user.update({
@@ -70,6 +87,18 @@ export class UsersService {
         title: true,
       },
     });
+
+    if (user.globalUserId) {
+      await this.controlPlanePrisma.globalUser.update({
+        where: {
+          id: user.globalUserId,
+        },
+        data: {
+          name: updated.name,
+          email: updated.email,
+        },
+      });
+    }
 
     return updated;
   }
@@ -94,10 +123,23 @@ export class UsersService {
       throw new BadRequestException('Senha atual invalida.');
     }
 
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+      data: { passwordHash: hashedPassword },
     });
+
+    if (user.globalUserId) {
+      await this.controlPlanePrisma.globalUser.update({
+        where: {
+          id: user.globalUserId,
+        },
+        data: {
+          passwordHash: hashedPassword,
+        },
+      });
+    }
 
     return { success: true };
   }

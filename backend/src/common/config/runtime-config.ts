@@ -63,6 +63,7 @@ export function assertProductionEnvironment(
 
   const requiredValues = [
     ['FRONTEND_URL', env.FRONTEND_URL],
+    ['CONTROL_PLANE_DATABASE_URL', env.CONTROL_PLANE_DATABASE_URL],
     ['DATABASE_URL', env.DATABASE_URL],
     ['REDIS_URL', env.REDIS_URL],
   ] as const;

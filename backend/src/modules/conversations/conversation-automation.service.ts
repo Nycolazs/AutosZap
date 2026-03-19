@@ -4,7 +4,9 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { TenantConnectionService } from '../../common/tenancy/tenant-connection.service';
 import { ConversationWorkflowService } from './conversation-workflow.service';
 
 const WAITING_TIMEOUT_LOCK_KEY = 'autoszap:conversation-waiting-timeouts';
@@ -21,6 +23,8 @@ export class ConversationAutomationService
   constructor(
     private readonly conversationWorkflowService: ConversationWorkflowService,
     private readonly redisService: RedisService,
+    private readonly tenantConnectionService: TenantConnectionService,
+    private readonly prismaService: PrismaService,
   ) {}
 
   onModuleInit() {
@@ -49,12 +53,35 @@ export class ConversationAutomationService
     }
 
     try {
-      const result =
-        await this.conversationWorkflowService.processWaitingTimeouts();
+      const tenantIds =
+        await this.tenantConnectionService.listActiveTenantIds();
+      const aggregateResult = {
+        updatedCount: 0,
+        returnedToWaitingCount: 0,
+        autoClosedCount: 0,
+      };
 
-      if (result.updatedCount > 0) {
+      if (!tenantIds.length) {
+        const fallbackResult =
+          await this.conversationWorkflowService.processWaitingTimeouts();
+        aggregateResult.updatedCount += fallbackResult.updatedCount;
+        aggregateResult.returnedToWaitingCount +=
+          fallbackResult.returnedToWaitingCount;
+        aggregateResult.autoClosedCount += fallbackResult.autoClosedCount;
+      }
+
+      for (const tenantId of tenantIds) {
+        const result = await this.prismaService.runWithTenant(tenantId, () =>
+          this.conversationWorkflowService.processWaitingTimeouts(),
+        );
+        aggregateResult.updatedCount += result.updatedCount;
+        aggregateResult.returnedToWaitingCount += result.returnedToWaitingCount;
+        aggregateResult.autoClosedCount += result.autoClosedCount;
+      }
+
+      if (aggregateResult.updatedCount > 0) {
         this.logger.log(
-          `Timeouts processados com sucesso. Liberadas para AGUARDANDO: ${result.returnedToWaitingCount}. Encerradas como NAO RESPONDIDO: ${result.autoClosedCount}.`,
+          `Timeouts processados com sucesso. Liberadas para AGUARDANDO: ${aggregateResult.returnedToWaitingCount}. Encerradas como NAO RESPONDIDO: ${aggregateResult.autoClosedCount}.`,
         );
       }
     } catch (error) {

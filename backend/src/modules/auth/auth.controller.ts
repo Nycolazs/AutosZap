@@ -10,6 +10,7 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SwitchCompanyDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
 
@@ -67,6 +68,15 @@ export class AuthController {
 
   @Get('me')
   me(@CurrentUser() user: CurrentAuthUser) {
-    return this.authService.me(user.sub);
+    return this.authService.me(user);
+  }
+
+  @Post('switch-company')
+  @RateLimit({ limit: 30, windowSeconds: 60 })
+  switchCompany(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: SwitchCompanyDto,
+  ) {
+    return this.authService.switchCompany(user, dto);
   }
 }

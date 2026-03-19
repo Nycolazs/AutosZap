@@ -12,6 +12,7 @@ frontend/out
 backend/node_modules
 backend/dist
 backend/coverage
+backend/src/generated/control-plane-client
 apps/mobile/.expo/
 apps/desktop/release/
 .codex-local

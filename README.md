@@ -14,6 +14,15 @@ SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp
 - Backend: NestJS 11, Prisma ORM, PostgreSQL, Redis, JWT com refresh token rotacionado, bcrypt, Swagger.
 - Infra local: Docker Compose para PostgreSQL, Redis e backend containerizado.
 
+## Multi-tenancy SaaS
+
+O backend agora suporta arquitetura **Control Plane + Tenant DB por empresa**.
+
+- Documentação completa: `docs/multi-tenancy-saas.md`
+- Schema tenant: `backend/prisma/schema.prisma`
+- Schema control plane: `backend/prisma/control-plane/schema.prisma`
+- Admin da plataforma: `/platform` no frontend e `/api/platform-admin/*` no backend
+
 ## Estrutura
 
 ```text
