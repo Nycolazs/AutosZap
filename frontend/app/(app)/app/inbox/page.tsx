@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   FileImage,
   Inbox,
+  MessageSquareText,
   Mic,
   Pause,
   Paperclip,
@@ -31,6 +32,7 @@ import {
   ConversationStatusFilter,
   type ConversationStatusFilterValue,
 } from '@/components/inbox/conversation-status-filter';
+import { QuickMessagesDialog } from '@/components/inbox/quick-messages-dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -120,6 +122,7 @@ function InboxPageContent() {
     useState<ConversationStatusFilterValue>('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
+  const [quickMessagesOpen, setQuickMessagesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [reminderForm, setReminderForm] = useState<ReminderFormState>(DEFAULT_REMINDER_FORM);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -662,6 +665,7 @@ function InboxPageContent() {
       setReminderForm(DEFAULT_REMINDER_FORM);
       setEditingReminderId(null);
       setDetailsOpen(false);
+      setQuickMessagesOpen(false);
     }, 0);
 
     return () => window.clearTimeout(resetPanels);
@@ -939,6 +943,10 @@ function InboxPageContent() {
   };
 
   const permissionMap = meQuery.data?.permissionMap;
+  const canManageQuickMessages = canAccess(
+    permissionMap,
+    'CONFIGURE_AUTO_MESSAGES',
+  );
   const canTransferConversation = canAccess(permissionMap, 'TRANSFER_CONVERSATION');
   const canResolveConversation = canAccess(permissionMap, 'RESOLVE_CONVERSATION');
   const canCloseConversation = canAccess(permissionMap, 'CLOSE_CONVERSATION');
@@ -946,6 +954,14 @@ function InboxPageContent() {
   const isConversationClosed =
     selectedConversation?.status === 'RESOLVED' ||
     selectedConversation?.status === 'CLOSED';
+
+  const refreshConversationQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+      queryClient.invalidateQueries({ queryKey: ['conversations-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['conversation', activeConversationId] }),
+    ]);
+  };
 
   const startReminderEdit = (reminder: ConversationReminder) => {
     setEditingReminderId(reminder.id);
@@ -1305,6 +1321,16 @@ function InboxPageContent() {
                           <Button
                             type="button"
                             variant="secondary"
+                            onClick={() => setQuickMessagesOpen(true)}
+                            disabled={!activeConversationId || sendMutation.isPending}
+                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
+                          >
+                            <MessageSquareText className="h-3.5 w-3.5" />
+                            Mensagens rapidas
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
                             onClick={() => {
                               void startAudioRecording();
                             }}
@@ -1422,6 +1448,21 @@ function InboxPageContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <QuickMessagesDialog
+        open={quickMessagesOpen}
+        onOpenChange={setQuickMessagesOpen}
+        conversationId={activeConversationId}
+        canManage={canManageQuickMessages}
+        isConversationClosed={isConversationClosed}
+        onInsertInInput={(value) => {
+          setMessageDraft(value);
+          window.requestAnimationFrame(() => {
+            composerTextareaRef.current?.focus();
+          });
+        }}
+        onMessageSent={refreshConversationQueries}
+      />
     </div>
   );
 }

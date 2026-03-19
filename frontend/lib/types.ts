@@ -111,6 +111,23 @@ export interface ConversationReminder {
   completedBy?: UserSummary | null;
 }
 
+export interface QuickMessage {
+  id: string;
+  workspaceId: string;
+  title: string;
+  content: string;
+  createdById?: string | null;
+  updatedById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuickMessageApplyResponse {
+  action: 'SEND_NOW' | 'EDIT_IN_INPUT';
+  content: string;
+  message?: ConversationMessage;
+}
+
 export interface Conversation {
   id: string;
   status: string;
@@ -374,6 +391,8 @@ export interface WorkspaceConversationSettings {
   resolvedAutoReplyMessage?: string | null;
   sendClosedAutoReply: boolean;
   closedAutoReplyMessage?: string | null;
+  sendAssignmentAutoReply: boolean;
+  assignmentAutoReplyMessage?: string | null;
   sendWindowClosedTemplateReply: boolean;
   windowClosedTemplateName?: string | null;
   windowClosedTemplateLanguageCode?: string | null;

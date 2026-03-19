@@ -38,6 +38,8 @@ type WorkspaceConversationSettingsPayload = {
   resolvedAutoReplyMessage?: string | null;
   sendClosedAutoReply: boolean;
   closedAutoReplyMessage?: string | null;
+  sendAssignmentAutoReply: boolean;
+  assignmentAutoReplyMessage?: string | null;
   sendWindowClosedTemplateReply: boolean;
   windowClosedTemplateName?: string | null;
   windowClosedTemplateLanguageCode?: string | null;
@@ -68,6 +70,8 @@ function sanitizeWorkspaceConversationSettings(
     resolvedAutoReplyMessage: settings.resolvedAutoReplyMessage ?? null,
     sendClosedAutoReply: settings.sendClosedAutoReply,
     closedAutoReplyMessage: settings.closedAutoReplyMessage ?? null,
+    sendAssignmentAutoReply: settings.sendAssignmentAutoReply,
+    assignmentAutoReplyMessage: settings.assignmentAutoReplyMessage ?? null,
     sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
     windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
     windowClosedTemplateLanguageCode:
@@ -100,6 +104,8 @@ function toWorkspaceConversationSettingsPayload(
     resolvedAutoReplyMessage: settings.resolvedAutoReplyMessage ?? null,
     sendClosedAutoReply: settings.sendClosedAutoReply,
     closedAutoReplyMessage: settings.closedAutoReplyMessage ?? null,
+    sendAssignmentAutoReply: settings.sendAssignmentAutoReply,
+    assignmentAutoReplyMessage: settings.assignmentAutoReplyMessage ?? null,
     sendWindowClosedTemplateReply: settings.sendWindowClosedTemplateReply,
     windowClosedTemplateName: settings.windowClosedTemplateName ?? null,
     windowClosedTemplateLanguageCode:
@@ -442,6 +448,39 @@ export default function ConversationFlowPage() {
                     disabled={!canEditAutoMessages}
                     className="min-h-24"
                   />
+
+                  <AutomationToggle
+                    checked={Boolean(
+                      conversationSettings.sendAssignmentAutoReply,
+                    )}
+                    disabled={!canEditAutoMessages}
+                    label="Mensagem automatica ao transferir/assumir conversa"
+                    description="Enviada quando a conversa muda de responsavel para outro vendedor ou quando outro colaborador assume o atendimento."
+                    onCheckedChange={(checked) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        sendAssignmentAutoReply: checked,
+                      }))
+                    }
+                  />
+                  <Textarea
+                    value={conversationSettings.assignmentAutoReplyMessage ?? ''}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        assignmentAutoReplyMessage: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex.: Ola {nome}, a partir de agora seu atendimento continuara com {novo_vendedor}."
+                    disabled={!canEditAutoMessages}
+                    className="min-h-24"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use variaveis como <code>{'{nome}'}</code>,{' '}
+                    <code>{'{vendedor}'}</code>,{' '}
+                    <code>{'{novo_vendedor}'}</code> e{' '}
+                    <code>{'{empresa}'}</code> para personalizar a mensagem.
+                  </p>
 
                   <div className="rounded-[20px] border border-border/80 bg-gradient-to-b from-white/[0.04] to-white/[0.015] px-4 py-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
