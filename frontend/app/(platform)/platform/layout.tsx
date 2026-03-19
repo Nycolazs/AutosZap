@@ -34,6 +34,14 @@ const NAV_ITEMS = [
   },
 ];
 
+function isPlatformRouteActive(pathname: string, href: string) {
+  if (href === '/platform') {
+    return pathname === '/platform';
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const meQuery = useQuery({
@@ -90,8 +98,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = isPlatformRouteActive(pathname, item.href);
 
             return (
               <Link
