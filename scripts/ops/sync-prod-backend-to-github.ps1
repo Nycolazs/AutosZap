@@ -54,19 +54,24 @@ if ([string]::IsNullOrWhiteSpace($password)) {
 }
 
 $commitMessageBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($CommitMessage))
-$remoteCommitScript = @"
+$remoteCommitScriptTemplate = @'
 set -e
-cd $ServerPath
-if [ -n "\$(git status --porcelain -- backend)" ]; then
-  commit_message=\$(printf '%s' '$commitMessageBase64' | base64 -d)
+cd {0}
+if [ -n "$(git status --porcelain -- backend)" ]; then
+  commit_message=$(printf '%s' '{1}' | base64 -d)
   git add backend
-  printf '%s\n' "\$commit_message" | git -c user.name='AutosZap Ops Sync' -c user.email='ops@autoszap.com' commit -F -
+  printf '%s\n' "$commit_message" | git -c user.name='AutosZap Ops Sync' -c user.email='ops@autoszap.com' commit -F -
   echo '__BACKEND_COMMITTED__'
 else
   echo '__NO_BACKEND_CHANGES__'
 fi
 git rev-parse HEAD
-"@
+'@
+$remoteCommitScript = [string]::Format(
+  $remoteCommitScriptTemplate,
+  $ServerPath,
+  $commitMessageBase64
+)
 
 Write-Host '1) Verificando e commitando mudancas no backend da VPS...'
 $commitOutput = & sshpass -p $password ssh -o StrictHostKeyChecking=accept-new "$ServerUser@$ServerIp" $remoteCommitScript 2>&1
