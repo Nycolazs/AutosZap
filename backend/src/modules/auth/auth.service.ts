@@ -978,7 +978,10 @@ export class AuthService {
         ? this.cryptoService.encrypt(sharedDatabaseUrl)
         : null;
 
-      if (encryptedSharedDatabaseUrl) {
+      // A URL compartilhada so deve ser persistida quando o bootstrap veio do
+      // tenant legado. Em tenants dedicados, sobrescrever esta configuracao
+      // pode redirecionar a empresa para o banco errado.
+      if (tenantId === 'legacy-shared-bootstrap' && encryptedSharedDatabaseUrl) {
         await this.controlPlanePrisma.tenantDatabase.upsert({
           where: {
             companyId: company.id,
