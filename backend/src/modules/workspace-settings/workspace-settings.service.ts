@@ -69,6 +69,8 @@ export class WorkspaceSettingsService {
       resolvedAutoReplyMessage?: string | null;
       sendClosedAutoReply?: boolean;
       closedAutoReplyMessage?: string | null;
+      sendAssignmentAutoReply?: boolean;
+      assignmentAutoReplyMessage?: string | null;
       sendWindowClosedTemplateReply?: boolean;
       windowClosedTemplateName?: string | null;
       windowClosedTemplateLanguageCode?: string | null;
@@ -129,6 +131,12 @@ export class WorkspaceSettingsService {
       payload.sendClosedAutoReply ?? currentSettings.sendClosedAutoReply;
     const closedAutoReplyMessage =
       payload.closedAutoReplyMessage ?? currentSettings.closedAutoReplyMessage;
+    const sendAssignmentAutoReply =
+      payload.sendAssignmentAutoReply ??
+      currentSettings.sendAssignmentAutoReply;
+    const assignmentAutoReplyMessage =
+      payload.assignmentAutoReplyMessage ??
+      currentSettings.assignmentAutoReplyMessage;
     const sendWindowClosedTemplateReply =
       payload.sendWindowClosedTemplateReply ??
       currentSettings.sendWindowClosedTemplateReply;
@@ -160,6 +168,12 @@ export class WorkspaceSettingsService {
     if (sendClosedAutoReply && !closedAutoReplyMessage?.trim()) {
       throw new BadRequestException(
         'Informe a mensagem automatica para conversas encerradas.',
+      );
+    }
+
+    if (sendAssignmentAutoReply && !assignmentAutoReplyMessage?.trim()) {
+      throw new BadRequestException(
+        'Informe a mensagem automatica para transferencia ou continuidade do atendimento.',
       );
     }
 
@@ -212,6 +226,9 @@ export class WorkspaceSettingsService {
           resolvedAutoReplyMessage: resolvedAutoReplyMessage?.trim() || null,
           sendClosedAutoReply,
           closedAutoReplyMessage: closedAutoReplyMessage?.trim() || null,
+          sendAssignmentAutoReply,
+          assignmentAutoReplyMessage:
+            assignmentAutoReplyMessage?.trim() || null,
           sendWindowClosedTemplateReply,
           windowClosedTemplateName: windowClosedTemplateName?.trim() || null,
           windowClosedTemplateLanguageCode:

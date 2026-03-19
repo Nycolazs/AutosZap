@@ -61,6 +61,24 @@ type FinalizeConversationResult = {
   changed: boolean;
 };
 
+export type ConversationAssignmentTransition = {
+  changed: boolean;
+  fromAssignedUserId: string | null;
+  toAssignedUserId: string | null;
+  fromStatus: ConversationStatus;
+  toStatus: ConversationStatus;
+};
+
+type PrepareManualReplyResult = {
+  actor: ActorContext;
+  conversation: {
+    id: string;
+    assignedUserId: string | null;
+    status: ConversationStatus;
+  } | null;
+  assignmentTransition: ConversationAssignmentTransition | null;
+};
+
 @Injectable()
 export class ConversationWorkflowService {
   constructor(
@@ -176,9 +194,10 @@ export class ConversationWorkflowService {
     conversationId: string,
     workspaceId: string,
     senderUserId: string,
-  ) {
+  ): Promise<PrepareManualReplyResult> {
     const actor = await this.getActorContext(senderUserId, workspaceId);
     const now = new Date();
+    let assignmentTransition: ConversationAssignmentTransition | null = null;
     const emitAfterCommit: Array<{
       conversationId: string;
       type:
@@ -253,6 +272,14 @@ export class ConversationWorkflowService {
       });
 
       if (shouldChangeAssignment) {
+        assignmentTransition = {
+          changed: true,
+          fromAssignedUserId: lockedConversation.assignedUserId,
+          toAssignedUserId: nextAssignmentId,
+          fromStatus: currentStatus,
+          toStatus: ConversationStatus.IN_PROGRESS,
+        };
+
         await tx.conversationAssignment.create({
           data: {
             workspaceId,
@@ -339,6 +366,7 @@ export class ConversationWorkflowService {
     return {
       actor,
       conversation,
+      assignmentTransition,
     };
   }
 
@@ -347,7 +375,7 @@ export class ConversationWorkflowService {
     workspaceId: string,
     actorId: string,
     assignedUserId: string,
-  ) {
+  ): Promise<ConversationAssignmentTransition> {
     const actor = await this.getActorContext(actorId, workspaceId);
 
     if (
@@ -391,7 +419,7 @@ export class ConversationWorkflowService {
       'transferir esta conversa',
     );
 
-    await this.prisma.$transaction(async (tx) => {
+    const transition = await this.prisma.$transaction(async (tx) => {
       const lockedConversation = await this.lockConversation(
         tx,
         conversationId,
@@ -412,7 +440,13 @@ export class ConversationWorkflowService {
       }
 
       if (lockedConversation.assignedUserId === assignedUserId) {
-        return;
+        return {
+          changed: false,
+          fromAssignedUserId: lockedConversation.assignedUserId,
+          toAssignedUserId: assignedUserId,
+          fromStatus: currentStatus,
+          toStatus: currentStatus,
+        } satisfies ConversationAssignmentTransition;
       }
 
       await tx.conversation.update({
@@ -456,13 +490,25 @@ export class ConversationWorkflowService {
           toAssignedUserId: assignedUserId,
         },
       });
+
+      return {
+        changed: true,
+        fromAssignedUserId: lockedConversation.assignedUserId,
+        toAssignedUserId: assignedUserId,
+        fromStatus: currentStatus,
+        toStatus: ConversationStatus.IN_PROGRESS,
+      } satisfies ConversationAssignmentTransition;
     });
 
-    await this.emitConversationRealtimeEvent(
-      workspaceId,
-      conversationId,
-      'conversation.updated',
-    );
+    if (transition.changed) {
+      await this.emitConversationRealtimeEvent(
+        workspaceId,
+        conversationId,
+        'conversation.updated',
+      );
+    }
+
+    return transition;
   }
 
   async resolveConversation(

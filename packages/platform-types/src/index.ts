@@ -267,6 +267,8 @@ export interface WorkspaceConversationSettings {
   resolvedAutoReplyMessage?: string | null;
   sendClosedAutoReply: boolean;
   closedAutoReplyMessage?: string | null;
+  sendAssignmentAutoReply: boolean;
+  assignmentAutoReplyMessage?: string | null;
   sendWindowClosedTemplateReply: boolean;
   windowClosedTemplateName?: string | null;
   windowClosedTemplateLanguageCode?: string | null;

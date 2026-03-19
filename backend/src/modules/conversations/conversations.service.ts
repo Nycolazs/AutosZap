@@ -22,7 +22,11 @@ import {
 import { normalizeSearchPhone } from '../../common/utils/phone';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 import { WorkspaceSettingsService } from '../workspace-settings/workspace-settings.service';
-import { ConversationWorkflowService } from './conversation-workflow.service';
+import {
+  ConversationAssignmentTransition,
+  ConversationWorkflowService,
+} from './conversation-workflow.service';
+import { resolveConversationPlaceholders } from './conversation-placeholders.util';
 import { normalizeConversationStatus } from './conversation-workflow.utils';
 
 const INBOX_MESSAGES_PRELOAD_LIMIT = 120;
@@ -43,6 +47,20 @@ type FinalAutoMessageDeliveryResult = {
     | 'already-sent'
     | 'in-progress';
   error?: string;
+};
+
+type AssignmentAutoMessageDeliveryResult = {
+  attempted: boolean;
+  sent: boolean;
+  skippedReason?:
+    | 'feature-disabled'
+    | 'message-empty'
+    | 'no-assignment-change'
+    | 'not-transfer-or-resume'
+    | 'conversation-not-found'
+    | 'target-missing';
+  error?: string;
+  messageId?: string;
 };
 
 type LockedFinalizationConversationRecord = {
@@ -515,12 +533,21 @@ export class ConversationsService {
     }
 
     if (payload.assignedUserId) {
-      await this.conversationWorkflowService.transferConversation(
-        id,
-        user.workspaceId,
-        user.sub,
-        payload.assignedUserId,
-      );
+      const transferTransition =
+        await this.conversationWorkflowService.transferConversation(
+          id,
+          user.workspaceId,
+          user.sub,
+          payload.assignedUserId,
+        );
+
+      await this.maybeSendAssignmentAutoMessage({
+        conversationId: id,
+        workspaceId: user.workspaceId,
+        actorUserId: user.sub,
+        transition: transferTransition,
+        trigger: 'transfer',
+      });
     }
 
     if (payload.tagIds) {
@@ -618,12 +645,24 @@ export class ConversationsService {
         content,
       );
 
-    return this.metaWhatsAppService.sendConversationMessage(
+    const message = await this.metaWhatsAppService.sendConversationMessage(
       user.workspaceId,
       conversationId,
       user.sub,
       formattedContent,
     );
+
+    if (preparedReply.assignmentTransition?.changed) {
+      await this.maybeSendAssignmentAutoMessage({
+        conversationId,
+        workspaceId: user.workspaceId,
+        actorUserId: user.sub,
+        transition: preparedReply.assignmentTransition,
+        trigger: 'manual_reply',
+      });
+    }
+
+    return message;
   }
 
   async sendMediaMessage(
@@ -651,7 +690,7 @@ export class ConversationsService {
         )
       : undefined;
 
-    return this.metaWhatsAppService.sendConversationMediaMessage(
+    const message = await this.metaWhatsAppService.sendConversationMediaMessage(
       user.workspaceId,
       conversationId,
       user.sub,
@@ -660,6 +699,18 @@ export class ConversationsService {
         caption: formattedCaption,
       },
     );
+
+    if (preparedReply.assignmentTransition?.changed) {
+      await this.maybeSendAssignmentAutoMessage({
+        conversationId,
+        workspaceId: user.workspaceId,
+        actorUserId: user.sub,
+        transition: preparedReply.assignmentTransition,
+        trigger: 'manual_reply',
+      });
+    }
+
+    return message;
   }
 
   async resolveConversation(id: string, user: CurrentAuthUser) {
@@ -750,6 +801,202 @@ export class ConversationsService {
       user.workspaceId,
       messageId,
     );
+  }
+
+  private async maybeSendAssignmentAutoMessage(payload: {
+    conversationId: string;
+    workspaceId: string;
+    actorUserId: string;
+    transition: ConversationAssignmentTransition;
+    trigger: 'transfer' | 'manual_reply';
+  }): Promise<AssignmentAutoMessageDeliveryResult> {
+    if (!payload.transition.changed || !payload.transition.toAssignedUserId) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'no-assignment-change',
+      };
+    }
+
+    const isManualResume =
+      payload.trigger === 'manual_reply' &&
+      payload.transition.fromStatus === ConversationStatus.WAITING;
+    const hasPreviousAssignee =
+      Boolean(payload.transition.fromAssignedUserId) &&
+      payload.transition.fromAssignedUserId !==
+        payload.transition.toAssignedUserId;
+
+    if (
+      payload.trigger === 'manual_reply' &&
+      !isManualResume &&
+      !hasPreviousAssignee
+    ) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'not-transfer-or-resume',
+      };
+    }
+
+    const settings =
+      await this.workspaceSettingsService.getConversationSettings(
+        payload.workspaceId,
+      );
+
+    if (!settings.sendAssignmentAutoReply) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'feature-disabled',
+      };
+    }
+
+    const template = settings.assignmentAutoReplyMessage?.trim();
+
+    if (!template) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'message-empty',
+      };
+    }
+
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: payload.conversationId,
+        workspaceId: payload.workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        contact: {
+          select: {
+            name: true,
+          },
+        },
+        workspace: {
+          select: {
+            name: true,
+            companyName: true,
+          },
+        },
+      },
+    });
+
+    if (!conversation) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'conversation-not-found',
+      };
+    }
+
+    const userIds = Array.from(
+      new Set(
+        [
+          payload.actorUserId,
+          payload.transition.fromAssignedUserId,
+          payload.transition.toAssignedUserId,
+        ].filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: {
+            id: {
+              in: userIds,
+            },
+            workspaceId: payload.workspaceId,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        })
+      : [];
+
+    const userNameById = new Map(
+      users.map((currentUser) => [currentUser.id, currentUser.name.trim()]),
+    );
+    const previousSellerName = payload.transition.fromAssignedUserId
+      ? (userNameById.get(payload.transition.fromAssignedUserId) ?? '')
+      : '';
+    const nextSellerName = payload.transition.toAssignedUserId
+      ? (userNameById.get(payload.transition.toAssignedUserId) ?? '')
+      : '';
+    const actorName = userNameById.get(payload.actorUserId) ?? '';
+    const companyName =
+      conversation.workspace.companyName?.trim() ||
+      conversation.workspace.name?.trim() ||
+      'empresa';
+
+    const resolvedMessage = resolveConversationPlaceholders(template, {
+      nome: conversation.contact.name?.trim() || 'cliente',
+      vendedor: previousSellerName || actorName || nextSellerName || 'Equipe',
+      novo_vendedor: nextSellerName || actorName || 'Equipe',
+      empresa: companyName,
+    }).trim();
+
+    if (!resolvedMessage) {
+      return {
+        attempted: false,
+        sent: false,
+        skippedReason: 'message-empty',
+      };
+    }
+
+    try {
+      const sentMessage =
+        await this.metaWhatsAppService.sendConversationMessage(
+          payload.workspaceId,
+          payload.conversationId,
+          payload.actorUserId,
+          resolvedMessage,
+          {
+            direction: MessageDirection.SYSTEM,
+            isAutomated: true,
+          },
+        );
+
+      await this.prisma.conversationEvent.create({
+        data: {
+          workspaceId: payload.workspaceId,
+          conversationId: payload.conversationId,
+          actorUserId: payload.actorUserId,
+          type: 'AUTO_MESSAGE_SENT' as never,
+          toStatus: payload.transition.toStatus,
+          metadata: {
+            trigger: payload.trigger,
+            fromAssignedUserId: payload.transition.fromAssignedUserId,
+            toAssignedUserId: payload.transition.toAssignedUserId,
+            messageId: sentMessage.id,
+            kind: 'ASSIGNMENT_TRANSFER_NOTICE',
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      return {
+        attempted: true,
+        sent: true,
+        messageId: sentMessage.id,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Falha desconhecida ao enviar mensagem automatica de transferencia.';
+      this.logger.error(
+        `Falha ao enviar mensagem automatica de transferencia para conversa ${payload.conversationId}: ${errorMessage}`,
+      );
+
+      return {
+        attempted: true,
+        sent: false,
+        error: errorMessage,
+      };
+    }
   }
 
   private async maybeSendFinalizationAutoMessage(payload: {

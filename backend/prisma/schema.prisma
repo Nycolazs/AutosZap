@@ -277,6 +277,7 @@ model Workspace {
   userPermissions      UserPermission[]
   conversationEvents   ConversationEvent[]
   clientDevices        ClientDevice[]
+  quickMessages        QuickMessage[]
 }
 
 model User {
@@ -656,6 +657,8 @@ model WorkspaceConversationSettings {
   resolvedAutoReplyMessage   String?
   sendClosedAutoReply        Boolean                 @default(false)
   closedAutoReplyMessage     String?
+  sendAssignmentAutoReply    Boolean                 @default(false)
+  assignmentAutoReplyMessage String?
   sendWindowClosedTemplateReply Boolean              @default(false)
   windowClosedTemplateName      String?
   windowClosedTemplateLanguageCode String?
@@ -776,6 +779,22 @@ model ConversationReminder {
 
   @@index([workspaceId, status, remindAt])
   @@index([workspaceId, conversationId, status, remindAt])
+}
+
+model QuickMessage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  title       String
+  content     String
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, deletedAt, updatedAt])
+  @@index([workspaceId, title])
 }
 
 model CampaignRecipient {

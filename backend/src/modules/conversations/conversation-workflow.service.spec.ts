@@ -164,6 +164,13 @@ describe('ConversationWorkflowService', () => {
       id: 'seller-1',
       normalizedRole: 'SELLER',
     });
+    expect(result.assignmentTransition).toMatchObject({
+      changed: true,
+      fromAssignedUserId: null,
+      toAssignedUserId: 'seller-1',
+      fromStatus: ConversationStatus.NEW,
+      toStatus: ConversationStatus.IN_PROGRESS,
+    });
     const updateCalls = tx.conversation.update.mock.calls as Array<
       [
         {
@@ -254,6 +261,70 @@ describe('ConversationWorkflowService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(tx.conversation.update).not.toHaveBeenCalled();
+    expect(inboxEventsService.emit).not.toHaveBeenCalled();
+  });
+
+  it('does not emit conversation.updated when transfer keeps the same assignee', async () => {
+    const { service, prisma, inboxEventsService } = createService();
+    const tx: TransactionMock = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        createLockedConversation({
+          assignedUserId: 'seller-1',
+          status: ConversationStatus.IN_PROGRESS,
+        }),
+      ]),
+      conversation: {
+        update: jest.fn(),
+      },
+      conversationAssignment: {
+        create: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
+      },
+    };
+
+    prisma.user.findFirst
+      .mockResolvedValueOnce({
+        id: 'admin-1',
+        workspaceId: 'ws-1',
+        name: 'Admin',
+        role: Role.ADMIN,
+        status: UserStatus.ACTIVE,
+      })
+      .mockResolvedValueOnce({
+        id: 'seller-1',
+        workspaceId: 'ws-1',
+        name: 'Vendedor',
+        role: Role.SELLER,
+        status: UserStatus.ACTIVE,
+      });
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      assignedUserId: 'seller-1',
+      status: ConversationStatus.IN_PROGRESS,
+      resolvedById: null,
+      closedById: null,
+    });
+    bindTransaction(prisma.$transaction, tx);
+
+    const result = await service.transferConversation(
+      'conv-1',
+      'ws-1',
+      'admin-1',
+      'seller-1',
+    );
+
+    expect(result).toEqual({
+      changed: false,
+      fromAssignedUserId: 'seller-1',
+      toAssignedUserId: 'seller-1',
+      fromStatus: ConversationStatus.IN_PROGRESS,
+      toStatus: ConversationStatus.IN_PROGRESS,
+    });
+    expect(tx.conversation.update).not.toHaveBeenCalled();
+    expect(tx.conversationAssignment?.create).not.toHaveBeenCalled();
+    expect(tx.conversationEvent.create).not.toHaveBeenCalled();
     expect(inboxEventsService.emit).not.toHaveBeenCalled();
   });
 

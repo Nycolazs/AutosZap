@@ -88,6 +88,14 @@ class UpdateWorkspaceConversationSettingsDto {
 
   @IsOptional()
   @IsBoolean()
+  sendAssignmentAutoReply?: boolean;
+
+  @IsOptional()
+  @IsString()
+  assignmentAutoReplyMessage?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
   sendWindowClosedTemplateReply?: boolean;
 
   @IsOptional()
