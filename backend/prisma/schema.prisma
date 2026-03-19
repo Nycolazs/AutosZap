@@ -119,6 +119,12 @@ enum ConversationEventType {
   REMINDER_COMPLETED
   REMINDER_CANCELED
   REMINDER_NOTIFIED
+  QUICK_MESSAGE_USED
+}
+
+enum QuickMessageUsageAction {
+  SEND_NOW
+  EDIT_IN_INPUT
 }
 
 enum CampaignStatus {
@@ -278,6 +284,7 @@ model Workspace {
   conversationEvents   ConversationEvent[]
   clientDevices        ClientDevice[]
   quickMessages        QuickMessage[]
+  quickMessageUsages   QuickMessageUsage[]
 }
 
 model User {
@@ -792,9 +799,26 @@ model QuickMessage {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usages      QuickMessageUsage[]
 
   @@index([workspaceId, deletedAt, updatedAt])
   @@index([workspaceId, title])
+}
+
+model QuickMessageUsage {
+  id              String                  @id @default(cuid())
+  workspaceId     String
+  quickMessageId  String
+  conversationId  String
+  userId          String
+  action          QuickMessageUsageAction
+  createdAt       DateTime                @default(now())
+  workspace       Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  quickMessage    QuickMessage            @relation(fields: [quickMessageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
+  @@index([quickMessageId, createdAt])
 }
 
 model CampaignRecipient {

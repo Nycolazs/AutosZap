@@ -58,6 +58,12 @@ export class QuickMessagesController {
   }
 
   @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
+  @Post('bootstrap-defaults')
+  bootstrapDefaults(@CurrentUser() user: CurrentAuthUser) {
+    return this.quickMessagesService.bootstrapDefaults(user);
+  }
+
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   @Patch(':id')
   update(
     @CurrentUser() user: CurrentAuthUser,

@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Search, SendHorizontal, Trash2 } from 'lucide-react';
+import {
+  Pencil,
+  Plus,
+  Search,
+  SendHorizontal,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { apiRequest } from '@/lib/api-client';
 import { QuickMessage, QuickMessageApplyResponse } from '@/lib/types';
@@ -154,6 +161,28 @@ export function QuickMessagesDialog({
       toast.success('Mensagem rapida removida.');
       if (editingId) {
         clearForm();
+      }
+      await queryClient.invalidateQueries({ queryKey: ['quick-messages'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const bootstrapQuickMessagesMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest<{
+        createdCount: number;
+        totalAvailable: number;
+      }>('quick-messages/bootstrap-defaults', {
+        method: 'POST',
+      });
+    },
+    onSuccess: async (result) => {
+      if (result.createdCount > 0) {
+        toast.success(
+          `${result.createdCount} templates padrao adicionados com sucesso.`,
+        );
+      } else {
+        toast.success('Os templates padrao ja estavam disponiveis.');
       }
       await queryClient.invalidateQueries({ queryKey: ['quick-messages'] });
     },
@@ -323,6 +352,16 @@ export function QuickMessagesDialog({
                   />
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => bootstrapQuickMessagesMutation.mutate()}
+                    disabled={bootstrapQuickMessagesMutation.isPending}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Adicionar templates padrao
+                  </Button>
                   {editingId ? (
                     <Button
                       type="button"

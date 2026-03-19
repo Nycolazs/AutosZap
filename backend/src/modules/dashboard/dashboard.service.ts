@@ -28,6 +28,7 @@ export class DashboardService {
       return cached;
     }
 
+    const telemetryStartDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
     const [
       conversations,
       contacts,
@@ -37,6 +38,8 @@ export class DashboardService {
       recentActivity,
       notifications,
       outboundMessages,
+      quickMessageUsageCount,
+      assignmentAutoMessagesSentCountRows,
     ] = await Promise.all([
       this.prisma.conversation.count({
         where: {
@@ -89,6 +92,22 @@ export class DashboardService {
         },
         take: 30,
       }),
+      this.prisma.quickMessageUsage.count({
+        where: {
+          workspaceId,
+          createdAt: {
+            gte: telemetryStartDate,
+          },
+        },
+      }),
+      this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS count
+        FROM "ConversationEvent"
+        WHERE "workspaceId" = ${workspaceId}
+          AND type = 'AUTO_MESSAGE_SENT'
+          AND "createdAt" >= ${telemetryStartDate}
+          AND COALESCE(metadata->>'kind', '') = 'ASSIGNMENT_TRANSFER_NOTICE'
+      `),
     ]);
 
     const outboundStatuses = statuses.filter(
@@ -139,6 +158,10 @@ export class DashboardService {
         responseRate,
         sentCampaigns: campaigns,
         crmLeads: leads,
+        quickMessagesUsed: quickMessageUsageCount,
+        assignmentAutoMessagesSent: Number(
+          assignmentAutoMessagesSentCountRows[0]?.count ?? 0,
+        ),
       },
       chart: chartSource.map(([label, value]) => ({
         label,

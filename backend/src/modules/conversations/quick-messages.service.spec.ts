@@ -4,11 +4,18 @@ import { QuickMessagesService } from './quick-messages.service';
 describe('QuickMessagesService', () => {
   function createService() {
     const prisma = {
+      $transaction: jest.fn(),
       quickMessage: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+      },
+      quickMessageUsage: {
+        create: jest.fn(),
+      },
+      conversationEvent: {
+        create: jest.fn(),
       },
       conversation: {
         findFirst: jest.fn(),
@@ -30,6 +37,23 @@ describe('QuickMessagesService', () => {
       prisma as never,
       conversationWorkflowService as never,
       conversationsService as never,
+    );
+
+    prisma.$transaction.mockImplementation(
+      (
+        callback: (tx: {
+          quickMessageUsage: {
+            create: jest.Mock;
+          };
+          conversationEvent: {
+            create: jest.Mock;
+          };
+        }) => unknown,
+      ) =>
+        callback({
+          quickMessageUsage: prisma.quickMessageUsage,
+          conversationEvent: prisma.conversationEvent,
+        }),
     );
 
     return {
@@ -116,6 +140,21 @@ describe('QuickMessagesService', () => {
       content:
         'Ola Joao, aqui e Rafael. Agora seu atendimento segue com Pedro na AutoZap LTDA.',
     });
+    expect(prisma.quickMessageUsage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          quickMessageId: 'qm-1',
+          action: 'EDIT_IN_INPUT',
+        }),
+      }),
+    );
+    expect(prisma.conversationEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'QUICK_MESSAGE_USED',
+        }),
+      }),
+    );
   });
 
   it('sends the resolved quick message immediately when requested', async () => {
@@ -185,5 +224,48 @@ describe('QuickMessagesService', () => {
         id: 'msg-1',
       },
     });
+    expect(prisma.quickMessageUsage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          quickMessageId: 'qm-1',
+          action: 'SEND_NOW',
+        }),
+      }),
+    );
+  });
+
+  it('creates default quick messages once per workspace', async () => {
+    const { service, prisma } = createService();
+
+    prisma.quickMessage.findMany.mockResolvedValue([
+      {
+        id: 'qm-existing',
+        title: 'Continuidade de atendimento',
+      },
+    ]);
+    prisma.quickMessage.create
+      .mockResolvedValueOnce({
+        id: 'qm-2',
+        title: 'Confirmação de transferência',
+      })
+      .mockResolvedValueOnce({
+        id: 'qm-3',
+        title: 'Pedido de confirmação',
+      })
+      .mockResolvedValueOnce({
+        id: 'qm-4',
+        title: 'Retomada com contexto',
+      });
+
+    const result = await service.bootstrapDefaults({
+      sub: 'admin-1',
+      workspaceId: 'ws-1',
+    } as never);
+
+    expect(result).toMatchObject({
+      createdCount: 3,
+      totalAvailable: 4,
+    });
+    expect(prisma.quickMessage.create).toHaveBeenCalledTimes(3);
   });
 });

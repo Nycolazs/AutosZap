@@ -328,6 +328,8 @@ export interface DashboardOverview {
     responseRate: number;
     sentCampaigns: number;
     crmLeads: number;
+    quickMessagesUsed: number;
+    assignmentAutoMessagesSent: number;
   };
   chart: Array<{ label: string; value: number }>;
   recentActivity: Array<{

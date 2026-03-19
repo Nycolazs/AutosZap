@@ -3,11 +3,38 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma, QuickMessageUsageAction } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { resolveConversationPlaceholders } from './conversation-placeholders.util';
 import { ConversationWorkflowService } from './conversation-workflow.service';
 import { ConversationsService } from './conversations.service';
+
+const DEFAULT_QUICK_MESSAGES: Array<{
+  title: string;
+  content: string;
+}> = [
+  {
+    title: 'Continuidade de atendimento',
+    content:
+      'Ola {nome}, aqui e {vendedor}. Vou dar continuidade ao seu atendimento na {empresa}.',
+  },
+  {
+    title: 'Confirmação de transferência',
+    content:
+      'Ola {nome}, seu atendimento foi transferido e agora segue com {novo_vendedor}.',
+  },
+  {
+    title: 'Pedido de confirmação',
+    content:
+      '{nome}, pode me confirmar se prefere continuar com {novo_vendedor} por aqui?',
+  },
+  {
+    title: 'Retomada com contexto',
+    content:
+      'Perfeito, {nome}. {novo_vendedor} ja esta com seu historico e vai continuar o atendimento agora.',
+  },
+];
 
 @Injectable()
 export class QuickMessagesService {
@@ -55,6 +82,62 @@ export class QuickMessagesService {
         updatedById: user.sub,
       },
     });
+  }
+
+  async bootstrapDefaults(user: CurrentAuthUser) {
+    const existingQuickMessages = await this.prisma.quickMessage.findMany({
+      where: {
+        workspaceId: user.workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+    });
+
+    const existingTitles = new Set(
+      existingQuickMessages.map((quickMessage) =>
+        quickMessage.title.trim().toLowerCase(),
+      ),
+    );
+
+    const payloadsToCreate = DEFAULT_QUICK_MESSAGES.filter(
+      (quickMessage) =>
+        !existingTitles.has(quickMessage.title.trim().toLowerCase()),
+    );
+
+    if (!payloadsToCreate.length) {
+      return {
+        createdCount: 0,
+        totalAvailable: existingQuickMessages.length,
+        inserted: [] as Array<{ id: string; title: string }>,
+      };
+    }
+
+    const inserted = await Promise.all(
+      payloadsToCreate.map((quickMessage) =>
+        this.prisma.quickMessage.create({
+          data: {
+            workspaceId: user.workspaceId,
+            title: quickMessage.title,
+            content: quickMessage.content,
+            createdById: user.sub,
+            updatedById: user.sub,
+          },
+          select: {
+            id: true,
+            title: true,
+          },
+        }),
+      ),
+    );
+
+    return {
+      createdCount: inserted.length,
+      totalAvailable: existingQuickMessages.length + inserted.length,
+      inserted,
+    };
   }
 
   async update(
@@ -175,12 +258,31 @@ export class QuickMessagesService {
         resolvedContent,
       );
 
+      await this.recordQuickMessageUsage({
+        workspaceId: user.workspaceId,
+        quickMessageId: quickMessage.id,
+        quickMessageTitle: quickMessage.title,
+        conversationId: payload.conversationId,
+        userId: user.sub,
+        action: QuickMessageUsageAction.SEND_NOW,
+        messageId: message.id,
+      });
+
       return {
         action: payload.action,
         content: resolvedContent,
         message,
       };
     }
+
+    await this.recordQuickMessageUsage({
+      workspaceId: user.workspaceId,
+      quickMessageId: quickMessage.id,
+      quickMessageTitle: quickMessage.title,
+      conversationId: payload.conversationId,
+      userId: user.sub,
+      action: QuickMessageUsageAction.EDIT_IN_INPUT,
+    });
 
     return {
       action: payload.action,
@@ -322,5 +424,42 @@ export class QuickMessagesService {
         'Ja existe uma mensagem rapida com este titulo.',
       );
     }
+  }
+
+  private async recordQuickMessageUsage(payload: {
+    workspaceId: string;
+    quickMessageId: string;
+    quickMessageTitle: string;
+    conversationId: string;
+    userId: string;
+    action: QuickMessageUsageAction;
+    messageId?: string;
+  }) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.quickMessageUsage.create({
+        data: {
+          workspaceId: payload.workspaceId,
+          quickMessageId: payload.quickMessageId,
+          conversationId: payload.conversationId,
+          userId: payload.userId,
+          action: payload.action,
+        },
+      });
+
+      await tx.conversationEvent.create({
+        data: {
+          workspaceId: payload.workspaceId,
+          conversationId: payload.conversationId,
+          actorUserId: payload.userId,
+          type: 'QUICK_MESSAGE_USED',
+          metadata: {
+            quickMessageId: payload.quickMessageId,
+            quickMessageTitle: payload.quickMessageTitle,
+            action: payload.action,
+            messageId: payload.messageId ?? null,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    });
   }
 }

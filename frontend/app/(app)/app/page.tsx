@@ -48,6 +48,8 @@ const EMPTY_DASHBOARD_OVERVIEW: DashboardOverview = {
     responseRate: 0,
     sentCampaigns: 0,
     crmLeads: 0,
+    quickMessagesUsed: 0,
+    assignmentAutoMessagesSent: 0,
   },
   chart: [],
   recentActivity: [],
@@ -101,8 +103,8 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-24 w-full" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, index) => (
             <Skeleton key={index} className="h-36" />
           ))}
         </div>
@@ -149,11 +151,23 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
         <StatCard title="Conversas ativas" value={overview.metrics.activeConversations} helper="Novas, em atendimento e aguardando" icon={MessageSquareText} />
         <StatCard title="Contatos totais" value={overview.metrics.totalContacts} helper="Base disponível na empresa" icon={Users} />
         <StatCard title="Taxa de resposta" value={`${overview.metrics.responseRate}%`} helper="Mensagens entregues ou lidas" icon={Activity} />
         <StatCard title="Campanhas enviadas" value={overview.metrics.sentCampaigns} helper="Disparos finalizados com sucesso" icon={Send} />
+        <StatCard
+          title="Uso de rápidas (30d)"
+          value={overview.metrics.quickMessagesUsed}
+          helper="Envios + edição no input"
+          icon={MessageSquareText}
+        />
+        <StatCard
+          title="Autos transfer. (30d)"
+          value={overview.metrics.assignmentAutoMessagesSent}
+          helper="Avisos automáticos enviados"
+          icon={Send}
+        />
         <StatCard title="Mais resoluções" value={performance.ranking[0]?.resolvedCount ?? 0} helper={performance.ranking[0] ? performance.ranking[0].name : 'Sem vendedores'} icon={Trophy} />
       </div>
 
