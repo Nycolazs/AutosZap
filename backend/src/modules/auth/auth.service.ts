@@ -47,6 +47,7 @@ import { TenantConnectionService } from '../../common/tenancy/tenant-connection.
 
 interface AuthUserPayload {
   sub: string;
+  globalUserId?: string;
   email: string;
   name: string;
   workspaceId: string;
@@ -360,9 +361,10 @@ export class AuthService {
   }
 
   async switchCompany(user: CurrentAuthUser, dto: SwitchCompanyDto) {
+    const globalUserId = user.globalUserId ?? user.sub;
     const globalUser = await this.controlPlanePrisma.globalUser.findUnique({
       where: {
-        id: user.sub,
+        id: globalUserId,
       },
     });
 
@@ -532,8 +534,9 @@ export class AuthService {
   }
 
   async me(authUser: CurrentAuthUser) {
+    const globalUserId = authUser.globalUserId ?? authUser.sub;
     const globalUser = await this.controlPlanePrisma.globalUser.findUnique({
-      where: { id: authUser.sub },
+      where: { id: globalUserId },
     });
 
     if (!globalUser || globalUser.deletedAt) {
@@ -682,8 +685,14 @@ export class AuthService {
       membership?.tenantRole ?? TenantRole.ADMIN,
     );
     const workspaceId = membership?.company.workspaceId ?? '';
+    const tenantUserId = membership
+      ? await this.resolveTenantUserId(globalUser, membership)
+      : null;
+    const subjectId = tenantUserId ?? globalUser.id;
+
     const payload: AuthUserPayload = {
-      sub: globalUser.id,
+      sub: subjectId,
+      globalUserId: globalUser.id,
       email: globalUser.email,
       name: globalUser.name,
       workspaceId,
@@ -726,12 +735,13 @@ export class AuthService {
       accessToken,
       refreshToken,
       user: {
-        id: globalUser.id,
+        id: subjectId,
         name: globalUser.name,
         email: globalUser.email,
         role: tenantRole,
         workspaceId,
         companyId: membership?.companyId ?? null,
+        globalUserId: globalUser.id,
         platformRole: globalUser.platformRole ?? null,
         isPlatformAdmin: globalUser.platformRole === PlatformRole.SUPER_ADMIN,
       },
@@ -743,6 +753,41 @@ export class AuthService {
           }
         : undefined,
     };
+  }
+
+  private async resolveTenantUserId(
+    globalUser: GlobalUser,
+    membership: SessionMembership,
+  ): Promise<string> {
+    const tenantUser = await this.prisma.runWithTenant(
+      membership.companyId,
+      async () =>
+        this.prisma.user.findFirst({
+          where: {
+            workspaceId: membership.company.workspaceId,
+            deletedAt: null,
+            OR: [
+              {
+                globalUserId: globalUser.id,
+              },
+              {
+                email: globalUser.email,
+              },
+            ],
+          },
+          select: {
+            id: true,
+          },
+        }),
+    );
+
+    if (!tenantUser) {
+      throw new NotFoundException(
+        'Usuario da empresa nao encontrado. Reexecute o provisionamento do tenant.',
+      );
+    }
+
+    return tenantUser.id;
   }
 
   private async getDefaultMembership(

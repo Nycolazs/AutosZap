@@ -29,9 +29,15 @@ import { PlatformAdminService } from './platform-admin.service';
 export class PlatformAdminController {
   constructor(private readonly platformAdminService: PlatformAdminService) {}
 
+  private getActorGlobalUserId(user: CurrentAuthUser) {
+    return user.globalUserId ?? user.sub;
+  }
+
   @Get('me')
   me(@CurrentUser() user: CurrentAuthUser) {
-    return this.platformAdminService.getPlatformMe(user.sub);
+    return this.platformAdminService.getPlatformMe(
+      this.getActorGlobalUserId(user),
+    );
   }
 
   @Get('dashboard')
@@ -49,7 +55,10 @@ export class PlatformAdminController {
     @CurrentUser() user: CurrentAuthUser,
     @Body() dto: CreatePlatformCompanyDto,
   ) {
-    return this.platformAdminService.createCompany(user.sub, dto);
+    return this.platformAdminService.createCompany(
+      this.getActorGlobalUserId(user),
+      dto,
+    );
   }
 
   @Patch('companies/:companyId')
@@ -58,7 +67,11 @@ export class PlatformAdminController {
     @Param('companyId') companyId: string,
     @Body() dto: UpdatePlatformCompanyDto,
   ) {
-    return this.platformAdminService.updateCompany(user.sub, companyId, dto);
+    return this.platformAdminService.updateCompany(
+      this.getActorGlobalUserId(user),
+      companyId,
+      dto,
+    );
   }
 
   @Post('companies/:companyId/provision')
@@ -66,7 +79,10 @@ export class PlatformAdminController {
     @CurrentUser() user: CurrentAuthUser,
     @Param('companyId') companyId: string,
   ) {
-    return this.platformAdminService.reprovisionCompany(user.sub, companyId);
+    return this.platformAdminService.reprovisionCompany(
+      this.getActorGlobalUserId(user),
+      companyId,
+    );
   }
 
   @Get('users')
@@ -79,7 +95,10 @@ export class PlatformAdminController {
     @CurrentUser() user: CurrentAuthUser,
     @Body() dto: CreatePlatformUserDto,
   ) {
-    return this.platformAdminService.createGlobalUser(user.sub, dto);
+    return this.platformAdminService.createGlobalUser(
+      this.getActorGlobalUserId(user),
+      dto,
+    );
   }
 
   @Patch('users/:globalUserId')
@@ -89,7 +108,7 @@ export class PlatformAdminController {
     @Body() dto: UpdatePlatformUserDto,
   ) {
     return this.platformAdminService.updateGlobalUser(
-      user.sub,
+      this.getActorGlobalUserId(user),
       globalUserId,
       dto,
     );
@@ -102,7 +121,7 @@ export class PlatformAdminController {
     @Body() dto: UpsertMembershipDto,
   ) {
     return this.platformAdminService.upsertMembership(
-      user.sub,
+      this.getActorGlobalUserId(user),
       globalUserId,
       dto,
     );

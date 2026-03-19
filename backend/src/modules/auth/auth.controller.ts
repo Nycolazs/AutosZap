@@ -49,7 +49,10 @@ export class AuthController {
 
   @Post('logout')
   logout(@CurrentUser() user: CurrentAuthUser, @Body() dto: LogoutDto) {
-    return this.authService.logout(user.sub, dto.refreshToken);
+    return this.authService.logout(
+      user.globalUserId ?? user.sub,
+      dto.refreshToken,
+    );
   }
 
   @Public()

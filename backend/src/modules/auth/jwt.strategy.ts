@@ -12,9 +12,11 @@ import {
 } from '@autoszap/control-plane-client';
 import { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
 
 type JwtPayload = {
   sub: string;
+  globalUserId?: string;
   email: string;
   name: string;
   workspaceId: string;
@@ -29,6 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     configService: ConfigService,
     private readonly controlPlanePrisma: ControlPlanePrismaService,
+    private readonly prisma: PrismaService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -40,9 +43,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    const globalUserId = payload.globalUserId ?? payload.sub;
     const globalUser = await this.controlPlanePrisma.globalUser.findUnique({
       where: {
-        id: payload.sub,
+        id: globalUserId,
       },
       select: {
         id: true,
@@ -111,8 +115,40 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Sessao invalida ou expirada.');
     }
 
+    let subjectId = payload.sub;
+    if (membership && payload.sub === globalUser.id) {
+      const tenantUser = await this.prisma.runWithTenant(
+        membership.companyId,
+        async () =>
+          this.prisma.user.findFirst({
+            where: {
+              workspaceId: membership.company.workspaceId,
+              deletedAt: null,
+              OR: [
+                {
+                  globalUserId: globalUser.id,
+                },
+                {
+                  email: globalUser.email,
+                },
+              ],
+            },
+            select: {
+              id: true,
+            },
+          }),
+      );
+
+      if (!tenantUser) {
+        throw new UnauthorizedException('Sessao invalida ou expirada.');
+      }
+
+      subjectId = tenantUser.id;
+    }
+
     return {
-      sub: globalUser.id,
+      sub: membership ? subjectId : globalUser.id,
+      globalUserId: globalUser.id,
       email: globalUser.email,
       name: globalUser.name,
       role: this.mapTenantRoleToRole(membership?.tenantRole),

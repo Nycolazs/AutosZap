@@ -6,6 +6,7 @@ import {
 
 export interface CurrentAuthUser {
   sub: string;
+  globalUserId?: string;
   email: string;
   name: string;
   workspaceId: string;
