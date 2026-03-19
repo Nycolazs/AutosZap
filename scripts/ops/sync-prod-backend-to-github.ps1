@@ -104,10 +104,31 @@ try {
     throw 'Falha ao fazer fetch do repositorio remoto da VPS.'
   }
 
-  Write-Host '3) Aplicando fast-forward local...'
-  git merge --ff-only FETCH_HEAD
+  $localHeadBeforeMerge = (git rev-parse HEAD).Trim()
   if ($LASTEXITCODE -ne 0) {
-    throw 'Falha ao aplicar fast-forward local a partir do servidor.'
+    throw 'Falha ao identificar HEAD local.'
+  }
+
+  $fetchedHead = (git rev-parse FETCH_HEAD).Trim()
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Falha ao identificar FETCH_HEAD.'
+  }
+
+  Write-Host '3) Sincronizando historico local com a VPS...'
+  git merge-base --is-ancestor $localHeadBeforeMerge $fetchedHead
+  if ($LASTEXITCODE -eq 0) {
+    git merge --ff-only FETCH_HEAD
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Falha ao aplicar fast-forward local a partir do servidor.'
+    }
+  }
+  else {
+    git merge-base --is-ancestor $fetchedHead $localHeadBeforeMerge
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Historico local e remoto divergiram. Resolva antes de sincronizar.'
+    }
+
+    Write-Host '   Local ja contem o estado remoto (nenhum merge necessario).'
   }
 
   Write-Host '4) Enviando para GitHub (origin/main)...'
