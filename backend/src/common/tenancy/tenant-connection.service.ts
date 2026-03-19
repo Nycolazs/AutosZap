@@ -13,7 +13,7 @@ import { ControlPlanePrismaService } from '../prisma/control-plane-prisma.servic
 import {
   CompanyStatus,
   TenantDatabaseStatus,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 
 type TenantClientEntry = {
   client: PrismaClient;

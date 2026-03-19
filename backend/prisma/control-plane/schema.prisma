@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../../src/generated/control-plane-client"
+  output   = "../../node_modules/@autoszap/control-plane-client"
 }
 
 datasource db {

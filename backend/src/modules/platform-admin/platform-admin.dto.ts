@@ -4,7 +4,7 @@ import {
   MembershipStatus,
   PlatformRole,
   TenantRole,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 import {
   IsBoolean,
   IsEmail,

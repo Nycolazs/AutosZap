@@ -1,5 +1,5 @@
 import * as bcrypt from 'bcrypt';
-import { GlobalUserStatus, PlatformRole } from '../../src/generated/control-plane-client';
+import { GlobalUserStatus, PlatformRole } from '@autoszap/control-plane-client';
 import { withControlPlaneClient } from './_utils';
 
 async function main() {

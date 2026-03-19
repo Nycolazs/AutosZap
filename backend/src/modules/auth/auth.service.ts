@@ -30,7 +30,7 @@ import {
   PlatformRole,
   TenantDatabaseStatus,
   TenantRole,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { ControlPlaneAuditService } from '../control-plane/control-plane-audit.service';
 import { TenantProvisioningService } from '../control-plane/tenant-provisioning.service';

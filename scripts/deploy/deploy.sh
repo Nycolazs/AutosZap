@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy.sh — Deploy oficial do AutosZap via Git
+# deploy.sh - Deploy oficial do AutosZap via Git
 # =============================================================================
-# ESTE SCRIPT deve ser executado DIRETAMENTE NO SERVIDOR de produção.
-# Nunca edite arquivos de produção manualmente — use sempre este script.
+# ESTE SCRIPT deve ser executado DIRETAMENTE NO SERVIDOR de producao.
+# Nunca edite arquivos de producao manualmente - use sempre este script.
 #
 # Uso:
 #   cd /opt/autozap
 #   bash scripts/deploy/deploy.sh [--branch main] [--skip-frontend]
-#
-# Variáveis de ambiente esperadas (lidas de .env.production):
-#   Todas listadas em .env.production.example
 # =============================================================================
 
 set -euo pipefail
 
-# ─── Configurações ───────────────────────────────────────────────────────────
 REPO_DIR="${DEPLOY_DIR:-/opt/autozap}"
 ENV_FILE="${ENV_FILE:-$REPO_DIR/.env.production}"
 COMPOSE_FILE="$REPO_DIR/docker-compose.prod.yml"
@@ -24,7 +20,6 @@ SKIP_FRONTEND=false
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="/var/log/autoszap-deploy-$TIMESTAMP.log"
 
-# ─── Parseamento de argumentos ───────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --branch) BRANCH="$2"; shift 2 ;;
@@ -33,53 +28,71 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ─── Funções utilitárias ─────────────────────────────────────────────────────
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 die() { log "ERRO: $*"; exit 1; }
 
-# ─── Pré-validação ───────────────────────────────────────────────────────────
-log "=== AutosZap Deploy — $(date) ==="
-log "Branch: $BRANCH | Diretório: $REPO_DIR"
+backend_container_id() {
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q backend
+}
 
-[[ -d "$REPO_DIR" ]] || die "Diretório $REPO_DIR não encontrado."
-[[ -f "$ENV_FILE" ]] || die "Arquivo $ENV_FILE não encontrado. Copie .env.production.example e configure."
+backend_health_status() {
+  local container_id
+  container_id="$(backend_container_id)"
+  [[ -n "$container_id" ]] || return 1
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null
+}
+
+public_health_url() {
+  if [[ -n "${BACKEND_PUBLIC_URL:-}" ]]; then
+    echo "${BACKEND_PUBLIC_URL%/}/api/health"
+    return
+  fi
+
+  echo "https://api.autoszap.com/api/health"
+}
+
+log "=== AutosZap Deploy - $(date) ==="
+log "Branch: $BRANCH | Diretorio: $REPO_DIR"
+
+[[ -d "$REPO_DIR" ]] || die "Diretorio $REPO_DIR nao encontrado."
+[[ -f "$ENV_FILE" ]] || die "Arquivo $ENV_FILE nao encontrado. Copie .env.production.example e configure."
 
 cd "$REPO_DIR"
 
-# ─── 1. Atualizar código via Git ─────────────────────────────────────────────
-log "Passo 1/5: Atualizando código do repositório..."
+log "Passo 1/5: Atualizando codigo do repositorio..."
 git fetch origin "$BRANCH" --depth=1 2>&1 | tee -a "$LOG_FILE"
 git reset --hard "origin/$BRANCH" 2>&1 | tee -a "$LOG_FILE"
 COMMIT=$(git log --oneline -1)
 log "Commit atual: $COMMIT"
 
-# ─── 2. Rebuild do backend ───────────────────────────────────────────────────
 log "Passo 2/5: Rebuilding imagem Docker do backend..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build backend 2>&1 | tee -a "$LOG_FILE"
 
-# ─── 3. Restart dos serviços ─────────────────────────────────────────────────
-log "Passo 3/5: Reiniciando serviços (zero-downtime quando possível)..."
+log "Passo 3/5: Reiniciando servicos (zero-downtime quando possivel)..."
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --no-deps --remove-orphans backend 2>&1 | tee -a "$LOG_FILE"
 
-# ─── 4. Healthcheck ──────────────────────────────────────────────────────────
-log "Passo 4/5: Aguardando aplicação subir (até 60s)..."
-for i in $(seq 1 12); do
-  if curl -sf "http://127.0.0.1:4000/api/health" > /dev/null 2>&1; then
-    log "  ✓ Backend respondendo após ${i}×5s"
+HEALTH_URL="$(public_health_url)"
+log "Passo 4/5: Aguardando backend ficar healthy e responder em $HEALTH_URL (ate 120s)..."
+for i in $(seq 1 24); do
+  STATUS="$(backend_health_status || true)"
+  if [[ "$STATUS" == "healthy" ]] && curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+    log "  Backend healthy e endpoint publico respondendo apos ${i}x5s"
     break
   fi
-  if [[ $i -eq 12 ]]; then
-    die "Backend não respondeu após 60s. Verifique logs: docker compose -f $COMPOSE_FILE logs --tail=50 backend"
+
+  if [[ $i -eq 24 ]]; then
+    log "Status final do container backend: ${STATUS:-desconhecido}"
+    die "Backend nao ficou pronto em 120s. Verifique logs: docker compose -f $COMPOSE_FILE logs --tail=120 backend"
   fi
+
   sleep 5
 done
 
-# ─── 5. Resumo final ─────────────────────────────────────────────────────────
 log "Passo 5/5: Verificando containers..."
-docker compose -f "$COMPOSE_FILE" ps 2>&1 | tee -a "$LOG_FILE"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps 2>&1 | tee -a "$LOG_FILE"
 
 log ""
-log "=== DEPLOY CONCLUÍDO ==========================="
+log "=== DEPLOY CONCLUIDO ==========================="
 log "Commit: $COMMIT"
 log "Log completo: $LOG_FILE"
 log "================================================"

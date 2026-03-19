@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { spawn } from 'node:child_process';
 import { createHash, createDecipheriv } from 'node:crypto';
-import { PrismaClient as ControlPlanePrismaClient } from '../../src/generated/control-plane-client';
+import { PrismaClient as ControlPlanePrismaClient } from '@autoszap/control-plane-client';
 
 export function decryptConnectionUrl(
   encryptedValue: string,

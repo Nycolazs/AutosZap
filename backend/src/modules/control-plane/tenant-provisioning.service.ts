@@ -11,7 +11,7 @@ import {
   Prisma,
   ProvisioningJobStatus,
   TenantDatabaseStatus,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { TenantConnectionService } from '../../common/tenancy/tenant-connection.service';

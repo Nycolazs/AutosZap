@@ -16,7 +16,7 @@ import {
   GlobalUserStatus,
   MembershipStatus,
   TenantRole,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 
 @Injectable()
 export class TeamService {

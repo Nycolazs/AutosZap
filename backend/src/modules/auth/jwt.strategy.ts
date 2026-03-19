@@ -9,7 +9,7 @@ import {
   MembershipStatus,
   PlatformRole,
   TenantRole,
-} from '../../generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 import { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 

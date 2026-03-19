@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '../../generated/control-plane-client';
+import { PrismaClient } from '@autoszap/control-plane-client';
 
 @Injectable()
 export class ControlPlanePrismaService

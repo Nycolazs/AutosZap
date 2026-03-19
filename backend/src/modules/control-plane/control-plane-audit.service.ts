@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  PlatformAuditAction,
-  Prisma,
-} from '../../generated/control-plane-client';
+import { PlatformAuditAction, Prisma } from '@autoszap/control-plane-client';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 
 @Injectable()

@@ -5,7 +5,7 @@ import {
   MembershipStatus,
   TenantDatabaseStatus,
   TenantRole,
-} from '../../src/generated/control-plane-client';
+} from '@autoszap/control-plane-client';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { URL } from 'node:url';
 import { withControlPlaneClient, withTenantClient } from './_utils';
