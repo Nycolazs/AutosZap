@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-18T21:00:00.000Z",
+  "generatedAt": "2026-03-19T03:25:00.000Z",
   "supportEmail": "suporte@autoszap.com",
   "documentationUrl": "https://autoszap.com/instalacao",
   "artifacts": [
@@ -8,12 +8,12 @@
       "platform": "android",
       "label": "App Android",
       "version": "0.1.0",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "channel": "production",
-      "url": "https://downloads.autoszap.com/mobile/autoszap-android-latest.apk",
+      "url": "https://expo.dev/artifacts/eas/pJ9fVtgEubCmFiCnND7q3j.apk",
       "qrCodeUrl": "https://downloads.autoszap.com/mobile/autoszap-android-qr.png",
-      "notes": "Build Android para vendedores com push e lembretes.",
-      "updatedAt": "2026-03-13T18:00:00.000Z"
+      "notes": "Build Android EAS com novos módulos de configurações e ajustes de release.",
+      "updatedAt": "2026-03-19T03:11:00.000Z"
     },
     {
       "id": "windows-production",
