@@ -176,6 +176,10 @@ npm run release:mobile:android
 
 Se a mudanca for somente JS/assets, prefira `eas update`. Se houver mudanca nativa, gere uma nova build.
 
+Playbook completo de release mobile:
+
+- `docs/mobile-eas-release.md`
+
 ### Atualizacoes desktop
 
 Builds do Electron:
