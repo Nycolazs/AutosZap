@@ -19,6 +19,7 @@ SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp
 O backend agora suporta arquitetura **Control Plane + Tenant DB por empresa**.
 
 - Documentação completa: `docs/multi-tenancy-saas.md`
+- Playbook de onboarding WhatsApp (Comercial + Suporte): `docs/onboarding-whatsapp-playbook.md`
 - Schema tenant: `backend/prisma/schema.prisma`
 - Schema control plane: `backend/prisma/control-plane/schema.prisma`
 - Admin da plataforma: `/platform` no frontend e `/api/platform-admin/*` no backend

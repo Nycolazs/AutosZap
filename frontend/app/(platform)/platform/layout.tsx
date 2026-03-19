@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, FileText, LayoutDashboard, ShieldUser, Users2 } from 'lucide-react';
+import {
+  Building2,
+  ContactRound,
+  FileText,
+  LayoutDashboard,
+  ShieldUser,
+  Users2,
+} from 'lucide-react';
 import { apiRequest } from '@/lib/api-client';
 import { PlatformMeResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -24,8 +31,13 @@ const NAV_ITEMS = [
   },
   {
     href: '/platform/users',
-    label: 'Usuários',
+    label: 'Usuarios',
     icon: Users2,
+  },
+  {
+    href: '/platform/interessados',
+    label: 'Interessados',
+    icon: ContactRound,
   },
   {
     href: '/platform/audit',
@@ -76,7 +88,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
               <h1 className="text-lg font-semibold">Acesso restrito</h1>
             </div>
             <p className="text-sm text-muted-foreground">
-              Esta área é exclusiva para administradores da plataforma.
+              Esta area e exclusiva para administradores da plataforma.
             </p>
             <Button asChild>
               <Link href="/app">Voltar para o painel da empresa</Link>

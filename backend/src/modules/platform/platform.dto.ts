@@ -1,5 +1,16 @@
 import { DevicePlatform, DeviceProvider } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterDeviceDto {
   @IsString()
@@ -52,4 +63,42 @@ export class PlatformReleasesQueryDto {
   @IsOptional()
   @IsString()
   channel?: string;
+}
+
+export class CreateLeadInterestDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  name!: string;
+
+  @IsEmail()
+  @MaxLength(160)
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(140)
+  companyName?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  attendantsCount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1500)
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  source?: string;
 }

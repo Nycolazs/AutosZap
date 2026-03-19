@@ -1,8 +1,19 @@
-import { Body, Controller, Get, Post, Query, Redirect } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Ip,
+  Post,
+  Query,
+  Redirect,
+} from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import {
+  CreateLeadInterestDto,
   PlatformReleasesQueryDto,
   RegisterDeviceDto,
   UnregisterDeviceDto,
@@ -41,5 +52,19 @@ export class PlatformController {
   async downloadWindowsInstaller() {
     const url = await this.platformService.resolveWindowsInstallerDownloadUrl();
     return { url };
+  }
+
+  @Public()
+  @RateLimit({ limit: 8, windowSeconds: 60 })
+  @Post('lead-interests')
+  createLeadInterest(
+    @Body() dto: CreateLeadInterestDto,
+    @Headers('user-agent') userAgent?: string,
+    @Ip() ipAddress?: string,
+  ) {
+    return this.platformService.createLeadInterest(dto, {
+      userAgent,
+      ipAddress,
+    });
   }
 }

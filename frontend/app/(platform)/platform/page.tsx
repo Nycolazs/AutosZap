@@ -22,14 +22,17 @@ export default function PlatformDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard da Plataforma</h1>
-          <p className="text-sm text-muted-foreground">Visão operacional central do control plane.</p>
+          <p className="text-sm text-muted-foreground">Visao operacional central do control plane.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button asChild variant="secondary">
             <Link href="/platform/companies">Gerenciar empresas</Link>
           </Button>
+          <Button asChild variant="secondary">
+            <Link href="/platform/interessados">Ver interessados</Link>
+          </Button>
           <Button asChild>
-            <Link href="/platform/users">Gerenciar usuários</Link>
+            <Link href="/platform/users">Gerenciar usuarios</Link>
           </Button>
         </div>
       </div>
@@ -42,7 +45,7 @@ export default function PlatformDashboardPage() {
           helper={`${dashboard?.totals.activeCompanies ?? 0} ativas`}
         />
         <StatCard
-          title="Usuários globais"
+          title="Usuarios globais"
           value={dashboard?.totals.globalUsers ?? 0}
           icon={Users2}
           helper={`${dashboard?.totals.blockedUsers ?? 0} bloqueados`}
@@ -75,7 +78,7 @@ export default function PlatformDashboardPage() {
                   <div>
                     <p className="text-sm font-medium">{job.company.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {job.status} • {new Date(job.createdAt).toLocaleString('pt-BR')}
+                      {job.status} - {new Date(job.createdAt).toLocaleString('pt-BR')}
                     </p>
                   </div>
                   {job.errorMessage ? (

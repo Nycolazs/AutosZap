@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -41,22 +41,39 @@ export default function LoginPage() {
       eyebrow="PLATAFORMA COMPLETA"
       title="Venda mais pelo"
       accent="WhatsApp"
-      description="Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas com a mesma sofisticação visual de uma plataforma enterprise."
+      description="Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas com a mesma sofisticacao visual de uma plataforma enterprise."
     >
       <div
-        className="flex w-full max-w-[420px] flex-col gap-2"
+        className="flex w-full max-w-[440px] flex-col gap-3"
         data-deploy-marker="frontend-2026-03-14-01"
       >
-        <Card className="w-full rounded-[20px] border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.95),rgba(4,15,29,0.99))] p-0 shadow-[0_16px_38px_rgba(2,10,22,0.34)] backdrop-blur-xl">
-          <CardHeader className="p-4 pb-1">
-            <CardTitle className="text-[19px] font-semibold leading-snug tracking-tight">Bem-vindo de volta</CardTitle>
-            <CardDescription className="text-[11px] leading-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <Button asChild variant="ghost" size="sm" className="h-9 rounded-lg px-2.5 text-[12px]">
+            <Link href="/">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Voltar para home
+            </Link>
+          </Button>
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Ainda nao e cliente?{' '}
+            <Link href="/#quero-ser-cliente" className="font-semibold text-primary">
+              Quero ser cliente
+            </Link>
+          </p>
+        </div>
+
+        <Card className="w-full rounded-[24px] border-border/70 bg-background-panel/45 p-0 shadow-[0_16px_36px_rgba(2,10,22,0.28)] backdrop-blur-xl">
+          <CardHeader className="p-5 pb-2 sm:p-6 sm:pb-3">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Acesso da plataforma</p>
+            <CardTitle className="text-[24px] font-semibold leading-snug tracking-tight">Bem-vindo de volta</CardTitle>
+            <CardDescription className="text-[12px] leading-5">
               Entre com sua conta para continuar no AutosZap.
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4 pt-3">
+
+          <CardContent className="p-5 pt-2 sm:p-6 sm:pt-2">
             <form
-              className="space-y-2.5"
+              className="space-y-3"
               autoComplete="on"
               onSubmit={form.handleSubmit(async (values) => {
                 try {
@@ -84,25 +101,26 @@ export default function LoginPage() {
                 }
               })}
             >
-              <div className="space-y-1">
-                <Label htmlFor="email" className="text-[11px]">Email</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-[12px]">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   autoComplete="email"
                   inputMode="email"
                   placeholder="voce@empresa.com"
-                  className="h-8 w-full rounded-md px-3 text-[13px]"
+                  className="h-11 w-full rounded-xl px-3 text-[14px]"
                   {...form.register('email')}
                 />
                 {form.formState.errors.email?.message ? (
                   <p className="text-xs text-danger">{form.formState.errors.email.message}</p>
                 ) : null}
               </div>
-              <div className="space-y-1">
+
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-[11px]">Senha</Label>
-                  <Link href="/forgot-password" className="text-[11px] font-medium text-primary">
+                  <Label htmlFor="password" className="text-[12px]">Senha</Label>
+                  <Link href="/forgot-password" className="text-[12px] font-medium text-primary">
                     Esqueceu a senha?
                   </Link>
                 </div>
@@ -112,12 +130,12 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     placeholder="Sua senha"
-                    className="h-8 w-full rounded-md px-3 pr-9 text-[13px]"
+                    className="h-11 w-full rounded-xl px-3 pr-10 text-[14px]"
                     {...form.register('password')}
                   />
                   <button
                     type="button"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition hover:bg-white/5"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition hover:bg-white/5"
                     onClick={() => setShowPassword((value) => !value)}
                   >
                     {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -127,16 +145,11 @@ export default function LoginPage() {
                   <p className="text-xs text-danger">{form.formState.errors.password.message}</p>
                 ) : null}
               </div>
-              <Button type="submit" size="lg" className="mt-0.5 h-8 w-full rounded-md text-[13px] font-semibold">
+
+              <Button type="submit" size="lg" className="mt-1 h-11 w-full rounded-xl text-[14px] font-semibold">
                 Entrar
               </Button>
             </form>
-            <p className="mt-3 text-center text-[11px] leading-4 text-muted-foreground">
-              Nao tem uma conta?{' '}
-              <Link href="/register" className="font-semibold text-primary">
-                Criar conta gratis
-              </Link>
-            </p>
           </CardContent>
         </Card>
 

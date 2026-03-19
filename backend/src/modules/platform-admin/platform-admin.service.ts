@@ -10,6 +10,7 @@ import { ControlPlanePrismaService } from '../../common/prisma/control-plane-pri
 import {
   CompanyStatus,
   GlobalUserStatus,
+  LeadInterestStatus,
   MembershipStatus,
   PlatformAuditAction,
   ProvisioningJobStatus,
@@ -22,8 +23,10 @@ import {
   CreatePlatformUserDto,
   PlatformAuditQueryDto,
   PlatformCompanyListQueryDto,
+  PlatformLeadInterestsQueryDto,
   PlatformUsersListQueryDto,
   UpdatePlatformCompanyDto,
+  UpdatePlatformLeadInterestDto,
   UpdatePlatformUserDto,
   UpsertMembershipDto,
 } from './platform-admin.dto';
@@ -604,6 +607,81 @@ export class PlatformAdminService {
       },
       take: 200,
     });
+  }
+
+  async listLeadInterests(query: PlatformLeadInterestsQueryDto) {
+    const search = query.search?.trim();
+    const orderByCreatedAt = query.sort === 'createdAt_asc' ? 'asc' : 'desc';
+
+    return this.controlPlanePrisma.leadInterest.findMany({
+      where: {
+        ...(query.status ? { status: query.status } : {}),
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search, mode: 'insensitive' } },
+                { companyName: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: {
+        createdAt: orderByCreatedAt,
+      },
+      take: 300,
+    });
+  }
+
+  async updateLeadInterest(
+    actorId: string,
+    leadInterestId: string,
+    dto: UpdatePlatformLeadInterestDto,
+  ) {
+    const existing = await this.controlPlanePrisma.leadInterest.findUnique({
+      where: {
+        id: leadInterestId,
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Interessado nao encontrado.');
+    }
+
+    const now = new Date();
+    const updated = await this.controlPlanePrisma.leadInterest.update({
+      where: {
+        id: leadInterestId,
+      },
+      data: {
+        status: dto.status,
+        contactedAt:
+          dto.status === LeadInterestStatus.CONTACTED ||
+          dto.status === LeadInterestStatus.CONVERTED
+            ? existing.contactedAt ?? now
+            : existing.contactedAt,
+        convertedAt:
+          dto.status === LeadInterestStatus.CONVERTED
+            ? existing.convertedAt ?? now
+            : existing.convertedAt,
+        archivedAt:
+          dto.status === LeadInterestStatus.ARCHIVED ? now : null,
+      },
+    });
+
+    await this.controlPlaneAuditService.log({
+      actorId,
+      action: PlatformAuditAction.SECURITY_EVENT,
+      entityType: 'lead_interest',
+      entityId: leadInterestId,
+      metadata: {
+        previousStatus: existing.status,
+        newStatus: updated.status,
+      },
+    });
+
+    return updated;
   }
 
   async getPlatformMe(globalUserId: string) {

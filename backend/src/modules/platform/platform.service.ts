@@ -5,8 +5,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
-import { PlatformReleasesQueryDto, RegisterDeviceDto } from './platform.dto';
+import {
+  CreateLeadInterestDto,
+  PlatformReleasesQueryDto,
+  RegisterDeviceDto,
+} from './platform.dto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -49,7 +54,10 @@ type ReleasesManifest = {
 export class PlatformService {
   private readonly logger = new Logger(PlatformService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly controlPlanePrisma: ControlPlanePrismaService,
+  ) {}
 
   async registerDevice(user: CurrentAuthUser, payload: RegisterDeviceDto) {
     const device = await this.prisma.clientDevice.upsert({
@@ -219,6 +227,37 @@ export class PlatformService {
     }
 
     return location;
+  }
+
+  async createLeadInterest(
+    payload: CreateLeadInterestDto,
+    requestMeta?: {
+      userAgent?: string;
+      ipAddress?: string;
+    },
+  ) {
+    const leadInterest = await this.controlPlanePrisma.leadInterest.create({
+      data: {
+        name: payload.name.trim(),
+        email: payload.email.trim().toLowerCase(),
+        phone: payload.phone?.trim() || null,
+        companyName: payload.companyName?.trim() || null,
+        attendantsCount: payload.attendantsCount ?? null,
+        notes: payload.notes?.trim() || null,
+        source: payload.source?.trim() || 'landing-home',
+      },
+    });
+
+    this.logger.log(
+      `Novo interessado capturado (${leadInterest.email}) via ${leadInterest.source ?? 'landing-home'} from ${requestMeta?.ipAddress ?? 'unknown-ip'}.`,
+    );
+
+    return {
+      success: true,
+      leadInterestId: leadInterest.id,
+      message:
+        'Recebemos seu interesse. Nosso time comercial vai entrar em contato em breve.',
+    };
   }
 
   private async fetchGitHubJson<T>(url: string, token: string): Promise<T> {

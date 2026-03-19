@@ -65,6 +65,13 @@ enum PlatformAuditAction {
   SECURITY_EVENT
 }
 
+enum LeadInterestStatus {
+  PENDING
+  CONTACTED
+  CONVERTED
+  ARCHIVED
+}
+
 model GlobalUser {
   id                       String                     @id @default(cuid())
   email                    String                     @unique
@@ -196,4 +203,25 @@ model PlatformAuditLog {
 
   @@index([action, createdAt])
   @@index([entityType, entityId, createdAt])
+}
+
+model LeadInterest {
+  id              String             @id @default(cuid())
+  name            String
+  email           String
+  phone           String?
+  companyName     String?
+  attendantsCount Int?
+  notes           String?
+  source          String?
+  status          LeadInterestStatus @default(PENDING)
+  contactedAt     DateTime?
+  convertedAt     DateTime?
+  archivedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([email])
 }

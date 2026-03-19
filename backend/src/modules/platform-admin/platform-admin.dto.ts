@@ -1,6 +1,7 @@
 import {
   CompanyStatus,
   GlobalUserStatus,
+  LeadInterestStatus,
   MembershipStatus,
   PlatformRole,
   TenantRole,
@@ -9,6 +10,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MinLength,
@@ -140,4 +142,23 @@ export class PlatformAuditQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+}
+
+export class PlatformLeadInterestsQueryDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsEnum(LeadInterestStatus)
+  status?: LeadInterestStatus;
+
+  @IsOptional()
+  @IsIn(['createdAt_desc', 'createdAt_asc'])
+  sort?: 'createdAt_desc' | 'createdAt_asc';
+}
+
+export class UpdatePlatformLeadInterestDto {
+  @IsEnum(LeadInterestStatus)
+  status!: LeadInterestStatus;
 }

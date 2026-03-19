@@ -47,14 +47,6 @@ export function proxy(request: NextRequest) {
     return response;
   };
 
-  if (pathname === '/') {
-    return applyNoStore(
-      NextResponse.redirect(
-        new URL(accessToken ? authenticatedHome : '/login', request.url),
-      ),
-    );
-  }
-
   if (pathname.startsWith('/app') && !accessToken) {
     return applyNoStore(NextResponse.redirect(new URL('/login', request.url)));
   }
@@ -74,7 +66,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/',
     '/login',
     '/register',
     '/forgot-password',

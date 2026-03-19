@@ -535,6 +535,29 @@ export interface PlatformAuditLog {
   } | null;
 }
 
+export type PlatformLeadInterestStatus =
+  | 'PENDING'
+  | 'CONTACTED'
+  | 'CONVERTED'
+  | 'ARCHIVED';
+
+export interface PlatformLeadInterest {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  companyName?: string | null;
+  attendantsCount?: number | null;
+  notes?: string | null;
+  source?: string | null;
+  status: PlatformLeadInterestStatus;
+  contactedAt?: string | null;
+  convertedAt?: string | null;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PlatformMeResponse {
   id: string;
   name: string;

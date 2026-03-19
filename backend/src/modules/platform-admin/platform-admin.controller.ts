@@ -16,8 +16,10 @@ import {
   CreatePlatformUserDto,
   PlatformAuditQueryDto,
   PlatformCompanyListQueryDto,
+  PlatformLeadInterestsQueryDto,
   PlatformUsersListQueryDto,
   UpdatePlatformCompanyDto,
+  UpdatePlatformLeadInterestDto,
   UpdatePlatformUserDto,
   UpsertMembershipDto,
 } from './platform-admin.dto';
@@ -130,5 +132,23 @@ export class PlatformAdminController {
   @Get('audit-logs')
   listAuditLogs(@Query() query: PlatformAuditQueryDto) {
     return this.platformAdminService.listAuditLogs(query);
+  }
+
+  @Get('lead-interests')
+  listLeadInterests(@Query() query: PlatformLeadInterestsQueryDto) {
+    return this.platformAdminService.listLeadInterests(query);
+  }
+
+  @Patch('lead-interests/:leadInterestId')
+  updateLeadInterest(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('leadInterestId') leadInterestId: string,
+    @Body() dto: UpdatePlatformLeadInterestDto,
+  ) {
+    return this.platformAdminService.updateLeadInterest(
+      this.getActorGlobalUserId(user),
+      leadInterestId,
+      dto,
+    );
   }
 }

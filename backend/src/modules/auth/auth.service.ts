@@ -78,6 +78,17 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    const allowPublicSignup =
+      (this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'false')
+        .trim()
+        .toLowerCase() === 'true';
+
+    if (!allowPublicSignup) {
+      throw new BadRequestException(
+        'Cadastro direto desativado. Use o formulario "Quero ser cliente".',
+      );
+    }
+
     if (!dto.acceptTerms) {
       throw new BadRequestException(
         'Voce precisa aceitar os termos para criar a conta.',
