@@ -253,9 +253,12 @@ export class TenantConnectionService implements OnModuleDestroy {
     companyId: string,
   ): TenantRuntimeConfig | null {
     const nodeEnv = this.configService.get<string>('NODE_ENV') ?? 'development';
+    const isLegacyBootstrapRequest = companyId === 'legacy-shared-bootstrap';
     const allowSharedFallback =
+      isLegacyBootstrapRequest ||
       this.configService.get<string>('TENANT_ALLOW_SHARED_FALLBACK') ===
-        'true' || nodeEnv !== 'production';
+        'true' ||
+      nodeEnv !== 'production';
 
     if (!allowSharedFallback) {
       return null;
@@ -266,8 +269,11 @@ export class TenantConnectionService implements OnModuleDestroy {
       return null;
     }
 
+    const fallbackReason = isLegacyBootstrapRequest
+      ? 'bootstrap legado de control plane'
+      : 'modo fallback';
     this.logger.warn(
-      `Tenant ${companyId} sem banco dedicado configurado. Usando DATABASE_URL compartilhada (modo fallback).`,
+      `Tenant ${companyId} sem banco dedicado configurado. Usando DATABASE_URL compartilhada (${fallbackReason}).`,
     );
 
     let databaseName = 'shared';
