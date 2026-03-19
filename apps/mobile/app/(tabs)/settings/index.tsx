@@ -8,12 +8,24 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { ScreenTransition } from '@/components/screen-transition';
 import { useSession } from '@/providers/session-provider';
 import { palette } from '@/theme';
 
+const MODULE_SHORTCUTS = [
+  { label: 'Dashboard', description: 'Métricas e atividade', route: '/(tabs)/settings/dashboard' },
+  { label: 'Contatos', description: 'Base de clientes e dados', route: '/(tabs)/settings/contacts' },
+  { label: 'Tags', description: 'Organização operacional', route: '/(tabs)/settings/tags' },
+  { label: 'Equipe', description: 'Usuários e funções', route: '/(tabs)/settings/team' },
+  { label: 'Grupos e Listas', description: 'Segmentação de audiência', route: '/(tabs)/settings/groups-lists' },
+  { label: 'Instâncias', description: 'WhatsApp e integrações', route: '/(tabs)/settings/instances' },
+  { label: 'Fluxo e Automações', description: 'Horários e respostas automáticas', route: '/(tabs)/settings/workflow' },
+];
+
 export default function SettingsScreen() {
+  const router = useRouter();
   const { api, me, logout } = useSession();
 
   const releasesQuery = useQuery({
@@ -29,15 +41,12 @@ export default function SettingsScreen() {
 
   return (
     <ScreenTransition>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-      >
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <View style={styles.headerCard}>
-          <Text style={styles.eyebrow}>CONTA</Text>
+          <Text style={styles.eyebrow}>PLATAFORMA</Text>
           <Text style={styles.title}>Configurações</Text>
           <Text style={styles.subtitle}>
-            Dados da conta ativa e distribuição das builds mobile/desktop.
+            Conta ativa, releases publicadas e acesso rápido aos módulos do sistema.
           </Text>
         </View>
 
@@ -55,6 +64,22 @@ export default function SettingsScreen() {
           <Pressable style={styles.logoutButton} onPress={() => void logout()}>
             <Text style={styles.logoutText}>Sair da conta</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Módulos do app</Text>
+          <View style={styles.moduleList}>
+            {MODULE_SHORTCUTS.map((shortcut) => (
+              <Pressable
+                key={shortcut.route}
+                style={styles.moduleCard}
+                onPress={() => router.push(shortcut.route as never)}
+              >
+                <Text style={styles.moduleTitle}>{shortcut.label}</Text>
+                <Text style={styles.moduleDescription}>{shortcut.description}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -171,6 +196,27 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+  moduleList: {
+    gap: 10,
+  },
+  moduleCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    padding: 12,
+    gap: 2,
+  },
+  moduleTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  moduleDescription: {
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   centerState: {
     minHeight: 100,

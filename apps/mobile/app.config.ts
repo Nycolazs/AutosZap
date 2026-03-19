@@ -2,7 +2,9 @@ import type { ExpoConfig } from 'expo/config';
 
 const version = process.env.APP_VERSION ?? '0.1.0';
 const buildNumber = process.env.APP_BUILD_NUMBER ?? '1';
-const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+const projectId =
+  process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
+  '5d77094b-aff1-40b2-a32d-e26649340953';
 const hasEasProject = Boolean(projectId);
 const defaultApiUrl =
   process.env.NODE_ENV === 'development'
@@ -11,6 +13,7 @@ const defaultApiUrl =
 
 const config: ExpoConfig = {
   name: 'AutoZap',
+  owner: 'nyc2029',
   slug: 'autoszap-mobile',
   scheme: 'autoszap',
   version,

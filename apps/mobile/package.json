@@ -56,6 +56,17 @@
         "react",
         "react-dom"
       ]
+    },
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react",
+          "react-dom",
+          "react-native",
+          "react-native-safe-area-context",
+          "react-native-screens"
+        ]
+      }
     }
   }
 }

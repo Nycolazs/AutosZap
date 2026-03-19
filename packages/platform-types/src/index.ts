@@ -173,6 +173,112 @@ export interface CampaignSummary {
   hasMedia?: boolean;
 }
 
+export interface DashboardOverview {
+  metrics: {
+    activeConversations: number;
+    totalContacts: number;
+    responseRate: number;
+    sentCampaigns: number;
+    crmLeads: number;
+  };
+  chart: Array<{ label: string; value: number }>;
+  recentActivity: Array<{
+    id: string;
+    entityType: string;
+    entityId?: string;
+    action: string;
+    actionLabel?: string;
+    entityLabel?: string;
+    actorName?: string;
+    actorEmail?: string | null;
+    detail?: string | null;
+    createdAt: string;
+  }>;
+  notifications: NotificationItem[];
+  shortcuts: Array<{ title: string; href: string }>;
+}
+
+export interface ContactRecord {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  company?: string | null;
+  jobTitle?: string | null;
+  source?: string;
+  notes?: string | null;
+  lastInteractionAt?: string | null;
+  tags?: TagSummary[];
+}
+
+export interface TeamMemberRecord {
+  id: string;
+  userId?: string | null;
+  name: string;
+  email: string;
+  title?: string | null;
+  role: string;
+  normalizedRole: string;
+  status: string;
+  lastLoginAt?: string | null;
+}
+
+export interface GroupRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  contactCount?: number;
+  createdAt?: string;
+}
+
+export interface ContactListRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  contactCount?: number;
+  createdAt?: string;
+}
+
+export interface InstanceRecord {
+  id: string;
+  name: string;
+  provider: string;
+  status: string;
+  mode: string;
+  appId?: string | null;
+  phoneNumber?: string | null;
+  businessAccountId?: string | null;
+  phoneNumberId?: string | null;
+  lastSyncAt?: string | null;
+}
+
+export interface WorkspaceConversationSettings {
+  id: string;
+  workspaceId: string;
+  inactivityTimeoutMinutes: number;
+  waitingAutoCloseTimeoutMinutes?: number | null;
+  timezone: string;
+  autoReplyCooldownMinutes: number;
+  sendBusinessHoursAutoReply: boolean;
+  businessHoursAutoReply?: string | null;
+  sendOutOfHoursAutoReply: boolean;
+  outOfHoursAutoReply?: string | null;
+  sendResolvedAutoReply: boolean;
+  resolvedAutoReplyMessage?: string | null;
+  sendClosedAutoReply: boolean;
+  closedAutoReplyMessage?: string | null;
+  sendWindowClosedTemplateReply: boolean;
+  windowClosedTemplateName?: string | null;
+  windowClosedTemplateLanguageCode?: string | null;
+  businessHours: Array<{
+    id: string;
+    weekday: number;
+    isOpen: boolean;
+    startTime?: string | null;
+    endTime?: string | null;
+  }>;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   meta: {

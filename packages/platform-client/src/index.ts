@@ -1,10 +1,15 @@
 import type {
   AuthMe,
   AuthSession,
+  ContactListRecord,
+  ContactRecord,
+  DashboardOverview,
   ConversationDetail,
   ConversationReminder,
   ConversationStatusSummary,
   ConversationSummary,
+  GroupRecord,
+  InstanceRecord,
   LeadSummary,
   NotificationsResponse,
   PaginatedResponse,
@@ -12,6 +17,9 @@ import type {
   PlatformReleasesManifest,
   RegisteredDevice,
   RegisterDevicePayload,
+  TagSummary,
+  TeamMemberRecord,
+  WorkspaceConversationSettings,
 } from '@autoszap/platform-types';
 
 type FetchLike = typeof fetch;
@@ -203,6 +211,66 @@ export function createPlatformClient(config: ClientConfig) {
     },
     listCampaigns() {
       return request<CampaignSummary[]>('campaigns');
+    },
+    dashboardOverview() {
+      return request<DashboardOverview>('dashboard');
+    },
+    listContacts(params?: { search?: string; page?: number; limit?: number }) {
+      const query = new URLSearchParams();
+      query.set('page', String(params?.page ?? 1));
+      query.set('limit', String(params?.limit ?? 50));
+      if (params?.search) {
+        query.set('search', params.search);
+      }
+
+      return request<PaginatedResponse<ContactRecord>>(
+        `contacts?${query.toString()}`,
+      );
+    },
+    listTags() {
+      return request<TagSummary[]>('tags');
+    },
+    createTag(payload: { name: string; color: string; description?: string }) {
+      return request<TagSummary>('tags', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    deleteTag(tagId: string) {
+      return request<{ success?: boolean }>(`tags/${tagId}`, {
+        method: 'DELETE',
+      });
+    },
+    listTeam() {
+      return request<TeamMemberRecord[]>('team');
+    },
+    listGroups() {
+      return request<GroupRecord[]>('groups');
+    },
+    listContactLists() {
+      return request<ContactListRecord[]>('lists');
+    },
+    listInstances() {
+      return request<InstanceRecord[]>('instances');
+    },
+    syncInstance(instanceId: string) {
+      return request(`instances/${instanceId}/sync`, {
+        method: 'POST',
+      });
+    },
+    testInstance(instanceId: string) {
+      return request(`instances/${instanceId}/test`, {
+        method: 'POST',
+      });
+    },
+    getWorkspaceSettings() {
+      return request<WorkspaceConversationSettings>('workspace-settings');
+    },
+    updateWorkspaceSettings(payload: Partial<WorkspaceConversationSettings>) {
+      return request<WorkspaceConversationSettings>('workspace-settings', {
+        method: 'PATCH',
+        body: payload,
+      });
     },
     sendCampaign(campaignId: string) {
       return request<{ success?: boolean }>(`campaigns/${campaignId}/send`, {
