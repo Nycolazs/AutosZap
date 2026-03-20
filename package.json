@@ -33,5 +33,9 @@
     "mt:seed:control-plane": "npm run mt:seed:control-plane --workspace backend",
     "mt:seed:tenant": "npm run mt:seed:tenant --workspace backend",
     "mt:bootstrap:control-plane": "npm run mt:bootstrap:control-plane --workspace backend"
+  },
+  "devDependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1"
   }
 }

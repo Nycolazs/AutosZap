@@ -46,6 +46,7 @@ type CrudPageProps<TItem extends EntityWithId, TFormValues extends FieldValues> 
   emptyDescription: string;
   mapToFormValues?: (item: TItem) => TFormValues;
   mapToPayload?: (values: TFormValues) => unknown;
+  headerActions?: React.ReactNode;
 };
 
 function normalizeListResponse<TItem>(response: PaginatedResponse<TItem> | TItem[]) {
@@ -66,6 +67,7 @@ export function CrudPage<TItem extends EntityWithId, TFormValues extends FieldVa
   emptyDescription,
   mapToFormValues,
   mapToPayload,
+  headerActions,
 }: CrudPageProps<TItem, TFormValues>) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -153,26 +155,29 @@ export function CrudPage<TItem extends EntityWithId, TFormValues extends FieldVa
         title={title}
         description={description}
         action={
-          <EntityFormDialog
-            open={dialogOpen}
-            onOpenChange={(open) => {
-              setDialogOpen(open);
-              if (!open) setSelectedItem(null);
-            }}
-            title={selectedItem ? `Editar ${title}` : createLabel}
-            description={description}
-            schema={schema}
-            defaultValues={formDefaultValues as DefaultValues<TFormValues>}
-            fields={fields}
-            submitLabel={selectedItem ? 'Salvar alterações' : 'Criar'}
-            onSubmit={(values) => createMutation.mutateAsync(values)}
-            trigger={
-              <Button onClick={() => setSelectedItem(null)}>
-                <Plus className="h-4 w-4" />
-                {createLabel}
-              </Button>
-            }
-          />
+          <div className="flex items-center gap-2">
+            {headerActions}
+            <EntityFormDialog
+              open={dialogOpen}
+              onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (!open) setSelectedItem(null);
+              }}
+              title={selectedItem ? `Editar ${title}` : createLabel}
+              description={description}
+              schema={schema}
+              defaultValues={formDefaultValues as DefaultValues<TFormValues>}
+              fields={fields}
+              submitLabel={selectedItem ? 'Salvar alterações' : 'Criar'}
+              onSubmit={(values) => createMutation.mutateAsync(values)}
+              trigger={
+                <Button onClick={() => setSelectedItem(null)}>
+                  <Plus className="h-4 w-4" />
+                  {createLabel}
+                </Button>
+              }
+            />
+          </div>
         }
       />
 

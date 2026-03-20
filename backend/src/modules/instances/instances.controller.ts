@@ -36,6 +36,21 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 import { InstancesService } from './instances.service';
 
+class EmbeddedSignupDto {
+  @IsString()
+  code!: string;
+
+  @IsString()
+  phoneNumberId!: string;
+
+  @IsString()
+  wabaId!: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+}
+
 class InstanceDto {
   @IsString()
   name!: string;
@@ -162,15 +177,48 @@ export class InstancesController {
     return this.instancesService.list(user.workspaceId);
   }
 
-  @Get(':id')
-  findOne(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
-    return this.instancesService.findOne(id, user.workspaceId);
+  @Get('embedded-signup-config')
+  getEmbeddedSignupConfig() {
+    return this.instancesService.getEmbeddedSignupConfig();
+  }
+
+  @Roles(Role.ADMIN)
+  @Post('embedded-signup')
+  async embeddedSignup(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: EmbeddedSignupDto,
+  ) {
+    const instance = await this.instancesService.createFromEmbeddedSignup(
+      user.workspaceId,
+      user.sub,
+      dto,
+    );
+
+    // Best-effort sync and subscribe — don't fail the request if these fail
+    try {
+      await this.metaWhatsAppService.syncInstance(user.workspaceId, instance.id);
+    } catch {
+      // Instance was created, user can retry sync manually
+    }
+
+    try {
+      await this.metaWhatsAppService.subscribeApp(user.workspaceId, instance.id);
+    } catch {
+      // Instance was created, user can retry subscribe manually
+    }
+
+    return this.instancesService.findOne(instance.id, user.workspaceId);
   }
 
   @Roles(Role.ADMIN)
   @Post()
   create(@CurrentUser() user: CurrentAuthUser, @Body() dto: InstanceDto) {
     return this.instancesService.create(user.workspaceId, user.sub, dto);
+  }
+
+  @Get(':id')
+  findOne(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
+    return this.instancesService.findOne(id, user.workspaceId);
   }
 
   @Roles(Role.ADMIN)

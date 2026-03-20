@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { Camera, Loader2, RadioTower, RefreshCw } from 'lucide-react';
+import { Camera, Loader2, MessageCircle, RadioTower, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { CrudPage } from '@/components/shared/crud-page';
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest } from '@/lib/api-client';
+import { loadFacebookSdk, launchEmbeddedSignup } from '@/lib/facebook-sdk';
 import {
   Instance,
   WhatsAppBusinessProfileOverview,
@@ -98,6 +99,37 @@ export default function InstancesPage() {
   const [syncingProfile, setSyncingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingProfile, setUploadingProfile] = useState(false);
+  const [embeddedSignupLoading, setEmbeddedSignupLoading] = useState(false);
+  const [crudRefreshKey, setCrudRefreshKey] = useState(0);
+
+  const handleEmbeddedSignup = useCallback(async () => {
+    setEmbeddedSignupLoading(true);
+    try {
+      const config = await apiRequest<{ appId: string }>(
+        'instances/embedded-signup-config',
+      );
+      await loadFacebookSdk(config.appId);
+      const result = await launchEmbeddedSignup();
+      await apiRequest('instances/embedded-signup', {
+        method: 'POST',
+        body: {
+          code: result.code,
+          phoneNumberId: result.phoneNumberId,
+          wabaId: result.wabaId,
+        },
+      });
+      toast.success('WhatsApp conectado com sucesso!');
+      setCrudRefreshKey((k) => k + 1);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel conectar o WhatsApp.',
+      );
+    } finally {
+      setEmbeddedSignupLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -445,8 +477,23 @@ export default function InstancesPage() {
   return (
     <>
       <CrudPage
+        key={crudRefreshKey}
         title="Instâncias"
         description="Configure canais oficiais da Meta com credenciais, webhook verify token, app secret, sync da WABA e testes reais da Cloud API."
+        headerActions={
+          <Button
+            onClick={handleEmbeddedSignup}
+            disabled={embeddedSignupLoading}
+            className="gap-2"
+          >
+            {embeddedSignupLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MessageCircle className="h-4 w-4" />
+            )}
+            Conectar com WhatsApp
+          </Button>
+        }
         endpoint="instances"
         queryKey="instances"
         columns={columns}

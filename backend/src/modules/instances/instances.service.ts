@@ -1,9 +1,13 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InstanceMode, InstanceProvider, InstanceStatus } from '@prisma/client';
+import axios from 'axios';
+import { randomUUID } from 'crypto';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -21,11 +25,21 @@ type InstancePayload = {
   appSecret?: string;
 };
 
+export type EmbeddedSignupPayload = {
+  code: string;
+  phoneNumberId: string;
+  wabaId: string;
+  name?: string;
+};
+
 @Injectable()
 export class InstancesService {
+  private readonly logger = new Logger(InstancesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
+    private readonly configService: ConfigService,
   ) {}
 
   async list(workspaceId: string) {
@@ -225,6 +239,106 @@ export class InstancesService {
     });
 
     return { success: true };
+  }
+
+  async createFromEmbeddedSignup(
+    workspaceId: string,
+    actorId: string,
+    payload: EmbeddedSignupPayload,
+  ) {
+    const appId = this.configService.get<string>('META_APP_ID');
+    const appSecret = this.configService.get<string>('META_APP_SECRET');
+    const graphVersion =
+      this.configService.get<string>('META_GRAPH_API_VERSION') ?? 'v23.0';
+
+    if (!appId || !appSecret) {
+      throw new BadRequestException(
+        'META_APP_ID e META_APP_SECRET precisam estar configurados no servidor.',
+      );
+    }
+
+    // 1. Exchange authorization code for access token
+    let accessToken: string;
+    try {
+      const tokenResponse = await axios.get(
+        `https://graph.facebook.com/${graphVersion}/oauth/access_token`,
+        {
+          params: {
+            client_id: appId,
+            client_secret: appSecret,
+            code: payload.code,
+          },
+        },
+      );
+      accessToken = tokenResponse.data.access_token;
+    } catch (error: unknown) {
+      const message =
+        axios.isAxiosError(error)
+          ? error.response?.data?.error?.message ?? error.message
+          : 'Erro desconhecido';
+      this.logger.error(`Falha ao trocar codigo por token: ${message}`);
+      throw new BadRequestException(
+        `Falha ao obter token de acesso do Meta: ${message}`,
+      );
+    }
+
+    // 2. Fetch phone number details for display name
+    let phoneNumber: string | undefined;
+    let instanceName = payload.name;
+    try {
+      const phoneResponse = await axios.get(
+        `https://graph.facebook.com/${graphVersion}/${payload.phoneNumberId}`,
+        {
+          params: {
+            access_token: accessToken,
+            fields: 'display_phone_number,verified_name',
+          },
+        },
+      );
+      phoneNumber = phoneResponse.data.display_phone_number;
+      if (!instanceName) {
+        instanceName =
+          phoneResponse.data.verified_name || phoneNumber || undefined;
+      }
+    } catch {
+      this.logger.warn(
+        `Nao foi possivel buscar detalhes do numero ${payload.phoneNumberId}. Continuando sem.`,
+      );
+    }
+
+    if (!instanceName) {
+      instanceName = `WhatsApp ${payload.phoneNumberId}`;
+    }
+
+    // 3. Generate a webhook verify token
+    const webhookVerifyToken =
+      this.configService.get<string>('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN') ??
+      randomUUID();
+
+    // 4. Create the instance using existing method
+    return this.create(workspaceId, actorId, {
+      name: instanceName,
+      provider: InstanceProvider.META_WHATSAPP,
+      status: InstanceStatus.CONNECTED,
+      mode: InstanceMode.PRODUCTION,
+      appId,
+      phoneNumber,
+      businessAccountId: payload.wabaId,
+      phoneNumberId: payload.phoneNumberId,
+      accessToken,
+      webhookVerifyToken,
+      appSecret,
+    });
+  }
+
+  getEmbeddedSignupConfig() {
+    const appId = this.configService.get<string>('META_APP_ID');
+    if (!appId) {
+      throw new BadRequestException(
+        'META_APP_ID nao configurado no servidor.',
+      );
+    }
+    return { appId };
   }
 
   sanitizeInstance<
