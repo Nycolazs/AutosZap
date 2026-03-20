@@ -1868,6 +1868,7 @@ function MessageBubbleContent({
   const mediaUrl = `/api/proxy/messages/${message.id}/media`;
   const messageCaption = getMessageCaption(message);
   const normalizedMessageType = normalizeConversationMessageType(message.messageType);
+  const mediaMetadata = resolveMessageMediaMetadata(message.metadata);
   const tone =
     message.direction === 'OUTBOUND'
       ? 'outgoing'
@@ -1877,7 +1878,7 @@ function MessageBubbleContent({
   const quote = message.metadata?.quote;
   const quoteBlock = quote ? <QuotedMessageBlock quote={quote} tone={tone} /> : null;
   const hasUnknownMedia =
-    Boolean(message.metadata?.mediaId) &&
+    Boolean(mediaMetadata.mediaId) &&
     !['image', 'sticker', 'audio', 'video', 'document', 'template', 'text'].includes(
       normalizedMessageType,
     );
@@ -1937,7 +1938,7 @@ function MessageBubbleContent({
           className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-xs underline-offset-4 hover:underline"
         >
           <Paperclip className="h-3.5 w-3.5" />
-          {message.metadata?.fileName ?? (hasUnknownMedia ? 'Abrir midia' : 'Abrir documento')}
+          {mediaMetadata.fileName ?? (hasUnknownMedia ? 'Abrir midia' : 'Abrir documento')}
         </a>
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
@@ -2268,6 +2269,58 @@ function canQuoteMessage(message: ConversationMessage) {
   return message.direction !== 'SYSTEM' && message.status !== 'QUEUED';
 }
 
+function resolveMessageMediaMetadata(messageMetadata: ConversationMessage['metadata']) {
+  const metadataAsRecord =
+    messageMetadata &&
+    typeof messageMetadata === 'object' &&
+    !Array.isArray(messageMetadata)
+      ? (messageMetadata as Record<string, unknown>)
+      : null;
+  const media = metadataAsRecord?.media;
+  const mediaAsRecord =
+    media && typeof media === 'object' && !Array.isArray(media)
+      ? (media as Record<string, unknown>)
+      : null;
+
+  const pickString = (...values: unknown[]) => {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  };
+
+  return {
+    mediaId: pickString(
+      messageMetadata?.mediaId,
+      metadataAsRecord?.media_id,
+      metadataAsRecord?.id,
+      mediaAsRecord?.mediaId,
+      mediaAsRecord?.media_id,
+      mediaAsRecord?.id,
+    ),
+    fileName: pickString(
+      messageMetadata?.fileName,
+      metadataAsRecord?.file_name,
+      metadataAsRecord?.filename,
+      mediaAsRecord?.fileName,
+      mediaAsRecord?.file_name,
+      mediaAsRecord?.filename,
+      metadataAsRecord?.documentName,
+    ),
+    mimeType: pickString(
+      messageMetadata?.mimeType,
+      metadataAsRecord?.mime_type,
+      metadataAsRecord?.mimetype,
+      mediaAsRecord?.mimeType,
+      mediaAsRecord?.mime_type,
+      mediaAsRecord?.mimetype,
+    ),
+  };
+}
+
 function buildMessageQuotePreview(message: ConversationMessage) {
   const content = message.content?.trim();
 
@@ -2276,10 +2329,11 @@ function buildMessageQuotePreview(message: ConversationMessage) {
   }
 
   const normalizedType = normalizeConversationMessageType(message.messageType);
+  const mediaMetadata = resolveMessageMediaMetadata(message.metadata);
 
   if (normalizedType === 'document') {
-    return message.metadata?.fileName
-      ? `Documento: ${message.metadata.fileName}`
+    return mediaMetadata.fileName
+      ? `Documento: ${mediaMetadata.fileName}`
       : 'Documento';
   }
 

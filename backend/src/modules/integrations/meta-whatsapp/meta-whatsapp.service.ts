@@ -1685,10 +1685,37 @@ export class MetaWhatsAppService {
       return {};
     }
 
+    const nestedMedia = this.toRecord(value.media);
+    const mediaId = this.pickString(
+      value.mediaId,
+      value.media_id,
+      value.id,
+      nestedMedia?.id,
+      nestedMedia?.mediaId,
+      nestedMedia?.media_id,
+    );
+    const mimeType = this.pickString(
+      value.mimeType,
+      value.mime_type,
+      value.mimetype,
+      nestedMedia?.mimeType,
+      nestedMedia?.mime_type,
+      nestedMedia?.mimetype,
+    );
+    const fileName = this.pickString(
+      value.fileName,
+      value.file_name,
+      value.filename,
+      nestedMedia?.fileName,
+      nestedMedia?.file_name,
+      nestedMedia?.filename,
+      value.documentName,
+    );
+
     return {
-      mediaId: typeof value.mediaId === 'string' ? value.mediaId : undefined,
-      mimeType: typeof value.mimeType === 'string' ? value.mimeType : null,
-      fileName: typeof value.fileName === 'string' ? value.fileName : null,
+      mediaId: mediaId ?? undefined,
+      mimeType: mimeType ?? null,
+      fileName: fileName ?? null,
     };
   }
 
@@ -1842,6 +1869,16 @@ export class MetaWhatsAppService {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private pickString(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
   }
 
   private async notifyConversationRecipientsAboutInboundMessage(payload: {
