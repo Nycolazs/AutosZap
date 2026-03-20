@@ -110,6 +110,9 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     config: MessagingInstanceConfig,
     to: string,
     body: string,
+    options?: {
+      quotedExternalMessageId?: string;
+    },
   ): Promise<ProviderSendResult> {
     if (!this.canUseRealTransport(config)) {
       return {
@@ -121,22 +124,36 @@ export class MetaWhatsAppProvider implements MessagingProvider {
           type: 'text',
           to,
           body,
+          quotedExternalMessageId: options?.quotedExternalMessageId,
         },
+        metadata: options?.quotedExternalMessageId
+          ? {
+              quotedExternalMessageId: options.quotedExternalMessageId,
+            }
+          : undefined,
+      };
+    }
+
+    const messagePayload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      to: this.normalizePhoneNumber(to),
+      type: 'text',
+      text: {
+        preview_url: false,
+        body,
+      },
+    };
+
+    if (options?.quotedExternalMessageId) {
+      messagePayload.context = {
+        message_id: options.quotedExternalMessageId,
       };
     }
 
     const response = await this.post<MetaMessageResponse>(
       config,
       `${config.phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to: this.normalizePhoneNumber(to),
-        type: 'text',
-        text: {
-          preview_url: false,
-          body,
-        },
-      },
+      messagePayload,
     );
 
     return {
@@ -144,6 +161,11 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       status: 'sent',
       simulated: false,
       raw: response as Record<string, unknown>,
+      metadata: options?.quotedExternalMessageId
+        ? {
+            quotedExternalMessageId: options.quotedExternalMessageId,
+          }
+        : undefined,
     };
   }
 
@@ -274,6 +296,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       mediaId: string;
       caption?: string;
       fileName?: string;
+      quotedExternalMessageId?: string;
     },
   ): Promise<ProviderSendResult> {
     if (!this.canUseRealTransport(config)) {
@@ -288,12 +311,14 @@ export class MetaWhatsAppProvider implements MessagingProvider {
           mediaId: payload.mediaId,
           caption: payload.caption,
           fileName: payload.fileName,
+          quotedExternalMessageId: payload.quotedExternalMessageId,
         },
         messageType: payload.type,
         metadata: {
           mediaId: payload.mediaId,
           fileName: payload.fileName,
           caption: payload.caption,
+          quotedExternalMessageId: payload.quotedExternalMessageId,
         },
       };
     }
@@ -322,6 +347,12 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         payload.fileName;
     }
 
+    if (payload.quotedExternalMessageId) {
+      messagePayload.context = {
+        message_id: payload.quotedExternalMessageId,
+      };
+    }
+
     const response = await this.post<MetaMessageResponse>(
       config,
       `${config.phoneNumberId}/messages`,
@@ -338,6 +369,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         mediaId: payload.mediaId,
         caption: payload.caption,
         fileName: payload.fileName,
+        quotedExternalMessageId: payload.quotedExternalMessageId,
       },
     };
   }
@@ -826,6 +858,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
               mime_type?: string;
               sha256?: string;
               caption?: string;
+              voice?: boolean;
             };
             sticker?: {
               id?: string;
@@ -840,6 +873,10 @@ export class MetaWhatsAppProvider implements MessagingProvider {
               filename?: string;
               caption?: string;
             };
+            context?: {
+              from?: string;
+              id?: string;
+            };
           };
 
           if (!parsed.from || !parsed.id) {
@@ -853,6 +890,11 @@ export class MetaWhatsAppProvider implements MessagingProvider {
 
           const normalizedType = this.normalizeInboundMessageType(parsed);
           const mediaMetadata = this.extractInboundMediaMetadata(parsed);
+          const quoteMetadata = this.extractInboundQuoteMetadata(parsed);
+          const inboundMetadata = this.mergeInboundMetadata(
+            mediaMetadata,
+            quoteMetadata,
+          );
 
           messages.push({
             phoneNumberId,
@@ -862,7 +904,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
             messageType: normalizedType,
             body: this.getInboundMessageBody(parsed, normalizedType),
             timestamp: parsed.timestamp,
-            metadata: mediaMetadata,
+            metadata: inboundMetadata,
           });
         }
 
@@ -1127,8 +1169,23 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     sticker?: { id?: string };
     document?: { id?: string };
   }) {
-    if (message.type) {
-      return message.type;
+    const normalizedInputType = message.type?.trim().toLowerCase();
+    const typeMap: Record<string, string> = {
+      text: 'text',
+      image: 'image',
+      audio: 'audio',
+      voice: 'audio',
+      ptt: 'audio',
+      video: 'video',
+      video_note: 'video',
+      video_note_message: 'video',
+      document: 'document',
+      sticker: 'sticker',
+      animated_sticker: 'sticker',
+    };
+
+    if (normalizedInputType && typeMap[normalizedInputType]) {
+      return typeMap[normalizedInputType];
     }
 
     if (message.image?.id) return 'image';
@@ -1136,6 +1193,11 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     if (message.video?.id) return 'video';
     if (message.sticker?.id) return 'sticker';
     if (message.document?.id) return 'document';
+
+    if (normalizedInputType) {
+      return normalizedInputType;
+    }
+
     return 'text';
   }
 
@@ -1164,7 +1226,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       return message.document?.caption ?? '';
     }
 
-    return '';
+    return message.text?.body ?? '';
   }
 
   private extractInboundMediaMetadata(message: {
@@ -1185,6 +1247,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       mime_type?: string;
       sha256?: string;
       caption?: string;
+      voice?: boolean;
     };
     sticker?: {
       id?: string;
@@ -1224,6 +1287,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
         mimeType: message.video.mime_type,
         sha256: message.video.sha256,
         caption: message.video.caption,
+        voice: message.video.voice ?? false,
       };
     }
 
@@ -1247,6 +1311,38 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     }
 
     return undefined;
+  }
+
+  private extractInboundQuoteMetadata(message: {
+    context?: {
+      from?: string;
+      id?: string;
+    };
+  }) {
+    if (!message.context?.id) {
+      return undefined;
+    }
+
+    return {
+      quote: {
+        externalMessageId: message.context.id,
+        from: message.context.from,
+      },
+    };
+  }
+
+  private mergeInboundMetadata(
+    mediaMetadata?: Record<string, unknown>,
+    quoteMetadata?: Record<string, unknown>,
+  ) {
+    if (!mediaMetadata && !quoteMetadata) {
+      return undefined;
+    }
+
+    return {
+      ...(mediaMetadata ?? {}),
+      ...(quoteMetadata ?? {}),
+    };
   }
 
   private async readProviderError(response: Response) {

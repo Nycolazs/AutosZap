@@ -143,6 +143,9 @@ export interface MessagingProvider {
     config: MessagingInstanceConfig,
     to: string,
     body: string,
+    options?: {
+      quotedExternalMessageId?: string;
+    },
   ): Promise<ProviderSendResult>;
   sendTemplateMessage(
     config: MessagingInstanceConfig,
@@ -175,6 +178,7 @@ export interface MessagingProvider {
       mediaId: string;
       caption?: string;
       fileName?: string;
+      quotedExternalMessageId?: string;
     },
   ): Promise<ProviderSendResult>;
   downloadMedia(

@@ -38,6 +38,10 @@ class SendMessageDto {
 
   @IsString()
   content!: string;
+
+  @IsOptional()
+  @IsString()
+  quotedMessageId?: string;
 }
 
 class SendMediaDto {
@@ -51,6 +55,10 @@ class SendMediaDto {
   @IsOptional()
   @IsString()
   isVoiceNote?: string;
+
+  @IsOptional()
+  @IsString()
+  quotedMessageId?: string;
 }
 
 @Controller('messages')
@@ -69,6 +77,7 @@ export class MessagesController {
       dto.conversationId,
       user,
       dto.content,
+      dto.quotedMessageId,
     );
   }
 
@@ -98,6 +107,7 @@ export class MessagesController {
         mimeType: file.mimetype,
         caption: dto.caption,
         voice: dto.isVoiceNote === 'true',
+        quotedMessageId: dto.quotedMessageId,
       },
     );
   }

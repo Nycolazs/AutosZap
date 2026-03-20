@@ -84,6 +84,117 @@ describe('MetaWhatsAppProvider', () => {
     expect(firstRequestConfig.headers['Content-Type']).toBe('application/json');
   });
 
+  it('sends outbound text messages with quote context when quoting another message', async () => {
+    const provider = new MetaWhatsAppProvider(
+      new ConfigService({
+        META_MODE: 'DEV',
+        META_GRAPH_API_VERSION: 'v23.0',
+      }),
+    );
+    const axiosPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({
+      data: {
+        messages: [{ id: 'wamid.real.quote.1' }],
+      },
+    });
+
+    await provider.sendTextMessage(
+      {
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        mode: InstanceMode.DEV,
+        accessToken: 'token',
+        phoneNumberId: 'phone-1',
+      },
+      '+5585999990000',
+      'Mensagem com quote',
+      {
+        quotedExternalMessageId: 'wamid.quoted.123',
+      },
+    );
+
+    expect(axiosPostSpy).toHaveBeenCalledWith(
+      'https://graph.facebook.com/v23.0/phone-1/messages',
+      {
+        messaging_product: 'whatsapp',
+        to: '5585999990000',
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: 'Mensagem com quote',
+        },
+        context: {
+          message_id: 'wamid.quoted.123',
+        },
+      },
+      expect.any(Object),
+    );
+  });
+
+  it('normalizes inbound video_note to video and keeps quote metadata from webhook context', () => {
+    const provider = new MetaWhatsAppProvider(
+      new ConfigService({
+        META_MODE: 'DEV',
+      }),
+    );
+
+    const parsed = provider.parseWebhook({
+      entry: [
+        {
+          id: 'entry-1',
+          changes: [
+            {
+              value: {
+                metadata: {
+                  phone_number_id: 'phone-1',
+                },
+                contacts: [
+                  {
+                    wa_id: '5585999990000',
+                    profile: { name: 'Cliente' },
+                  },
+                ],
+                messages: [
+                  {
+                    id: 'wamid.inbound.1',
+                    from: '5585999990000',
+                    timestamp: '1710000000',
+                    type: 'video_note',
+                    video: {
+                      id: 'media-1',
+                      mime_type: 'video/mp4',
+                    },
+                    context: {
+                      id: 'wamid.quoted.555',
+                      from: '5585888887777',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.messages).toHaveLength(1);
+    expect(parsed.messages[0]).toEqual(
+      expect.objectContaining({
+        messageType: 'video',
+        body: '',
+      }),
+    );
+    expect(parsed.messages[0]?.metadata).toEqual(
+      expect.objectContaining({
+        mediaId: 'media-1',
+        mimeType: 'video/mp4',
+        quote: {
+          externalMessageId: 'wamid.quoted.555',
+          from: '5585888887777',
+        },
+      }),
+    );
+  });
+
   it('subscribes the app with a real Meta API call in DEV when credentials are available', async () => {
     const provider = new MetaWhatsAppProvider(
       new ConfigService({

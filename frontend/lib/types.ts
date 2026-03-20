@@ -86,6 +86,16 @@ export interface ConversationMessage {
     caption?: string | null;
     animated?: boolean;
     voice?: boolean;
+    quotedExternalMessageId?: string | null;
+    quote?: {
+      messageId?: string | null;
+      externalMessageId?: string | null;
+      contentPreview?: string | null;
+      messageType?: string | null;
+      direction?: 'INBOUND' | 'OUTBOUND' | 'SYSTEM' | null;
+      createdAt?: string | null;
+      from?: string | null;
+    } | null;
     templateName?: string | null;
     languageCode?: string | null;
     windowClosedTemplateReply?: boolean;

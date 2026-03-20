@@ -12,6 +12,7 @@ import {
   Pause,
   Paperclip,
   Play,
+  Reply,
   Search,
   SendHorizontal,
   SlidersHorizontal,
@@ -59,7 +60,14 @@ import { useSearchParams } from 'next/navigation';
 
 const INBOX_REFRESH_INTERVAL = 12000;
 const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 18, 14, 24, 18, 28, 20, 16, 24, 14, 18, 12, 8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14];
-const HIDDEN_MEDIA_LABELS = new Set(['Imagem', 'Audio', 'Video', 'Figurinha', 'Documento anexado']);
+const HIDDEN_MEDIA_LABELS = new Set([
+  'Imagem',
+  'Audio',
+  'Video',
+  'Figurinha',
+  'Documento',
+  'Documento anexado',
+]);
 const MESSAGE_STATUS_LABELS: Record<string, string> = {
   READ: 'Lida',
   DELIVERED: 'Entregue',
@@ -122,6 +130,7 @@ function InboxPageContent() {
     useState<ConversationStatusFilterValue>('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
+  const [quotedMessageId, setQuotedMessageId] = useState<string | null>(null);
   const [quickMessagesOpen, setQuickMessagesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [reminderForm, setReminderForm] = useState<ReminderFormState>(DEFAULT_REMINDER_FORM);
@@ -291,6 +300,7 @@ function InboxPageContent() {
             meQuery.data?.name ?? 'Equipe',
             messageDraft,
           ),
+          quotedMessageId: effectiveQuotedMessageId ?? undefined,
         },
       }),
     onMutate: async () => {
@@ -302,12 +312,17 @@ function InboxPageContent() {
         meQuery.data?.name ?? 'Equipe',
         messageDraft,
       );
+      const optimisticQuotedMessage = effectiveQuotedMessageId
+        ? queryClient
+            .getQueryData<Conversation>(['conversation', activeConversationId, 'messages'])
+            ?.messages?.find((message) => message.id === effectiveQuotedMessageId) ?? null
+        : null;
       const optimisticMessage: ConversationMessage = {
         id: `optimistic-${Date.now()}`,
         direction: 'OUTBOUND',
         messageType: 'text',
         content: formattedContent,
-        metadata: null,
+        metadata: buildQuoteMetadataForComposer(optimisticQuotedMessage),
         status: 'QUEUED',
         createdAt: new Date().toISOString(),
       };
@@ -337,6 +352,7 @@ function InboxPageContent() {
     },
     onSuccess: async (message) => {
       setMessageDraft('');
+      setQuotedMessageId(null);
 
       if (message.metadata?.windowClosedTemplateReply) {
         toast.success(
@@ -391,6 +407,10 @@ function InboxPageContent() {
         formData.append('isVoiceNote', 'true');
       }
 
+      if (effectiveQuotedMessageId) {
+        formData.append('quotedMessageId', effectiveQuotedMessageId);
+      }
+
       return apiRequest('messages/media', {
         method: 'POST',
         body: formData,
@@ -398,6 +418,7 @@ function InboxPageContent() {
     },
     onSuccess: async () => {
       setMessageDraft('');
+      setQuotedMessageId(null);
       setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -610,6 +631,14 @@ function InboxPageContent() {
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
     [selectedConversation],
   );
+  const quotedMessage = useMemo(
+    () =>
+      quotedMessageId
+        ? selectedConversation?.messages?.find((message) => message.id === quotedMessageId) ?? null
+        : null,
+    [quotedMessageId, selectedConversation?.messages],
+  );
+  const effectiveQuotedMessageId = quotedMessage?.id ?? null;
   const latestSelectedMessageId =
     selectedConversation?.messages?.length
       ? selectedConversation.messages[selectedConversation.messages.length - 1]
@@ -666,6 +695,7 @@ function InboxPageContent() {
       setEditingReminderId(null);
       setDetailsOpen(false);
       setQuickMessagesOpen(false);
+      setQuotedMessageId(null);
     }, 0);
 
     return () => window.clearTimeout(resetPanels);
@@ -1178,7 +1208,7 @@ function InboxPageContent() {
                 {selectedConversation.messages?.map((message) => (
                   <div
                     key={message.id}
-                    className={`w-fit max-w-[92%] rounded-[20px] px-3.5 py-2.5 text-[13px] leading-5 shadow-[0_14px_30px_rgba(2,10,22,0.14)] sm:max-w-[min(68%,34rem)] ${
+                    className={`relative w-fit max-w-[92%] rounded-[20px] px-3.5 py-2.5 text-[13px] leading-5 shadow-[0_14px_30px_rgba(2,10,22,0.14)] sm:max-w-[min(68%,34rem)] ${
                       message.direction === 'OUTBOUND'
                         ? 'ml-auto bg-[linear-gradient(180deg,#45a0ff,#3a8eed)] text-white'
                         : message.direction === 'SYSTEM'
@@ -1186,6 +1216,25 @@ function InboxPageContent() {
                           : 'border border-white/6 bg-white/[0.045] text-foreground'
                     }`}
                   >
+                    {canQuoteMessage(message) ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          'absolute right-2 top-2 rounded-full p-1 transition',
+                          message.direction === 'OUTBOUND'
+                            ? 'text-white/75 hover:bg-white/16 hover:text-white'
+                            : 'text-muted-foreground hover:bg-white/8 hover:text-foreground',
+                        )}
+                        onClick={() => {
+                          setQuotedMessageId(message.id);
+                          composerTextareaRef.current?.focus();
+                        }}
+                        title="Responder com quote"
+                        aria-label="Responder com quote"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                     <MessageBubbleContent message={message} />
                     <p
                       className={`mt-1.5 text-[9px] ${
@@ -1289,6 +1338,26 @@ function InboxPageContent() {
                   ) : null}
                   {!isRecording ? (
                     <>
+                      {quotedMessage ? (
+                        <div className="mb-2 flex items-start justify-between gap-2 rounded-[14px] border border-primary/25 bg-primary/10 px-2.5 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/85">
+                              Respondendo com quote
+                            </p>
+                            <p className="truncate text-xs text-foreground/90">
+                              {buildMessageQuotePreview(quotedMessage)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-full p-1 text-muted-foreground transition hover:bg-white/8 hover:text-foreground"
+                            onClick={() => setQuotedMessageId(null)}
+                            aria-label="Remover quote"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null}
                       <Textarea
                         ref={composerTextareaRef}
                         value={messageDraft}
@@ -1798,29 +1867,39 @@ function MessageBubbleContent({
 }) {
   const mediaUrl = `/api/proxy/messages/${message.id}/media`;
   const messageCaption = getMessageCaption(message);
+  const normalizedMessageType = normalizeConversationMessageType(message.messageType);
   const tone =
     message.direction === 'OUTBOUND'
       ? 'outgoing'
       : message.direction === 'SYSTEM'
         ? 'system'
         : 'incoming';
+  const quote = message.metadata?.quote;
+  const quoteBlock = quote ? <QuotedMessageBlock quote={quote} tone={tone} /> : null;
+  const hasUnknownMedia =
+    Boolean(message.metadata?.mediaId) &&
+    !['image', 'sticker', 'audio', 'video', 'document', 'template', 'text'].includes(
+      normalizedMessageType,
+    );
 
-  if (message.messageType === 'image' || message.messageType === 'sticker') {
+  if (normalizedMessageType === 'image' || normalizedMessageType === 'sticker') {
     return (
       <div className="space-y-2">
+        {quoteBlock}
         <ImageMessagePreview
           src={mediaUrl}
-          alt={message.messageType === 'sticker' ? 'Figurinha' : 'Imagem'}
-          isSticker={message.messageType === 'sticker'}
+          alt={normalizedMessageType === 'sticker' ? 'Figurinha' : 'Imagem'}
+          isSticker={normalizedMessageType === 'sticker'}
         />
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
 
-  if (message.messageType === 'audio') {
+  if (normalizedMessageType === 'audio') {
     return (
       <div className="space-y-2">
+        {quoteBlock}
         <CompactAudioPlayer
           src={mediaUrl}
           isVoiceMessage={Boolean(message.metadata?.voice)}
@@ -1831,9 +1910,10 @@ function MessageBubbleContent({
     );
   }
 
-  if (message.messageType === 'video') {
+  if (normalizedMessageType === 'video') {
     return (
       <div className="space-y-2">
+        {quoteBlock}
         <video
           controls
           playsInline
@@ -1846,9 +1926,10 @@ function MessageBubbleContent({
     );
   }
 
-  if (message.messageType === 'document') {
+  if (normalizedMessageType === 'document' || hasUnknownMedia) {
     return (
       <div className="space-y-2">
+        {quoteBlock}
         <a
           href={mediaUrl}
           target="_blank"
@@ -1856,16 +1937,17 @@ function MessageBubbleContent({
           className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-xs underline-offset-4 hover:underline"
         >
           <Paperclip className="h-3.5 w-3.5" />
-          {message.metadata?.fileName ?? 'Abrir documento'}
+          {message.metadata?.fileName ?? (hasUnknownMedia ? 'Abrir midia' : 'Abrir documento')}
         </a>
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
 
-  if (message.messageType === 'template') {
+  if (normalizedMessageType === 'template') {
     return (
       <div className="space-y-2">
+        {quoteBlock}
         <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-current/85">
           {message.metadata?.windowClosedTemplateReply
             ? `Template automatico: ${message.metadata?.templateName ?? 'aprovado'}`
@@ -1876,7 +1958,47 @@ function MessageBubbleContent({
     );
   }
 
-  return <FormattedMessageText content={message.content} tone={tone} />;
+  return (
+    <div className="space-y-2">
+      {quoteBlock}
+      <FormattedMessageText content={message.content} tone={tone} />
+    </div>
+  );
+}
+
+function QuotedMessageBlock({
+  quote,
+  tone,
+}: {
+  quote: NonNullable<NonNullable<ConversationMessage['metadata']>['quote']>;
+  tone: 'outgoing' | 'incoming' | 'system';
+}) {
+  const sourceLabel =
+    quote.direction === 'OUTBOUND'
+      ? 'Mensagem do atendimento'
+      : quote.direction === 'SYSTEM'
+        ? 'Mensagem do sistema'
+        : 'Mensagem do cliente';
+
+  return (
+    <div
+      className={cn(
+        'rounded-xl border px-2.5 py-2',
+        tone === 'outgoing'
+          ? 'border-white/24 bg-white/15 text-white/90'
+          : tone === 'system'
+            ? 'border-primary/22 bg-primary/10 text-foreground/85'
+            : 'border-white/14 bg-white/[0.04] text-foreground/85',
+      )}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-85">
+        {sourceLabel}
+      </p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-4">
+        {quote.contentPreview?.trim() || 'Mensagem citada'}
+      </p>
+    </div>
+  );
 }
 
 function FormattedMessageText({
@@ -2124,6 +2246,75 @@ function CompactAudioPlayer({
   );
 }
 
+function normalizeConversationMessageType(messageType?: string | null) {
+  const normalized = (messageType ?? '').trim().toLowerCase();
+
+  const typeMap: Record<string, string> = {
+    voice: 'audio',
+    ptt: 'audio',
+    video_note: 'video',
+    video_note_message: 'video',
+    animated_sticker: 'sticker',
+  };
+
+  if (!normalized) {
+    return 'text';
+  }
+
+  return typeMap[normalized] ?? normalized;
+}
+
+function canQuoteMessage(message: ConversationMessage) {
+  return message.direction !== 'SYSTEM' && message.status !== 'QUEUED';
+}
+
+function buildMessageQuotePreview(message: ConversationMessage) {
+  const content = message.content?.trim();
+
+  if (content && !HIDDEN_MEDIA_LABELS.has(content)) {
+    return content.slice(0, 220);
+  }
+
+  const normalizedType = normalizeConversationMessageType(message.messageType);
+
+  if (normalizedType === 'document') {
+    return message.metadata?.fileName
+      ? `Documento: ${message.metadata.fileName}`
+      : 'Documento';
+  }
+
+  if (normalizedType === 'template') {
+    return message.metadata?.templateName
+      ? `Template: ${message.metadata.templateName}`
+      : 'Template enviado';
+  }
+
+  if (normalizedType === 'image') return 'Imagem';
+  if (normalizedType === 'audio') {
+    return message.metadata?.voice ? 'Mensagem de voz' : 'Audio';
+  }
+  if (normalizedType === 'video') return 'Video';
+  if (normalizedType === 'sticker') return 'Figurinha';
+
+  return content?.slice(0, 220) || 'Mensagem';
+}
+
+function buildQuoteMetadataForComposer(message?: ConversationMessage | null) {
+  if (!message) {
+    return null;
+  }
+
+  return {
+    quote: {
+      messageId: message.id,
+      contentPreview: buildMessageQuotePreview(message),
+      messageType: normalizeConversationMessageType(message.messageType),
+      direction: message.direction,
+      createdAt: message.createdAt,
+    },
+  };
+}
+
 function getMessageCaption(message: ConversationMessage) {
   const content = message.content?.trim();
 
@@ -2135,7 +2326,10 @@ function getMessageCaption(message: ConversationMessage) {
     return null;
   }
 
-  if (message.messageType === 'document' && content.startsWith('Documento:')) {
+  if (
+    normalizeConversationMessageType(message.messageType) === 'document' &&
+    content.startsWith('Documento:')
+  ) {
     return null;
   }
 

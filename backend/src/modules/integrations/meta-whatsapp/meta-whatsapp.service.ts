@@ -345,6 +345,7 @@ export class MetaWhatsAppService {
       direction?: MessageDirection;
       isAutomated?: boolean;
       autoMessageType?: AutoMessageType;
+      quotedMessageId?: string;
     },
   ) {
     const conversation = await this.prisma.conversation.findFirst({
@@ -406,10 +407,19 @@ export class MetaWhatsAppService {
       );
     }
 
+    const quoteContext = await this.resolveQuotedMessageContext({
+      workspaceId,
+      conversationId: conversation.id,
+      quotedMessageId: options?.quotedMessageId,
+    });
+
     const providerResult = await this.provider.sendTextMessage(
       config,
       conversation.contact.phone,
       content,
+      {
+        quotedExternalMessageId: quoteContext?.externalMessageId,
+      },
     );
 
     return this.persistOutboundMessage({
@@ -421,7 +431,13 @@ export class MetaWhatsAppService {
       direction: options?.direction,
       isAutomated: options?.isAutomated,
       autoMessageType: options?.autoMessageType,
-      providerResult,
+      providerResult: {
+        ...providerResult,
+        metadata: {
+          ...(providerResult.metadata ?? {}),
+          ...(quoteContext?.metadata ?? {}),
+        },
+      },
     });
   }
 
@@ -435,6 +451,7 @@ export class MetaWhatsAppService {
       mimeType: string;
       caption?: string;
       voice?: boolean;
+      quotedMessageId?: string;
     },
   ) {
     const conversation = await this.prisma.conversation.findFirst({
@@ -485,6 +502,11 @@ export class MetaWhatsAppService {
       fileName: payload.fileName,
       mimeType: payload.mimeType,
     });
+    const quoteContext = await this.resolveQuotedMessageContext({
+      workspaceId,
+      conversationId: conversation.id,
+      quotedMessageId: payload.quotedMessageId,
+    });
 
     const providerResult = await this.provider.sendMediaMessage(
       config,
@@ -494,6 +516,7 @@ export class MetaWhatsAppService {
         mediaId: uploadResult.mediaId,
         caption: payload.caption,
         fileName: payload.fileName,
+        quotedExternalMessageId: quoteContext?.externalMessageId,
       },
     );
 
@@ -517,6 +540,7 @@ export class MetaWhatsAppService {
           fileName: payload.fileName,
           caption: payload.caption,
           voice: payload.voice ?? false,
+          ...(quoteContext?.metadata ?? {}),
         },
       },
     });
@@ -732,6 +756,11 @@ export class MetaWhatsAppService {
         contact.id,
         inboundInstance.id,
       );
+      const inboundMetadata = await this.enrichInboundMessageMetadata({
+        workspaceId: inboundInstance.workspaceId,
+        conversationId: conversation.id,
+        metadata: inbound.metadata,
+      });
 
       await this.prisma.conversationMessage.create({
         data: {
@@ -743,7 +772,7 @@ export class MetaWhatsAppService {
           direction: MessageDirection.INBOUND,
           messageType: inbound.messageType,
           content: inbound.body,
-          metadata: inbound.metadata as Prisma.InputJsonValue | undefined,
+          metadata: inboundMetadata as Prisma.InputJsonValue | undefined,
           status: MessageStatus.READ,
           sentAt: inbound.timestamp
             ? new Date(Number(inbound.timestamp) * 1000)
@@ -1637,6 +1666,7 @@ export class MetaWhatsAppService {
     if (messageType === 'image') return 'Imagem';
     if (messageType === 'audio') return 'Audio';
     if (messageType === 'video') return 'Video';
+    if (messageType === 'video_note') return 'Video';
     if (messageType === 'sticker') return 'Figurinha';
     if (messageType === 'document')
       return fileName ? `Documento: ${fileName}` : 'Documento';
@@ -1649,17 +1679,169 @@ export class MetaWhatsAppService {
     mimeType?: string | null;
     fileName?: string | null;
   } {
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    const value = this.toRecord(metadata);
+
+    if (!value) {
       return {};
     }
-
-    const value = metadata as Record<string, Prisma.JsonValue>;
 
     return {
       mediaId: typeof value.mediaId === 'string' ? value.mediaId : undefined,
       mimeType: typeof value.mimeType === 'string' ? value.mimeType : null,
       fileName: typeof value.fileName === 'string' ? value.fileName : null,
     };
+  }
+
+  private async resolveQuotedMessageContext(payload: {
+    workspaceId: string;
+    conversationId: string;
+    quotedMessageId?: string;
+  }) {
+    const quotedMessageId = payload.quotedMessageId?.trim();
+
+    if (!quotedMessageId) {
+      return null;
+    }
+
+    const quotedMessage = await this.prisma.conversationMessage.findFirst({
+      where: {
+        id: quotedMessageId,
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+      },
+      select: {
+        id: true,
+        externalMessageId: true,
+        content: true,
+        messageType: true,
+        direction: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
+
+    if (!quotedMessage) {
+      throw new BadRequestException(
+        'A mensagem selecionada para quote nao foi encontrada nesta conversa.',
+      );
+    }
+
+    if (!quotedMessage.externalMessageId) {
+      throw new BadRequestException(
+        'A mensagem selecionada ainda nao pode ser citada. Aguarde sincronizar e tente novamente.',
+      );
+    }
+
+    return {
+      externalMessageId: quotedMessage.externalMessageId,
+      metadata: {
+        quote: {
+          messageId: quotedMessage.id,
+          externalMessageId: quotedMessage.externalMessageId,
+          contentPreview: this.buildQuotePreview(quotedMessage),
+          messageType: quotedMessage.messageType,
+          direction: quotedMessage.direction,
+          createdAt: quotedMessage.createdAt.toISOString(),
+        },
+      },
+    };
+  }
+
+  private async enrichInboundMessageMetadata(payload: {
+    workspaceId: string;
+    conversationId: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const baseMetadata = this.toRecord(payload.metadata);
+
+    if (!baseMetadata) {
+      return undefined;
+    }
+
+    const quote = this.readQuoteMetadata(baseMetadata);
+
+    if (!quote?.externalMessageId) {
+      return baseMetadata;
+    }
+
+    const quotedMessage = await this.prisma.conversationMessage.findFirst({
+      where: {
+        workspaceId: payload.workspaceId,
+        conversationId: payload.conversationId,
+        externalMessageId: quote.externalMessageId,
+      },
+      select: {
+        id: true,
+        content: true,
+        messageType: true,
+        direction: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
+
+    return {
+      ...baseMetadata,
+      quote: {
+        ...quote,
+        messageId: quotedMessage?.id ?? null,
+        contentPreview: quotedMessage
+          ? this.buildQuotePreview(quotedMessage)
+          : quote.contentPreview ?? 'Mensagem citada',
+        messageType: quotedMessage?.messageType ?? quote.messageType ?? null,
+        direction: quotedMessage?.direction ?? quote.direction ?? null,
+        createdAt: quotedMessage?.createdAt.toISOString() ?? null,
+      },
+    };
+  }
+
+  private buildQuotePreview(message: {
+    content?: string | null;
+    messageType?: string | null;
+    metadata?: Prisma.JsonValue | null;
+  }) {
+    const normalizedContent = message.content?.trim();
+
+    if (normalizedContent) {
+      return normalizedContent.slice(0, 220);
+    }
+
+    const metadata = this.readMessageMetadata(message.metadata ?? null);
+
+    return this.buildMediaPlaceholder(message.messageType ?? undefined, metadata.fileName);
+  }
+
+  private readQuoteMetadata(metadata: Record<string, unknown>) {
+    const quote = this.toRecord(metadata.quote);
+
+    if (!quote) {
+      return null;
+    }
+
+    return {
+      messageId: typeof quote.messageId === 'string' ? quote.messageId : null,
+      externalMessageId:
+        typeof quote.externalMessageId === 'string'
+          ? quote.externalMessageId
+          : null,
+      contentPreview:
+        typeof quote.contentPreview === 'string' ? quote.contentPreview : null,
+      messageType: typeof quote.messageType === 'string' ? quote.messageType : null,
+      direction:
+        typeof quote.direction === 'string'
+          ? (quote.direction as MessageDirection)
+          : null,
+      createdAt: typeof quote.createdAt === 'string' ? quote.createdAt : null,
+      from: typeof quote.from === 'string' ? quote.from : null,
+    };
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
   }
 
   private async notifyConversationRecipientsAboutInboundMessage(payload: {

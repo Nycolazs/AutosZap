@@ -628,6 +628,7 @@ export class ConversationsService {
     conversationId: string,
     user: CurrentAuthUser,
     content: string,
+    quotedMessageId?: string,
   ) {
     if (!content.trim()) {
       throw new BadRequestException('Digite uma mensagem para enviar.');
@@ -650,6 +651,9 @@ export class ConversationsService {
       conversationId,
       user.sub,
       formattedContent,
+      {
+        quotedMessageId,
+      },
     );
 
     if (preparedReply.assignmentTransition?.changed) {
@@ -674,6 +678,7 @@ export class ConversationsService {
       mimeType: string;
       caption?: string;
       voice?: boolean;
+      quotedMessageId?: string;
     },
   ) {
     const preparedReply =
