@@ -204,7 +204,14 @@ function InboxPageContent() {
     meQuery.isLoading ||
     conversationSummaryQuery.isLoading;
 
-  const conversations = useMemo(() => conversationsQuery.data?.data ?? [], [conversationsQuery.data]);
+  const conversations = useMemo(() => {
+    const list = conversationsQuery.data?.data ?? [];
+    return [...list].sort((a, b) => {
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : new Date(a.createdAt).getTime();
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  }, [conversationsQuery.data]);
   const activeConversationId = useMemo(() => {
     if (!conversations.length) {
       return null;
@@ -1256,11 +1263,17 @@ function InboxPageContent() {
                         className={cn(
                           'relative rounded-lg px-2.5 py-1.5 shadow-sm',
                           message.direction === 'OUTBOUND'
-                            ? 'rounded-tr-[4px] bg-[#005c4b] text-[#e9edef]'
+                            ? 'rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]'
                             : message.direction === 'SYSTEM'
                               ? 'rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground'
                               : 'rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]',
                         )}
+                        onDoubleClick={() => {
+                          if (canQuoteMessage(message)) {
+                            setQuotedMessageId(message.id);
+                            composerTextareaRef.current?.focus();
+                          }
+                        }}
                       >
                         {canQuoteMessage(message) ? (
                           <button
@@ -1354,7 +1367,7 @@ function InboxPageContent() {
 
                       <button
                         type="button"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#00a884]/85"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/85"
                         onClick={() => finishRecording('send')}
                         disabled={sendMediaMutation.isPending}
                       >
@@ -1390,9 +1403,9 @@ function InboxPageContent() {
                   {!isRecording ? (
                     <>
                       {quotedMessage ? (
-                        <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border-l-[3px] border-l-[#06cf9c] bg-[#1a2a3d] px-2.5 py-2">
+                        <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border-l-[3px] border-l-primary bg-[#1a2a3d] px-2.5 py-2">
                           <div className="min-w-0">
-                            <p className="text-[11px] font-semibold text-[#06cf9c]">
+                            <p className="text-[11px] font-semibold text-primary">
                               Respondendo
                             </p>
                             <p className="truncate text-xs text-foreground/75">
@@ -2037,13 +2050,13 @@ function QuotedMessageBlock({
       className={cn(
         'rounded-md border-l-[3px] px-2 py-1.5',
         tone === 'outgoing'
-          ? 'border-l-[#06cf9c] bg-[#025144]/60'
+          ? 'border-l-[#5b9df5] bg-[#0d3568]/60'
           : tone === 'system'
             ? 'border-l-primary/50 bg-primary/10'
-            : 'border-l-[#06cf9c] bg-white/[0.06]',
+            : 'border-l-[#5b9df5] bg-white/[0.06]',
       )}
     >
-      <p className="text-[11px] font-semibold text-[#06cf9c]">
+      <p className={cn('text-[11px] font-semibold', tone === 'outgoing' ? 'text-[#7eb8ff]' : 'text-[#5b9df5]')}>
         {sourceLabel}
       </p>
       <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[12px] leading-4 opacity-75">
@@ -2253,7 +2266,7 @@ function CompactAudioPlayer({
           type="button"
           className={cn(
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition',
-            outgoing ? 'bg-[#00a884] text-white hover:bg-[#00a884]/80' : 'bg-[#00a884] text-white hover:bg-[#00a884]/80',
+            'bg-primary text-white hover:bg-primary/80',
           )}
           onClick={() => {
             void togglePlayback();
@@ -2274,7 +2287,7 @@ function CompactAudioPlayer({
                     className={cn(
                       'rounded-full transition-colors',
                       progress >= threshold
-                        ? 'bg-[#00a884]'
+                        ? 'bg-primary'
                         : outgoing
                           ? 'bg-[#ffffff40]'
                           : 'bg-[#ffffff25]',
