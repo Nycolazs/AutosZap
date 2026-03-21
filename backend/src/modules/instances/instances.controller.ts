@@ -194,20 +194,22 @@ export class InstancesController {
       dto,
     );
 
+    const instanceId = (instance as { id: string }).id;
+
     // Best-effort sync and subscribe — don't fail the request if these fail
     try {
-      await this.metaWhatsAppService.syncInstance(user.workspaceId, instance.id);
+      await this.metaWhatsAppService.syncInstance(user.workspaceId, instanceId);
     } catch {
       // Instance was created, user can retry sync manually
     }
 
     try {
-      await this.metaWhatsAppService.subscribeApp(user.workspaceId, instance.id);
+      await this.metaWhatsAppService.subscribeApp(user.workspaceId, instanceId);
     } catch {
       // Instance was created, user can retry subscribe manually
     }
 
-    return this.instancesService.findOne(instance.id, user.workspaceId);
+    return this.instancesService.findOne(instanceId, user.workspaceId);
   }
 
   @Roles(Role.ADMIN)
