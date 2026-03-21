@@ -17,13 +17,9 @@ mac:
 win:
   icon: ../../frontend/app/favicon.ico
   target:
-    - nsis
-nsis:
-  installerIcon: ../../frontend/app/favicon.ico
-  uninstallerIcon: ../../frontend/app/favicon.ico
+    - portable
 linux:
   target:
     - AppImage
 publish:
-  provider: generic
-  url: ${env.DESKTOP_UPDATES_BASE_URL}
+  provider: github

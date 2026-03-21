@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   StreamableFile,
   UploadedFile,
@@ -14,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionKey } from '@prisma/client';
 import { IsOptional, IsString } from 'class-validator';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -59,6 +60,52 @@ class SendMediaDto {
   @IsOptional()
   @IsString()
   quotedMessageId?: string;
+}
+
+function parseByteRangeHeader(
+  rangeHeader: string | undefined,
+  totalLength: number,
+) {
+  if (!rangeHeader?.startsWith('bytes=') || totalLength <= 0) {
+    return null;
+  }
+
+  const [rawRange] = rangeHeader.replace(/^bytes=/, '').split(',');
+
+  if (!rawRange) {
+    return null;
+  }
+
+  const [rawStart, rawEnd] = rawRange.split('-');
+  const start = rawStart ? Number.parseInt(rawStart, 10) : Number.NaN;
+  const end = rawEnd ? Number.parseInt(rawEnd, 10) : Number.NaN;
+
+  if (Number.isNaN(start)) {
+    if (Number.isNaN(end) || end <= 0) {
+      return null;
+    }
+
+    const suffixLength = Math.min(end, totalLength);
+
+    return {
+      start: totalLength - suffixLength,
+      end: totalLength - 1,
+    };
+  }
+
+  if (start < 0 || start >= totalLength) {
+    return null;
+  }
+
+  const boundedStart = Math.max(0, Math.min(start, totalLength - 1));
+  const boundedEnd = Number.isNaN(end)
+    ? totalLength - 1
+    : Math.max(boundedStart, Math.min(end, totalLength - 1));
+
+  return {
+    start: boundedStart,
+    end: boundedEnd,
+  };
 }
 
 @Controller('messages')
@@ -116,18 +163,36 @@ export class MessagesController {
   async getMedia(
     @CurrentUser() user: CurrentAuthUser,
     @Param('id') id: string,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const media = await this.conversationsService.getMessageMedia(id, user);
+    const totalLength = media.buffer.length;
+    const byteRange = parseByteRangeHeader(request.headers.range, totalLength);
+    const buffer =
+      byteRange === null
+        ? media.buffer
+        : media.buffer.subarray(byteRange.start, byteRange.end + 1);
 
     response.setHeader(
       'Content-Type',
       media.mimeType ?? 'application/octet-stream',
     );
     response.setHeader('Cache-Control', 'private, max-age=300');
+    response.setHeader('Accept-Ranges', 'bytes');
 
-    if (media.contentLength) {
-      response.setHeader('Content-Length', String(media.contentLength));
+    if (byteRange) {
+      response.status(206);
+      response.setHeader(
+        'Content-Range',
+        `bytes ${byteRange.start}-${byteRange.end}/${totalLength}`,
+      );
+      response.setHeader('Content-Length', String(buffer.length));
+    } else if (totalLength || media.contentLength) {
+      response.setHeader(
+        'Content-Length',
+        String(media.contentLength ?? totalLength),
+      );
     }
 
     if (media.fileName) {
@@ -137,6 +202,6 @@ export class MessagesController {
       );
     }
 
-    return new StreamableFile(media.buffer);
+    return new StreamableFile(buffer);
   }
 }

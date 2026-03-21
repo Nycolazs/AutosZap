@@ -2,7 +2,10 @@ import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { JwtStrategy } from './jwt.strategy';
+import {
+  JwtStrategy,
+  extractAccessTokenFromReadonlyQuery,
+} from './jwt.strategy';
 
 describe('JwtStrategy', () => {
   let controlPlanePrisma: jest.Mocked<ControlPlanePrismaService>;
@@ -104,5 +107,36 @@ describe('JwtStrategy', () => {
         companyId: 'company-1',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('deve aceitar accessToken na query para requisicoes GET/HEAD', () => {
+    expect(
+      extractAccessTokenFromReadonlyQuery({
+        method: 'GET',
+        query: {
+          accessToken: 'token-query',
+        },
+      }),
+    ).toBe('token-query');
+
+    expect(
+      extractAccessTokenFromReadonlyQuery({
+        method: 'HEAD',
+        query: {
+          accessToken: ['token-array'],
+        },
+      }),
+    ).toBe('token-array');
+  });
+
+  it('deve ignorar accessToken na query para requisicoes mutaveis', () => {
+    expect(
+      extractAccessTokenFromReadonlyQuery({
+        method: 'POST',
+        query: {
+          accessToken: 'token-query',
+        },
+      }),
+    ).toBeNull();
   });
 });

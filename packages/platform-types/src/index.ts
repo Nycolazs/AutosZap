@@ -368,3 +368,293 @@ export interface PlatformReleasesManifest {
 export interface ReleaseLookupResult extends PlatformReleasesManifest {
   recommended?: PlatformReleaseArtifact | null;
 }
+
+// ── Assistants ──────────────────────────────────────────────
+
+export type AssistantStatus = 'ACTIVE' | 'INACTIVE' | 'DRAFT';
+export type EntityStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface AssistantRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  objective?: string | null;
+  systemPrompt: string;
+  temperature: number;
+  model: string;
+  status: AssistantStatus;
+  knowledgeBases?: Array<{ id: string; name: string }>;
+  tools?: Array<{ id: string; name: string; type: string }>;
+  createdAt?: string;
+}
+
+export interface CreateAssistantPayload {
+  name: string;
+  description?: string;
+  objective?: string;
+  systemPrompt: string;
+  temperature: number;
+  model: string;
+  status?: AssistantStatus;
+  knowledgeBaseIds?: string[];
+  toolIds?: string[];
+}
+
+// ── Knowledge Bases ─────────────────────────────────────────
+
+export type KnowledgeBaseType = 'MANUAL' | 'URL' | 'FILE';
+export type KnowledgeDocumentType = 'TEXT' | 'URL' | 'FAQ';
+
+export interface KnowledgeBaseRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  type: KnowledgeBaseType;
+  status: EntityStatus;
+  documentCount?: number;
+  createdAt?: string;
+}
+
+export interface CreateKnowledgeBasePayload {
+  name: string;
+  description?: string;
+  type: KnowledgeBaseType;
+  status?: EntityStatus;
+}
+
+export interface KnowledgeDocumentRecord {
+  id: string;
+  knowledgeBaseId: string;
+  title: string;
+  type: KnowledgeDocumentType;
+  sourceUrl?: string | null;
+  content: string;
+  status: EntityStatus;
+  createdAt?: string;
+}
+
+export interface CreateKnowledgeDocumentPayload {
+  knowledgeBaseId: string;
+  title: string;
+  type: KnowledgeDocumentType;
+  sourceUrl?: string;
+  content: string;
+  status?: EntityStatus;
+}
+
+// ── AI Tools ────────────────────────────────────────────────
+
+export interface AiToolRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  type: string;
+  endpoint?: string | null;
+  action?: string | null;
+  status: EntityStatus;
+  config?: Record<string, unknown> | null;
+  createdAt?: string;
+}
+
+export interface CreateAiToolPayload {
+  name: string;
+  description?: string;
+  type: string;
+  endpoint?: string;
+  action?: string;
+  status?: EntityStatus;
+  config?: Record<string, unknown>;
+}
+
+// ── Quick Messages ──────────────────────────────────────────
+
+export interface QuickMessageRecord {
+  id: string;
+  title: string;
+  content: string;
+  createdAt?: string;
+}
+
+export interface CreateQuickMessagePayload {
+  title: string;
+  content: string;
+}
+
+// ── Pipeline Stages ─────────────────────────────────────────
+
+export interface PipelineRecord {
+  id: string;
+  name: string;
+  stages: PipelineStageRecord[];
+}
+
+export interface PipelineStageRecord {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  probability: number;
+}
+
+export interface CreatePipelineStagePayload {
+  pipelineId: string;
+  name: string;
+  color: string;
+  order: number;
+  probability: number;
+}
+
+// ── Leads (extended) ────────────────────────────────────────
+
+export interface LeadDetail extends LeadSummary {
+  contactId?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  tags?: TagSummary[];
+  createdAt?: string;
+}
+
+export interface CreateLeadPayload {
+  pipelineId: string;
+  stageId: string;
+  contactId?: string;
+  assignedToId?: string;
+  name: string;
+  company?: string;
+  source?: string;
+  value: string;
+  order?: number;
+  notes?: string;
+  tagIds?: string[];
+}
+
+// ── Campaigns (extended) ────────────────────────────────────
+
+export interface CreateCampaignPayload {
+  name: string;
+  description?: string;
+  audienceType: string;
+  targetConfig: Record<string, unknown>;
+  message: string;
+  scheduledAt?: string;
+  status?: string;
+  instanceId?: string;
+}
+
+// ── Contacts (payload) ─────────────────────────────────────
+
+export interface CreateContactPayload {
+  name: string;
+  phone: string;
+  email?: string;
+  company?: string;
+  jobTitle?: string;
+  source?: string;
+  notes?: string;
+  tagIds?: string[];
+}
+
+// ── Team (payloads) ─────────────────────────────────────────
+
+export interface CreateTeamMemberPayload {
+  name: string;
+  email: string;
+  title?: string;
+  role: string;
+  status?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+export interface UpdateTeamMemberPayload {
+  name?: string;
+  email?: string;
+  title?: string;
+  role?: string;
+  status?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+// ── Instances (payloads) ────────────────────────────────────
+
+export interface CreateInstancePayload {
+  name: string;
+  provider?: string;
+  status?: string;
+  mode?: string;
+  appId?: string;
+  phoneNumber?: string;
+  businessAccountId?: string;
+  phoneNumberId?: string;
+  accessToken?: string;
+  webhookVerifyToken?: string;
+  appSecret?: string;
+}
+
+export interface InstanceDiagnostics {
+  healthy: boolean;
+  simulated: boolean;
+  detail: string;
+  phoneNumber?: Record<string, unknown>;
+  businessProfile?: Record<string, unknown>;
+  subscribedApps?: Array<{ appId: string; appName: string; link: string }>;
+  templates?: Array<{ name: string; status: string; language: string }>;
+}
+
+// ── Auth (extended) ─────────────────────────────────────────
+
+export interface AuthMeExtended extends AuthMe {
+  companies?: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    tenantRole: string;
+    isDefault: boolean;
+  }>;
+}
+
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  companyName: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  password: string;
+}
+
+// ── Groups & Lists (payloads) ───────────────────────────────
+
+export interface CreateGroupPayload {
+  name: string;
+  description?: string;
+}
+
+export interface CreateContactListPayload {
+  name: string;
+  description?: string;
+}
+
+// ── Conversation (extended payloads) ────────────────────────
+
+export interface UpdateConversationPayload {
+  assignedUserId?: string | null;
+  tagIds?: string[];
+}
+
+// ── Permission Catalog ──────────────────────────────────────
+
+export interface PermissionCatalogItem {
+  key: string;
+  label: string;
+  description?: string;
+  group?: string;
+}

@@ -27,6 +27,12 @@ async function forwardRequest(request: NextRequest, path: string[], token?: stri
       ...(request.headers.get('accept')
         ? { Accept: request.headers.get('accept') as string }
         : {}),
+      ...(request.headers.get('range')
+        ? { Range: request.headers.get('range') as string }
+        : {}),
+      ...(request.headers.get('if-range')
+        ? { 'If-Range': request.headers.get('if-range') as string }
+        : {}),
       ...(request.headers.get('last-event-id')
         ? { 'Last-Event-ID': request.headers.get('last-event-id') as string }
         : {}),
@@ -97,21 +103,26 @@ async function handler(request: NextRequest, context: RouteContext) {
       'Content-Type': contentType,
     });
 
-    const cacheControl = response.headers.get('cache-control');
-    const contentDisposition = response.headers.get('content-disposition');
+    for (const [headerName, forwardedName] of [
+      ['cache-control', 'Cache-Control'],
+      ['content-disposition', 'Content-Disposition'],
+      ['content-length', 'Content-Length'],
+      ['content-range', 'Content-Range'],
+      ['accept-ranges', 'Accept-Ranges'],
+      ['etag', 'ETag'],
+      ['last-modified', 'Last-Modified'],
+    ] as const) {
+      const value = response.headers.get(headerName);
 
-    if (cacheControl) {
-      responseHeaders.set('Cache-Control', cacheControl);
-    }
-
-    if (contentDisposition) {
-      responseHeaders.set('Content-Disposition', contentDisposition);
+      if (value) {
+        responseHeaders.set(forwardedName, value);
+      }
     }
 
     if (isEventStream) {
       responseHeaders.set(
         'Cache-Control',
-        cacheControl ?? 'no-cache, no-transform',
+        response.headers.get('cache-control') ?? 'no-cache, no-transform',
       );
       responseHeaders.set(
         'Connection',
@@ -161,6 +172,7 @@ async function handler(request: NextRequest, context: RouteContext) {
 }
 
 export const GET = handler;
+export const HEAD = handler;
 export const POST = handler;
 export const PATCH = handler;
 export const PUT = handler;

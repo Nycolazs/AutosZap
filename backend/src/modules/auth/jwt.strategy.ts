@@ -26,6 +26,42 @@ type JwtPayload = {
   platformRole?: PlatformRole;
 };
 
+type JwtRequestLike = {
+  method?: string;
+  query?: Record<string, unknown>;
+};
+
+export function extractAccessTokenFromReadonlyQuery(
+  request?: JwtRequestLike | null,
+) {
+  if (!request) {
+    return null;
+  }
+
+  const method = request.method?.toUpperCase();
+
+  if (method && method !== 'GET' && method !== 'HEAD') {
+    return null;
+  }
+
+  const rawValue = request.query?.accessToken;
+
+  if (typeof rawValue === 'string' && rawValue.trim()) {
+    return rawValue.trim();
+  }
+
+  if (Array.isArray(rawValue)) {
+    const firstString = rawValue.find(
+      (value): value is string =>
+        typeof value === 'string' && Boolean(value.trim()),
+    );
+
+    return firstString?.trim() ?? null;
+  }
+
+  return null;
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -34,7 +70,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private readonly prisma: PrismaService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        extractAccessTokenFromReadonlyQuery,
+      ]),
       ignoreExpiration: false,
       secretOrKey:
         configService.get<string>('JWT_ACCESS_SECRET') ??

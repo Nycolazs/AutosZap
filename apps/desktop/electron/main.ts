@@ -148,15 +148,11 @@ async function createWindow() {
 }
 
 function setupAutoUpdates() {
-  if (!app.isPackaged || !process.env.DESKTOP_UPDATES_BASE_URL) {
+  if (!app.isPackaged) {
     return;
   }
 
   try {
-    autoUpdater.setFeedURL({
-      provider: 'generic',
-      url: process.env.DESKTOP_UPDATES_BASE_URL,
-    });
     void autoUpdater.checkForUpdatesAndNotify();
   } catch {
     // Falhas de auto update nao devem impedir o uso do app.
