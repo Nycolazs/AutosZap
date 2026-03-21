@@ -667,7 +667,13 @@ export class MetaWhatsAppService {
       rawBody?: Buffer;
     },
   ) {
+    this.logger.log(
+      `[Webhook] Received payload with ${JSON.stringify(payload).length} bytes`,
+    );
     const parsed = this.provider.parseWebhook(payload);
+    this.logger.log(
+      `[Webhook] Parsed ${parsed.messages.length} messages, ${parsed.statuses.length} statuses. Types: ${parsed.messages.map((m) => m.messageType).join(', ') || 'none'}`,
+    );
     const firstPhoneNumberId =
       parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
     const tenantResolution = firstPhoneNumberId
