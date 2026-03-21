@@ -97,8 +97,7 @@ export default function LoginPage() {
                   }
 
                   toast.success('Sessao iniciada com sucesso.');
-                  const shouldGoToPlatform = data.user?.isPlatformAdmin && !data.user?.companyId;
-                  router.push(shouldGoToPlatform ? '/platform' : '/app');
+                  router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : 'Falha no login.');
                 }

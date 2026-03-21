@@ -112,8 +112,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           ? 'Conta criada com sucesso!'
           : 'Sessao iniciada com sucesso.',
       );
-      const shouldGoToPlatform = data.user?.isPlatformAdmin && !data.user?.companyId;
-      router.push(shouldGoToPlatform ? '/platform' : '/app');
+      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
     },
     [companyName, inviteCode, mode, router],
   );

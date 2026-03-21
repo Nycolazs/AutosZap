@@ -4,6 +4,8 @@ import type { KeyboardEvent, MutableRefObject } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Check,
+  CheckCheck,
   ChevronLeft,
   FileImage,
   Inbox,
@@ -75,6 +77,32 @@ const MESSAGE_STATUS_LABELS: Record<string, string> = {
   FAILED: 'Falhou',
   QUEUED: 'Na fila',
 };
+
+function formatMessageTime(value?: string | Date | null) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getDateLabel(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Hoje';
+  if (date.toDateString() === yesterday.toDateString()) return 'Ontem';
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function shouldShowDateSeparator(
+  messages: ConversationMessage[],
+  index: number,
+) {
+  if (index === 0) return true;
+  const current = new Date(messages[index].createdAt);
+  const previous = new Date(messages[index - 1].createdAt);
+  return current.toDateString() !== previous.toDateString();
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ALL: 'Todas',
@@ -1204,51 +1232,74 @@ function InboxPageContent() {
                 </div>
               </div>
 
-              <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 py-3.5 sm:px-5">
-                {selectedConversation.messages?.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`relative w-fit max-w-[92%] rounded-[20px] px-3.5 py-2.5 text-[13px] leading-5 shadow-[0_14px_30px_rgba(2,10,22,0.14)] sm:max-w-[min(68%,34rem)] ${
-                      message.direction === 'OUTBOUND'
-                        ? 'ml-auto bg-[linear-gradient(180deg,#45a0ff,#3a8eed)] text-white'
-                        : message.direction === 'SYSTEM'
-                          ? 'mx-auto border border-primary/15 bg-primary/10 text-foreground'
-                          : 'border border-white/6 bg-white/[0.045] text-foreground'
-                    }`}
-                  >
-                    {canQuoteMessage(message) ? (
-                      <button
-                        type="button"
-                        className={cn(
-                          'absolute right-2 top-2 rounded-full p-1 transition',
-                          message.direction === 'OUTBOUND'
-                            ? 'text-white/75 hover:bg-white/16 hover:text-white'
-                            : 'text-muted-foreground hover:bg-white/8 hover:text-foreground',
-                        )}
-                        onClick={() => {
-                          setQuotedMessageId(message.id);
-                          composerTextareaRef.current?.focus();
-                        }}
-                        title="Responder com quote"
-                        aria-label="Responder com quote"
-                      >
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                    <MessageBubbleContent message={message} />
-                    <p
-                      className={`mt-1.5 text-[9px] ${
-                        message.direction === 'OUTBOUND' ? 'text-white/80' : 'text-muted-foreground'
-                      }`}
+              <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(10,30,60,0.3),transparent_70%)] px-3 py-3 sm:px-4">
+                {selectedConversation.messages?.map((message, index) => (
+                  <div key={message.id}>
+                    {shouldShowDateSeparator(selectedConversation.messages!, index) && (
+                      <div className="my-3 flex items-center justify-center first:mt-0">
+                        <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                          {getDateLabel(message.createdAt)}
+                        </span>
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        'group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]',
+                        message.direction === 'OUTBOUND'
+                          ? 'ml-auto'
+                          : message.direction === 'SYSTEM'
+                            ? 'mx-auto'
+                            : '',
+                      )}
                     >
-                      {formatDate(message.createdAt)} • {getMessageStatusLabel(message.status)}
-                    </p>
+                      <div
+                        className={cn(
+                          'relative rounded-lg px-2.5 py-1.5 shadow-sm',
+                          message.direction === 'OUTBOUND'
+                            ? 'rounded-tr-[4px] bg-[#005c4b] text-[#e9edef]'
+                            : message.direction === 'SYSTEM'
+                              ? 'rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground'
+                              : 'rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]',
+                        )}
+                      >
+                        {canQuoteMessage(message) ? (
+                          <button
+                            type="button"
+                            className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
+                            onClick={() => {
+                              setQuotedMessageId(message.id);
+                              composerTextareaRef.current?.focus();
+                            }}
+                            title="Responder"
+                            aria-label="Responder"
+                          >
+                            <Reply className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                        <MessageBubbleContent message={message} />
+                        <span
+                          className={cn(
+                            'mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none',
+                            message.direction === 'OUTBOUND'
+                              ? 'text-[#ffffff99]'
+                              : message.direction === 'SYSTEM'
+                                ? 'text-muted-foreground/60'
+                                : 'text-[#ffffff66]',
+                          )}
+                        >
+                          {formatMessageTime(message.createdAt)}
+                          {message.direction === 'OUTBOUND' && message.status !== 'QUEUED' && (
+                            <MessageStatusIcon status={message.status} />
+                          )}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="safe-bottom-pad shrink-0 border-t border-border p-3.5 sm:p-4">
-                <div className="rounded-[16px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-2 shadow-[0_14px_30px_rgba(2,10,22,0.22)]">
+              <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-3 py-2 sm:px-4">
+                <div className="rounded-xl bg-[#1a2a3d]/80 p-2">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1257,7 +1308,7 @@ function InboxPageContent() {
                     onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                   />
                   {isRecording ? (
-                    <div className="flex items-center gap-2.5 rounded-[20px] border border-white/8 bg-[linear-gradient(180deg,rgba(10,24,44,0.92),rgba(7,18,33,0.98))] px-2.5 py-2.5 shadow-[0_16px_34px_rgba(2,10,22,0.34)]">
+                    <div className="flex items-center gap-2.5 rounded-xl bg-[#1a2a3d] px-2.5 py-2">
                       <button
                         type="button"
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/85 transition hover:bg-white/6 hover:text-foreground"
@@ -1303,7 +1354,7 @@ function InboxPageContent() {
 
                       <button
                         type="button"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-[0_10px_24px_rgba(50,151,255,0.34)] transition hover:bg-primary/92"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#00a884]/85"
                         onClick={() => finishRecording('send')}
                         disabled={sendMediaMutation.isPending}
                       >
@@ -1339,12 +1390,12 @@ function InboxPageContent() {
                   {!isRecording ? (
                     <>
                       {quotedMessage ? (
-                        <div className="mb-2 flex items-start justify-between gap-2 rounded-[14px] border border-primary/25 bg-primary/10 px-2.5 py-2">
+                        <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border-l-[3px] border-l-[#06cf9c] bg-[#1a2a3d] px-2.5 py-2">
                           <div className="min-w-0">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/85">
-                              Respondendo com quote
+                            <p className="text-[11px] font-semibold text-[#06cf9c]">
+                              Respondendo
                             </p>
-                            <p className="truncate text-xs text-foreground/90">
+                            <p className="truncate text-xs text-foreground/75">
                               {buildMessageQuotePreview(quotedMessage)}
                             </p>
                           </div>
@@ -1372,7 +1423,7 @@ function InboxPageContent() {
                                 : 'Adicione uma legenda opcional para a mídia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
-                        className="min-h-[50px] max-h-32 resize-none border-none bg-transparent px-1 py-1 text-[13px] leading-5"
+                        className="min-h-[42px] max-h-32 resize-none border-none bg-transparent px-1 py-1 text-[13.5px] leading-5 placeholder:text-muted-foreground/50"
                         disabled={isConversationClosed}
                       />
                       <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1919,7 +1970,7 @@ function MessageBubbleContent({
           controls
           playsInline
           preload="metadata"
-          className="max-h-64 w-full max-w-[280px] rounded-[16px] border border-white/10 bg-black/25 object-cover"
+          className="max-h-[280px] w-full max-w-[300px] rounded-md bg-black object-cover"
           src={mediaUrl}
         />
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
@@ -1935,7 +1986,7 @@ function MessageBubbleContent({
           href={mediaUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-xs underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-2 text-xs underline-offset-4 hover:bg-white/[0.1]"
         >
           <Paperclip className="h-3.5 w-3.5" />
           {mediaMetadata.fileName ?? (hasUnknownMedia ? 'Abrir midia' : 'Abrir documento')}
@@ -1949,7 +2000,7 @@ function MessageBubbleContent({
     return (
       <div className="space-y-2">
         {quoteBlock}
-        <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-current/85">
+        <div className="inline-flex rounded-md bg-white/[0.08] px-2 py-0.5 text-[10px] font-medium opacity-75">
           {message.metadata?.windowClosedTemplateReply
             ? `Template automatico: ${message.metadata?.templateName ?? 'aprovado'}`
             : `Template: ${message.metadata?.templateName ?? 'aprovado'}`}
@@ -1984,18 +2035,18 @@ function QuotedMessageBlock({
   return (
     <div
       className={cn(
-        'rounded-xl border px-2.5 py-2',
+        'rounded-md border-l-[3px] px-2 py-1.5',
         tone === 'outgoing'
-          ? 'border-white/24 bg-white/15 text-white/90'
+          ? 'border-l-[#06cf9c] bg-[#025144]/60'
           : tone === 'system'
-            ? 'border-primary/22 bg-primary/10 text-foreground/85'
-            : 'border-white/14 bg-white/[0.04] text-foreground/85',
+            ? 'border-l-primary/50 bg-primary/10'
+            : 'border-l-[#06cf9c] bg-white/[0.06]',
       )}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-85">
+      <p className="text-[11px] font-semibold text-[#06cf9c]">
         {sourceLabel}
       </p>
-      <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-4">
+      <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[12px] leading-4 opacity-75">
         {quote.contentPreview?.trim() || 'Mensagem citada'}
       </p>
     </div>
@@ -2028,6 +2079,22 @@ function getMessageStatusLabel(status?: string | null) {
   }
 
   return MESSAGE_STATUS_LABELS[status] ?? status;
+}
+
+function MessageStatusIcon({ status }: { status?: string | null }) {
+  if (status === 'READ') {
+    return <CheckCheck className="h-[14px] w-[14px] text-[#53bdeb]" />;
+  }
+  if (status === 'DELIVERED') {
+    return <CheckCheck className="h-[14px] w-[14px]" />;
+  }
+  if (status === 'SENT') {
+    return <Check className="h-[14px] w-[14px]" />;
+  }
+  if (status === 'FAILED') {
+    return <span className="text-[10px] text-red-400">!</span>;
+  }
+  return null;
 }
 
 function StatusBadge({
@@ -2077,16 +2144,16 @@ function ImageMessagePreview({
     <>
       <button
         type="button"
-        className="block overflow-hidden rounded-[16px] border border-white/10"
+        className="block overflow-hidden rounded-md"
         onClick={() => setOpen(true)}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} className="max-h-60 w-full max-w-[280px] object-cover" />
+        <img src={src} alt={alt} className="max-h-[280px] w-full max-w-[300px] object-cover" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-auto max-w-[92vw] border-white/10 bg-[#04111f]/95 p-3">
+        <DialogContent className="w-auto max-w-[92vw] border-white/10 bg-black/90 p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} className="max-h-[82vh] w-auto max-w-[88vw] rounded-2xl object-contain" />
+          <img src={src} alt={alt} className="max-h-[85vh] w-auto max-w-[90vw] rounded-lg object-contain" />
         </DialogContent>
       </Dialog>
     </>
@@ -2179,30 +2246,25 @@ function CompactAudioPlayer({
   };
 
   return (
-    <div
-      className={cn(
-        'w-[236px] max-w-full rounded-[16px] border px-2.5 py-2.5',
-        outgoing ? 'border-white/15 bg-[#1b75d8]/20' : 'border-white/10 bg-white/[0.03]',
-      )}
-    >
+    <div className="w-[260px] max-w-full">
       <audio ref={audioRef} src={src} preload="metadata" />
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           className={cn(
-            'flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full transition',
-            outgoing ? 'bg-white/18 text-white hover:bg-white/24' : 'bg-primary/18 text-primary hover:bg-primary/24',
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition',
+            outgoing ? 'bg-[#00a884] text-white hover:bg-[#00a884]/80' : 'bg-[#00a884] text-white hover:bg-[#00a884]/80',
           )}
           onClick={() => {
             void togglePlayback();
           }}
         >
-          {isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
+          {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
         </button>
 
         <div className="min-w-0 flex-1">
-          <div className="relative h-7">
-            <div className="pointer-events-none absolute inset-0 flex items-center gap-[2px] overflow-hidden">
+          <div className="relative h-6">
+            <div className="pointer-events-none absolute inset-0 flex items-end gap-[1.5px] overflow-hidden">
               {AUDIO_WAVEFORM_BARS.map((barHeight, index) => {
                 const threshold = ((index + 1) / AUDIO_WAVEFORM_BARS.length) * 100;
 
@@ -2210,16 +2272,14 @@ function CompactAudioPlayer({
                   <span
                     key={`${barHeight}-${index}`}
                     className={cn(
-                      'w-[4px] rounded-full transition-colors',
+                      'rounded-full transition-colors',
                       progress >= threshold
-                        ? outgoing
-                          ? 'bg-white'
-                          : 'bg-primary'
+                        ? 'bg-[#00a884]'
                         : outgoing
-                          ? 'bg-white/35'
-                          : 'bg-white/18',
+                          ? 'bg-[#ffffff40]'
+                          : 'bg-[#ffffff25]',
                     )}
-                    style={{ height: `${Math.max(6, Math.round(barHeight * 0.72))}px`, width: '3px' }}
+                    style={{ height: `${Math.max(4, Math.round(barHeight * 0.65))}px`, width: '2.5px' }}
                   />
                 );
               })}
@@ -2234,12 +2294,9 @@ function CompactAudioPlayer({
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2 text-[10px]">
-            <div className="flex items-center gap-1.5">
-              {isVoiceMessage ? <Mic className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
-              <span>{isVoiceMessage ? 'Mensagem de voz' : 'Audio'}</span>
-            </div>
-            <span>{formatMediaDuration(duration || currentTime)}</span>
+          <div className="flex items-center gap-1 text-[10px] opacity-60">
+            <span>{formatMediaDuration(duration > 0 ? (isPlaying ? currentTime : duration) : currentTime)}</span>
+            {isVoiceMessage && <Mic className="h-2.5 w-2.5" />}
           </div>
         </div>
       </div>
