@@ -18,11 +18,11 @@ const SITE_URL = 'https://autoszap.com';
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    default: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
     template: '%s | AutosZap',
   },
   description:
-    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+    'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
   keywords: [
     'whatsapp business',
     'whatsapp api',
@@ -54,23 +54,23 @@ export const metadata: Metadata = {
     locale: 'pt_BR',
     url: SITE_URL,
     siteName: 'AutosZap',
-    title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    title: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
     description:
-      'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+      'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
     images: [
       {
         url: '/brand/autoszap-og.png',
         width: 1200,
         height: 630,
-        alt: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+        alt: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    title: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
     description:
-      'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+      'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
     images: ['/brand/autoszap-og.png'],
   },
   alternates: {

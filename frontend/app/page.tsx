@@ -16,9 +16,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
 export const metadata: Metadata = {
-  title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+  title: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
   description:
-    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+    'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
   alternates: { canonical: 'https://autoszap.com' },
 };
 
@@ -30,7 +30,7 @@ const jsonLd = {
   operatingSystem: 'Web',
   url: 'https://autoszap.com',
   description:
-    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao para WhatsApp Business Platform.',
+    'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
   offers: {
     '@type': 'Offer',
     category: 'SaaS',
