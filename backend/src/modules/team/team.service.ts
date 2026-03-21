@@ -14,9 +14,11 @@ import { normalizeRole } from '../access-control/permissions.constants';
 import {
   CompanyStatus,
   GlobalUserStatus,
+  InviteCodeStatus,
   MembershipStatus,
   TenantRole,
 } from '@autoszap/control-plane-client';
+import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class TeamService {
@@ -440,6 +442,110 @@ export class TeamService {
       workspaceId,
       permissions,
     );
+  }
+
+  async generateInviteCode(
+    workspaceId: string,
+    actorId: string,
+    payload: {
+      role: Role;
+      title?: string;
+    },
+  ) {
+    // Find the company in control plane by workspaceId
+    const company = await this.controlPlanePrisma.company.findFirst({
+      where: { workspaceId },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Empresa nao encontrada.');
+    }
+
+    // Find the actor's globalUserId
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { globalUserId: true },
+    });
+
+    // Generate a short, readable code (6 chars, uppercase alphanumeric)
+    const code = this.generateShortCode(6);
+    const normalizedRole = normalizeRole(payload.role);
+    const tenantRole = this.mapTenantRole(normalizedRole);
+
+    const inviteCode = await this.controlPlanePrisma.companyInviteCode.create({
+      data: {
+        companyId: company.id,
+        code,
+        role: tenantRole,
+        title: payload.title,
+        status: InviteCodeStatus.ACTIVE,
+        createdByGlobalUserId: actor?.globalUserId ?? null,
+        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7), // 7 days
+      },
+    });
+
+    return {
+      code: inviteCode.code,
+      role: inviteCode.role,
+      title: inviteCode.title,
+      expiresAt: inviteCode.expiresAt,
+      companyName: company.name,
+    };
+  }
+
+  async listInviteCodes(workspaceId: string) {
+    const company = await this.controlPlanePrisma.company.findFirst({
+      where: { workspaceId },
+    });
+
+    if (!company) {
+      return [];
+    }
+
+    return this.controlPlanePrisma.companyInviteCode.findMany({
+      where: {
+        companyId: company.id,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async revokeInviteCode(workspaceId: string, codeId: string) {
+    const company = await this.controlPlanePrisma.company.findFirst({
+      where: { workspaceId },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Empresa nao encontrada.');
+    }
+
+    const invite = await this.controlPlanePrisma.companyInviteCode.findFirst({
+      where: {
+        id: codeId,
+        companyId: company.id,
+        status: InviteCodeStatus.ACTIVE,
+      },
+    });
+
+    if (!invite) {
+      throw new NotFoundException('Codigo de convite nao encontrado.');
+    }
+
+    return this.controlPlanePrisma.companyInviteCode.update({
+      where: { id: codeId },
+      data: { status: InviteCodeStatus.REVOKED },
+    });
+  }
+
+  private generateShortCode(length: number): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // removed 0,O,1,I for readability
+    const bytes = randomBytes(length);
+    let code = '';
+    for (let i = 0; i < length; i++) {
+      code += chars[(bytes[i] ?? 0) % chars.length];
+    }
+    return code;
   }
 
   private async syncMemberWithControlPlane(

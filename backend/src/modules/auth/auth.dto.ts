@@ -20,8 +20,17 @@ export class RegisterDto {
   @IsString()
   name!: string;
 
+  @IsOptional()
   @IsString()
-  companyName!: string;
+  companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  segment?: string;
+
+  @IsOptional()
+  @IsString()
+  inviteCode?: string;
 
   @IsEmail()
   email!: string;
@@ -36,6 +45,11 @@ export class RegisterDto {
 
   @IsBoolean()
   acceptTerms!: boolean;
+}
+
+export class ValidateInviteCodeDto {
+  @IsString()
+  code!: string;
 }
 
 export class RefreshDto {
@@ -71,4 +85,20 @@ export class LogoutDto {
 export class SwitchCompanyDto {
   @IsString()
   companyId!: string;
+}
+
+export class SocialLoginDto {
+  @IsString()
+  provider!: 'google' | 'facebook';
+
+  @IsString()
+  token!: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  companyName?: string;
 }

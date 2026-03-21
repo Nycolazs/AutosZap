@@ -91,7 +91,7 @@ export function AuthShell({
       </div>
 
       {/* ── Right panel: always full-height, centers content independently ── */}
-      <div className="flex min-h-dvh flex-1 flex-col items-center justify-center px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex min-h-dvh flex-1 flex-col items-center justify-start pt-6 px-4 pb-4 sm:px-6 sm:pt-8 lg:justify-center lg:px-8 lg:pt-4">
         {/* Mobile logo — visible only below lg */}
         <div className="mb-4 flex w-full max-w-[420px] items-center gap-2.5 lg:hidden">
           <Image

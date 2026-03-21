@@ -60,6 +60,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </header>
 
           <main
+            data-app-shell
             className={cn(
               'min-h-0 flex-1',
               isInboxRoute ? 'overflow-hidden' : 'overflow-auto',
@@ -85,7 +86,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             userRole={me.normalizedRole}
             permissionMap={me.permissionMap}
           />
-          <main className="min-h-0 flex-1 overflow-auto">
+          <main data-app-shell className="min-h-0 flex-1 overflow-auto">
             <div className="h-full px-3 py-3 sm:p-4 lg:p-5">
               <AccessDenied fallbackHref={fallbackHref} />
             </div>
@@ -105,6 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           permissionMap={me?.permissionMap}
         />
         <main
+          data-app-shell
           className={cn(
             'min-h-0 flex-1',
             isInboxRoute ? 'overflow-hidden' : 'overflow-auto',

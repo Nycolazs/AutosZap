@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+html {
+  scroll-behavior: smooth;
+}
+
 :root {
   --background: #040d19;
   --background-elevated: #081423;
@@ -65,8 +69,8 @@ body {
 }
 
 @media (max-width: 767px) {
-  html,
-  body {
+  html:has(main[data-app-shell]),
+  html:has(main[data-app-shell]) body {
     height: 100dvh;
     overflow: hidden;
   }

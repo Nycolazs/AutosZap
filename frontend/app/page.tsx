@@ -3,17 +3,28 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowRight,
-  CheckCircle2,
-  Clock3,
-  MessageSquareMore,
+  BarChart3,
+  Bot,
+  Clock,
+  Headset,
+  Layers3,
+  Lock,
+  Menu,
+  MessageCircleMore,
+  MessageSquare,
+  Rocket,
+  Send,
   ShieldCheck,
-  UsersRound,
+  Smartphone,
+  Star,
+  Users,
   Workflow,
+  Zap,
 } from 'lucide-react';
 import { LeadInterestForm } from '@/components/marketing/lead-interest-form';
 import { ScreenshotShowcase } from '@/components/marketing/screenshot-showcase';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { MobileNav } from '@/components/marketing/mobile-nav';
 
 export const metadata: Metadata = {
   title: 'AutosZap — Plataforma Completa de Atendimento e CRM para WhatsApp',
@@ -31,10 +42,7 @@ const jsonLd = {
   url: 'https://autoszap.com',
   description:
     'Atendimento profissional pelo WhatsApp. Inbox multiatendente, CRM com pipeline, campanhas, automacoes e gestao de equipe — tudo em uma unica plataforma.',
-  offers: {
-    '@type': 'Offer',
-    category: 'SaaS',
-  },
+  offers: { '@type': 'Offer', category: 'SaaS' },
   featureList: [
     'Inbox multiatendente com distribuicao de conversas',
     'CRM com pipeline para leads e oportunidades',
@@ -45,262 +53,387 @@ const jsonLd = {
   ],
 };
 
-const valueCards = [
+/* ── data ── */
+
+const features = [
   {
-    title: 'Atendimento centralizado',
-    description:
-      'Conversa, historico e contexto em uma fila unica para toda a equipe.',
-    icon: MessageSquareMore,
+    icon: MessageCircleMore,
+    title: 'Inbox Multiatendente',
+    description: 'Todas as conversas em uma fila unica. Distribua entre atendentes e mantenha historico completo.',
   },
   {
-    title: 'Processo comercial claro',
-    description:
-      'CRM conectado ao atendimento para acompanhar cada oportunidade.',
-    icon: Workflow,
+    icon: Layers3,
+    title: 'CRM com Pipeline',
+    description: 'Pipeline visual para acompanhar cada oportunidade do primeiro contato ao fechamento.',
   },
   {
-    title: 'Governanca operacional',
-    description:
-      'Permissoes, padrao de fluxo e visibilidade para crescer com controle.',
-    icon: ShieldCheck,
+    icon: Send,
+    title: 'Campanhas em Massa',
+    description: 'Mensagens segmentadas com templates aprovados, agendamento e metricas de entrega.',
+  },
+  {
+    icon: Bot,
+    title: 'Automacoes Inteligentes',
+    description: 'Fluxos automaticos para qualificar leads e distribuir conversas por equipe ou horario.',
+  },
+  {
+    icon: Users,
+    title: 'Gestao de Equipe',
+    description: 'Perfis de acesso, permissoes por funcao e monitoramento de produtividade.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Relatorios e Metricas',
+    description: 'Dashboard com SLA, tempo de resposta e performance individual de cada atendente.',
   },
 ];
 
-const capabilities = [
-  'Inbox multiatendente com distribuicao de conversas.',
-  'CRM com pipeline para leads e oportunidades.',
-  'Campanhas e listas para operacao comercial.',
-  'Automacoes para reduzir retrabalho no atendimento.',
-  'Gestao de equipe e perfis de acesso.',
-  'Indicadores de desempenho para decisao rapida.',
+const benefits = [
+  { icon: Zap, title: 'Respostas rapidas', description: 'Filas inteligentes e respostas pre-configuradas.' },
+  { icon: Lock, title: 'API Oficial Meta', description: 'Sem risco de bloqueio, com selo verificado.' },
+  { icon: Smartphone, title: 'Qualquer dispositivo', description: 'Web responsivo, sem instalar nada.' },
+  { icon: ShieldCheck, title: 'Dados seguros', description: 'Criptografia e banco isolado. LGPD.' },
 ];
 
-const implementationFlow = [
-  'Diagnostico da operacao e definicao do plano inicial.',
-  'Integracao do numero no WhatsApp Business Platform.',
-  'Configuracao de equipe, funil e regras operacionais.',
-  'Go-live com acompanhamento e ajustes de melhoria.',
+const steps = [
+  { number: '01', title: 'Cadastre sua empresa', description: 'Crie uma conta em segundos — basta nome, email e dados da empresa. Teste gratis por 7 dias sem cartao.' },
+  { number: '02', title: 'Configure o WhatsApp', description: 'Conecte sua conta da API oficial da Meta. Insira o token e numero — a plataforma faz o resto.' },
+  { number: '03', title: 'Monte sua equipe', description: 'Gere codigos de convite para cada membro. Eles criam a propria conta ja vinculados a sua empresa.' },
+  { number: '04', title: 'Atenda e venda', description: 'Use o inbox, CRM, campanhas e automacoes para escalar seu atendimento pelo WhatsApp.' },
 ];
 
-const integrationChecklist = [
-  'Conta Meta Business validada e com acesso administrativo.',
-  'Numero pronto para API oficial (sem uso no app comum).',
-  'Dados da empresa para validacao quando necessario.',
-  'Responsavel interno para aprovar etapas do onboarding.',
+
+const faqs = [
+  { q: 'O teste gratuito tem alguma limitacao?', a: 'Nao. Voce tem acesso a todos os modulos por 7 dias, sem cartao de credito e sem compromisso. E o mesmo plano dos clientes pagantes.' },
+  { q: 'Como adiciono minha equipe?', a: 'Na area de equipe, gere um codigo de convite para cada membro. Eles se cadastram sozinhos e ja entram vinculados a sua empresa com o papel correto.' },
+  { q: 'Preciso de conta no Meta Business?', a: 'Sim. Para usar a API oficial do WhatsApp e necessario ter uma conta verificada no Meta Business. Temos um guia passo a passo na plataforma.' },
+  { q: 'Posso usar meu numero atual do WhatsApp?', a: 'Sim, e possivel migrar seu numero para a API oficial. Tambem pode usar um numero novo dedicado ao atendimento profissional.' },
+  { q: 'Quantos atendentes posso ter?', a: 'Sem limite. Adicione quantos atendentes precisar com controle total de permissoes e papeis por usuario.' },
+  { q: 'Meus dados e dos clientes ficam seguros?', a: 'Sim. Cada empresa tem banco de dados isolado, tokens criptografados com AES-256 e conformidade com a LGPD.' },
+];
+
+/* ── glass helpers ── */
+const glass = 'rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl';
+const glassHover = `${glass} transition-all duration-300 hover:border-blue-500/20 hover:bg-white/[0.06]`;
+
+const navLinks = [
+  { href: '#funcionalidades', label: 'Funcionalidades' },
+  { href: '#como-funciona', label: 'Como funciona' },
+  { href: '#produto', label: 'Produto' },
+  { href: '#faq', label: 'FAQ' },
 ];
 
 export default function HomePage() {
   return (
-    <main className="relative h-dvh overflow-y-auto">
+    <main className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-[#060918] text-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_6%,rgba(56,145,255,0.16),transparent_30%),radial-gradient(circle_at_84%_88%,rgba(22,152,196,0.12),transparent_28%)]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-[1080px] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pt-8">
-        <header className="mb-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background-panel/25 px-4 py-3 backdrop-blur-sm sm:px-5">
-          <Link href="/" className="flex items-center gap-2.5">
+      {/* ── ambient gradients ── */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-[30%] -top-[20%] h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[120px] sm:h-[700px] sm:w-[700px]" />
+        <div className="absolute -right-[20%] top-[30%] h-[350px] w-[350px] rounded-full bg-cyan-500/[0.06] blur-[100px] sm:h-[500px] sm:w-[500px]" />
+        <div className="absolute -left-[10%] top-[60%] h-[300px] w-[300px] rounded-full bg-blue-500/[0.05] blur-[100px] sm:h-[400px] sm:w-[400px]" />
+      </div>
+
+      {/* ════════════════ HEADER ════════════════ */}
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#060918]/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2.5 sm:px-8 sm:py-3">
+          <Link href="/" className="flex items-center gap-2">
             <Image
               src="/brand/autoszap-mark.png"
               alt="AutosZap"
-              width={40}
-              height={40}
-              className="h-9 w-9 object-contain"
+              width={36}
+              height={36}
+              className="h-7 w-7 object-contain sm:h-8 sm:w-8"
               priority
             />
-            <div>
-              <p className="font-heading text-lg font-semibold tracking-tight">AutosZap</p>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                Atendimento & CRM
-              </p>
-            </div>
+            <span className="font-heading text-base font-bold tracking-tight sm:text-lg">AutosZap</span>
           </Link>
 
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-            <Button asChild variant="secondary" className="flex-1 sm:flex-none">
-              <Link href="/como-integrar">Como integrar numero</Link>
-            </Button>
-            <Button asChild className="flex-1 sm:flex-none">
-              <Link href="/login">Entrar na plataforma</Link>
-            </Button>
-          </div>
-        </header>
+          <nav className="hidden items-center gap-6 text-sm text-white/60 md:flex">
+            {navLinks.map((link) => (
+              <a key={link.href} href={link.href} className="transition-colors hover:text-white">
+                {link.label}
+              </a>
+            ))}
+          </nav>
 
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
-          <div className="space-y-5">
-            <p className="inline-flex rounded-full border border-primary/30 bg-primary-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-              Plataforma B2B para WhatsApp
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" className="hidden text-sm text-white/70 hover:text-white sm:inline-flex">
+              <Link href="/login">Entrar</Link>
+            </Button>
+            <Button asChild className="hidden bg-blue-600 text-sm text-white hover:bg-blue-700 sm:inline-flex">
+              <Link href="/register">
+                Comecar gratis
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+            {/* mobile nav */}
+            <MobileNav links={navLinks} />
+          </div>
+        </div>
+      </header>
+
+      <div className="relative z-10">
+        {/* ════════════════ HERO ════════════════ */}
+        <section className="mx-auto max-w-7xl px-4 pb-14 pt-10 sm:px-8 sm:pb-20 sm:pt-24 lg:pt-32">
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-medium text-blue-400 sm:gap-2 sm:px-4 sm:py-1.5 sm:text-xs">
+              <Rocket className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              Plataforma para WhatsApp Business
+            </div>
+
+            <h1 className="font-heading text-[2rem] font-bold leading-[1.1] tracking-tight sm:text-[clamp(2.4rem,5.5vw,4.2rem)] sm:leading-[1.05]">
+              Atendimento, CRM e automacao{' '}
+              <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                em uma unica plataforma
+              </span>
+            </h1>
+
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:mt-6 sm:text-lg">
+              Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas
+              — tudo conectado a API oficial do WhatsApp.
             </p>
 
-            <div className="space-y-3">
-              <h1 className="font-heading text-[clamp(2.2rem,4.8vw,3.7rem)] font-semibold leading-[0.94] tracking-tight">
-                Home clean, operacao organizada e resultado real para sua equipe.
-              </h1>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                O AutoZap une atendimento, CRM e automacao em uma experiencia unica. Voce ganha velocidade no dia a dia sem abrir mao de controle e qualidade.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2.5">
-              <Button asChild className="min-w-[190px]">
-                <a href="#quero-ser-cliente">
-                  Quero ser cliente
-                  <ArrowRight className="h-4 w-4" />
-                </a>
+            <div className="mt-6 flex flex-col items-center gap-2.5 sm:mt-8 sm:flex-row sm:justify-center sm:gap-3">
+              <Button asChild size="lg" className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto sm:px-8">
+                <Link href="/register">
+                  Comecar gratis
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Link>
               </Button>
-              <Button asChild variant="secondary" className="min-w-[190px]">
-                <Link href="/como-integrar">Ver guia de integracao</Link>
+              <Button asChild size="lg" variant="ghost" className="w-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08] sm:w-auto">
+                <a href="#produto">Ver a plataforma</a>
               </Button>
             </div>
 
-            <div className="grid gap-2.5 sm:grid-cols-3">
-              <div className="rounded-xl border border-border/70 bg-background-panel/30 px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Atendimento</p>
-                <p className="mt-1 text-sm font-medium">Fila unica e contexto completo</p>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-background-panel/30 px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Comercial</p>
-                <p className="mt-1 text-sm font-medium">Funil com previsibilidade</p>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-background-panel/30 px-3 py-2.5">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Gestao</p>
-                <p className="mt-1 text-sm font-medium">Decisao com indicadores</p>
-              </div>
+            {/* trust badges */}
+            <div className="mx-auto mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-white/35 sm:mt-12 sm:gap-x-8 sm:text-xs">
+              <span className="flex items-center gap-1.5"><Lock className="h-3 w-3 text-blue-400/60" /> API Oficial Meta</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="h-3 w-3 text-blue-400/60" /> Dados criptografados</span>
+              <span className="flex items-center gap-1.5"><Users className="h-3 w-3 text-blue-400/60" /> Sem limite de atendentes</span>
             </div>
           </div>
-
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-4 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Resumo executivo</p>
-              <h2 className="font-heading text-2xl leading-tight">AutoZap em tres pilares</h2>
-              <div className="space-y-2.5">
-                {valueCards.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <div key={item.title} className="rounded-lg border border-border/70 bg-background-panel/35 px-3 py-3">
-                      <div className="flex items-start gap-2.5">
-                        <div className="inline-flex rounded-md border border-primary/30 bg-primary-soft p-1.5 text-primary">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold">{item.title}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
         </section>
 
-        <section className="mt-14 space-y-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Visual do produto</p>
-            <h2 className="font-heading text-2xl sm:text-[2rem]">Como a plataforma aparece para sua operacao</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Uma vitrine objetiva dos principais modulos, pensada para mostrar valor pratico sem poluicao visual.
+        {/* ════════════════ FUNCIONALIDADES ════════════════ */}
+        <section id="funcionalidades" className="scroll-mt-16 mx-auto max-w-7xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-12">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">Funcionalidades</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+              Tudo que sua equipe precisa
+            </h2>
+            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+              Modulos integrados do primeiro contato ao pos-venda.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+            {features.map((feat) => {
+              const Icon = feat.icon;
+              return (
+                <div key={feat.title} className={`${glassHover} p-5 sm:p-6`}>
+                  <div className="mb-3 inline-flex rounded-xl border border-blue-500/20 bg-blue-500/10 p-2 text-blue-400 sm:mb-4 sm:p-2.5">
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </div>
+                  <h3 className="text-base font-semibold sm:text-lg">{feat.title}</h3>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{feat.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ════════════════ BENEFÍCIOS ════════════════ */}
+        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-12">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">Por que AutosZap</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+              Vantagens que fazem diferenca
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {benefits.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.title} className={`${glassHover} p-4 text-center sm:p-6`}>
+                  <div className="mx-auto mb-3 inline-flex rounded-xl border border-blue-500/20 bg-blue-500/10 p-2 text-blue-400 sm:mb-4 sm:p-3">
+                    <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
+                  </div>
+                  <h3 className="text-[13px] font-semibold sm:text-base">{item.title}</h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{item.description}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ════════════════ PRODUTO (showcase) ════════════════ */}
+        <section id="produto" className="scroll-mt-16 mx-auto max-w-7xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-12">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">Produto</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+              Conheca os modulos
+            </h2>
+            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+              Explore cada area e veja como o AutosZap organiza sua operacao.
             </p>
           </div>
 
           <ScreenshotShowcase />
         </section>
 
-        <section className="mt-14 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-3 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Modulos principais</p>
-              <h2 className="font-heading text-2xl leading-tight">Tudo que sustenta a rotina da equipe</h2>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                {capabilities.map((item) => (
-                  <div key={item} className="flex items-start gap-2 rounded-lg border border-border/70 bg-background-panel/35 px-3 py-2.5">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-sm text-foreground/88">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* ════════════════ COMO FUNCIONA ════════════════ */}
+        <section id="como-funciona" className="scroll-mt-16 mx-auto max-w-7xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-12">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">Como funciona</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+              4 passos para comecar
+            </h2>
+            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+              Comece a usar em poucos minutos, sem complicacao.
+            </p>
+          </div>
 
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-3 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Implantacao</p>
-              <h2 className="font-heading text-2xl leading-tight">Fluxo simples de entrada</h2>
-              <div className="space-y-2.5">
-                {implementationFlow.map((step, index) => (
-                  <div key={step} className="flex items-start gap-3 rounded-lg border border-border/70 bg-background-panel/35 px-3 py-2.5">
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/35 bg-primary-soft text-xs font-semibold text-primary">
-                      {index + 1}
-                    </span>
-                    <p className="text-sm text-foreground/88">{step}</p>
-                  </div>
-                ))}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {steps.map((step) => (
+              <div key={step.number} className={`${glass} relative p-4 sm:p-6`}>
+                <span className="text-2xl font-black text-blue-500/15 sm:text-4xl">{step.number}</span>
+                <h3 className="mt-1 text-[13px] font-semibold sm:mt-2 sm:text-base">{step.title}</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{step.description}</p>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
         </section>
 
-        <section className="mt-14 grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-3 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Integracao de numero</p>
-              <h2 className="font-heading text-2xl leading-tight">Preparacao para conectar com seguranca</h2>
-              <div className="space-y-2">
-                {integrationChecklist.map((item) => (
-                  <div key={item} className="flex items-start gap-2 rounded-lg border border-border/70 bg-background-panel/35 px-3 py-2.5">
-                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-sm text-foreground/88">{item}</p>
-                  </div>
-                ))}
-              </div>
-              <Button asChild variant="secondary" className="w-full sm:w-auto">
-                <Link href="/como-integrar">Acessar guia completo</Link>
-              </Button>
-            </CardContent>
-          </Card>
+        {/* ════════════════ FAQ ════════════════ */}
+        <section id="faq" className="scroll-mt-16 mx-auto max-w-4xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-12">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">FAQ</p>
+            <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+              Perguntas frequentes
+            </h2>
+          </div>
 
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-4 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Pronto para iniciar</p>
-              <h2 className="font-heading text-2xl leading-tight">Onboarding com acompanhamento real</h2>
-              <p className="text-sm text-muted-foreground">
-                Nao existe cadastro automatico. Nossa equipe alinha seu cenario e conduz a implantacao para voce entrar com padrao profissional.
-              </p>
-              <div className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {faqs.map((faq) => (
+              <div key={faq.q} className={`${glass} p-4 sm:p-5`}>
+                <h3 className="text-[13px] font-semibold sm:text-sm">{faq.q}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{faq.a}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ════════════════ CTA + FORM ════════════════ */}
+        <section id="contato" className="scroll-mt-16 mx-auto max-w-7xl px-4 py-14 sm:px-8 sm:py-20">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+            <LeadInterestForm />
+
+            <div className="space-y-5 sm:space-y-6 lg:pt-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-400 sm:text-xs">Proximo passo</p>
+                <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
+                  Pronto para profissionalizar seu atendimento?
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-white/50 sm:mt-3 sm:text-base">
+                  Preencha o formulario e nosso time comercial entra em contato.
+                </p>
+              </div>
+
+              <div className="space-y-2.5 sm:space-y-3">
                 {[
-                  'Diagnostico comercial e operacional da empresa.',
-                  'Definicao de estrategia para numero e conta Meta.',
-                  'Plano de entrada com foco em resultado pratico.',
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-2 rounded-lg border border-border/70 bg-background-panel/35 px-3 py-2.5">
-                    <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-sm text-foreground/88">{item}</p>
-                  </div>
-                ))}
+                  { icon: Headset, text: 'Onboarding com acompanhamento dedicado' },
+                  { icon: Clock, text: 'Implantacao em ate 7 dias uteis' },
+                  { icon: ShieldCheck, text: 'Dados isolados e criptografados' },
+                  { icon: Star, text: 'Suporte prioritario nos primeiros 30 dias' },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.text} className="flex items-center gap-2.5 sm:gap-3">
+                      <div className="inline-flex shrink-0 rounded-lg border border-blue-500/20 bg-blue-500/10 p-1.5 text-blue-400 sm:p-2">
+                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </div>
+                      <p className="text-[13px] text-white/70 sm:text-sm">{item.text}</p>
+                    </div>
+                  );
+                })}
               </div>
-            </CardContent>
-          </Card>
+
+              <div className={`${glass} p-3 sm:p-4`}>
+                <p className="text-[11px] text-white/40 sm:text-xs">
+                  A liberacao de acesso acontece apos validacao comercial e tecnica.
+                  Nosso time alinha cenario, objetivos e conduz a integracao completa.
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section id="quero-ser-cliente" className="mt-14 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <LeadInterestForm />
-
-          <Card className="rounded-[24px] p-0">
-            <CardContent className="space-y-4 p-5 sm:p-6">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Proximo passo</p>
-              <h2 className="font-heading text-2xl leading-tight">Seu interesse entra direto na fila comercial</h2>
-              <p className="text-sm text-muted-foreground">
-                Assim que recebermos seus dados, retornamos com orientacao sobre integracao e melhor formato de implantacao para sua equipe.
-              </p>
-              <div className="rounded-xl border border-primary/30 bg-primary-soft px-3 py-2.5 text-xs text-primary">
-                Liberacao de cliente acontece apos validacao comercial e tecnica.
+        {/* ════════════════ FOOTER ════════════════ */}
+        <footer className="border-t border-white/[0.06] bg-[#050816]">
+          <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8 sm:py-12">
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              {/* brand */}
+              <div className="space-y-3 sm:space-y-4">
+                <Link href="/" className="flex items-center gap-2">
+                  <Image
+                    src="/brand/autoszap-mark.png"
+                    alt="AutosZap"
+                    width={28}
+                    height={28}
+                    className="h-6 w-6 object-contain sm:h-7 sm:w-7"
+                  />
+                  <span className="font-heading text-base font-bold tracking-tight sm:text-lg">AutosZap</span>
+                </Link>
+                <p className="text-[13px] leading-relaxed text-white/40 sm:text-sm">
+                  Plataforma profissional de atendimento, CRM e automacao para WhatsApp Business.
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        </section>
+
+              {/* produto */}
+              <div>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Produto</p>
+                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
+                  <li><a href="#funcionalidades" className="transition-colors hover:text-white">Funcionalidades</a></li>
+                  <li><a href="#produto" className="transition-colors hover:text-white">Modulos</a></li>
+                  <li><a href="#como-funciona" className="transition-colors hover:text-white">Como funciona</a></li>
+                  <li><a href="#faq" className="transition-colors hover:text-white">FAQ</a></li>
+                </ul>
+              </div>
+
+              {/* empresa */}
+              <div>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Empresa</p>
+                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
+                  <li><Link href="/como-integrar" className="transition-colors hover:text-white">Guia de integracao</Link></li>
+                  <li><a href="#contato" className="transition-colors hover:text-white">Falar com vendas</a></li>
+                  <li><Link href="/login" className="transition-colors hover:text-white">Acessar plataforma</Link></li>
+                </ul>
+              </div>
+
+              {/* contato */}
+              <div>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Contato</p>
+                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
+                  <li className="flex items-center gap-2">
+                    <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
+                    <a href="#contato" className="transition-colors hover:text-white">Formulario de contato</a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/[0.06] pt-5 text-[11px] text-white/30 sm:mt-10 sm:flex-row sm:pt-6 sm:text-xs">
+              <p>&copy; {new Date().getFullYear()} AutosZap. Todos os direitos reservados.</p>
+              <p>API oficial do WhatsApp Business Platform da Meta.</p>
+            </div>
+          </div>
+        </footer>
       </div>
     </main>
   );

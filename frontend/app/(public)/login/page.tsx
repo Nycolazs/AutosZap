@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { AuthShell } from '@/components/layout/auth-shell';
 import { PlatformDownloads } from '@/components/auth/platform-downloads';
+import { SocialLoginButtons } from '@/components/auth/social-login-buttons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -55,9 +56,9 @@ export default function LoginPage() {
             </Link>
           </Button>
           <p className="text-[11px] leading-4 text-muted-foreground">
-            Ainda nao e cliente?{' '}
-            <Link href="/#quero-ser-cliente" className="font-semibold text-primary">
-              Quero ser cliente
+            Ainda nao tem conta?{' '}
+            <Link href="/register" className="font-semibold text-primary">
+              Criar conta gratis
             </Link>
           </p>
         </div>
@@ -149,6 +150,8 @@ export default function LoginPage() {
               <Button type="submit" size="lg" className="mt-1 h-11 w-full rounded-xl text-[14px] font-semibold">
                 Entrar
               </Button>
+
+              <SocialLoginButtons mode="login" />
             </form>
           </CardContent>
         </Card>

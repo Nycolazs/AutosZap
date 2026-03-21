@@ -29,6 +29,15 @@ import {
 import { AccessControlService } from '../access-control/access-control.service';
 import { TeamService } from './team.service';
 
+class GenerateInviteCodeDto {
+  @IsEnum(Role)
+  role!: Role;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+}
+
 class CreateTeamMemberDto {
   @IsString()
   name!: string;
@@ -161,5 +170,33 @@ export class TeamController {
   @Delete(':id')
   deactivate(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.teamService.deactivate(id, user.workspaceId);
+  }
+
+  @Permissions(PermissionKey.MANAGE_TEAM)
+  @Post('invite-code')
+  generateInviteCode(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: GenerateInviteCodeDto,
+  ) {
+    return this.teamService.generateInviteCode(
+      user.workspaceId,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Permissions(PermissionKey.MANAGE_TEAM)
+  @Get('invite-codes')
+  listInviteCodes(@CurrentUser() user: CurrentAuthUser) {
+    return this.teamService.listInviteCodes(user.workspaceId);
+  }
+
+  @Permissions(PermissionKey.MANAGE_TEAM)
+  @Delete('invite-code/:id')
+  revokeInviteCode(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.teamService.revokeInviteCode(user.workspaceId, id);
   }
 }

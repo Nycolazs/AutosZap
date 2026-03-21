@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { LockKeyhole, Settings2, ShieldCheck, UserCog, UsersRound } from 'lucide-react';
+import { Check, ClipboardCopy, KeyRound, LockKeyhole, Loader2, Settings2, ShieldCheck, Trash2, UserCog, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -20,6 +20,33 @@ import { apiRequest } from '@/lib/api-client';
 import { getRoleLabel } from '@/lib/permissions';
 import { PermissionCatalogEntry, TeamMember } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
+
+/* ── Invite code types ── */
+
+interface InviteCode {
+  id: string;
+  code: string;
+  role: string;
+  title: string | null;
+  status: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+interface GeneratedInvite {
+  code: string;
+  role: string;
+  title: string | null;
+  expiresAt: string | null;
+  companyName: string;
+}
+
+const inviteRoleLabelMap: Record<string, string> = {
+  ADMIN: 'Administrador',
+  MANAGER: 'Gerente',
+  AGENT: 'Atendente',
+  SELLER: 'Vendedor',
+};
 
 const teamMemberSchema = z.object({
   name: z.string().min(2, 'Informe ao menos 2 caracteres.'),
@@ -84,6 +111,11 @@ export default function TeamPage() {
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [permissionsMember, setPermissionsMember] = useState<TeamMember | null>(null);
   const [permissionDraft, setPermissionDraft] = useState<Record<string, boolean>>({});
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteRole, setInviteRole] = useState<string>('SELLER');
+  const [inviteTitle, setInviteTitle] = useState('');
+  const [generatedInvite, setGeneratedInvite] = useState<GeneratedInvite | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const teamQuery = useQuery({
     queryKey: ['team'],
@@ -93,6 +125,41 @@ export default function TeamPage() {
     queryKey: ['team-permission-catalog'],
     queryFn: () => apiRequest<PermissionCatalogEntry[]>('team/permissions/catalog'),
   });
+
+  const inviteCodesQuery = useQuery({
+    queryKey: ['invite-codes'],
+    queryFn: () => apiRequest<InviteCode[]>('team/invite-codes'),
+  });
+
+  const generateInviteMutation = useMutation({
+    mutationFn: (payload: { role: string; title?: string }) =>
+      apiRequest<GeneratedInvite>('team/invite-code', {
+        method: 'POST',
+        body: payload,
+      }),
+    onSuccess: (data) => {
+      setGeneratedInvite(data);
+      queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const revokeInviteMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest(`team/invite-code/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Codigo revogado.');
+      queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const handleCopyCode = async (code: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    toast.success('Codigo copiado!');
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
 
   const groupedPermissions = useMemo(() => {
     const catalog = permissionCatalogQuery.data ?? [];
@@ -292,6 +359,19 @@ export default function TeamPage() {
         title="Equipe"
         description="Gerencie papel, status e permissões granulares de cada usuário da empresa."
         action={
+          <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setInviteDialogOpen(true);
+              setGeneratedInvite(null);
+              setInviteRole('SELLER');
+              setInviteTitle('');
+            }}
+          >
+            <KeyRound className="h-4 w-4" />
+            Gerar convite
+          </Button>
           <EntityFormDialog
             open={dialogOpen}
             onOpenChange={(open) => {
@@ -347,6 +427,7 @@ export default function TeamPage() {
               </Button>
             }
           />
+          </div>
         }
       />
 
@@ -415,6 +496,169 @@ export default function TeamPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Active invite codes ── */}
+      {(inviteCodesQuery.data ?? []).filter((c) => c.status === 'ACTIVE').length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-primary" />
+              Codigos de convite ativos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(inviteCodesQuery.data ?? [])
+                .filter((c) => c.status === 'ACTIVE')
+                .map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-white/[0.03] p-3"
+                  >
+                    <code className="rounded-lg bg-primary/10 px-3 py-1.5 font-mono text-[14px] font-semibold tracking-[0.2em] text-primary">
+                      {invite.code}
+                    </code>
+                    <div className="flex-1 text-sm">
+                      <Badge variant="secondary" className="mr-2">
+                        {inviteRoleLabelMap[invite.role] ?? invite.role}
+                      </Badge>
+                      {invite.title ? (
+                        <span className="text-xs text-muted-foreground">{invite.title}</span>
+                      ) : null}
+                    </div>
+                    {invite.expiresAt ? (
+                      <span className="text-[11px] text-muted-foreground">
+                        Expira {formatDate(invite.expiresAt)}
+                      </span>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopyCode(invite.code)}
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5" />
+                    </Button>
+                    <ConfirmDialog
+                      trigger={
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-3.5 w-3.5 text-danger" />
+                        </Button>
+                      }
+                      title="Revogar convite"
+                      description="O codigo deixara de funcionar imediatamente."
+                      actionLabel="Revogar"
+                      onConfirm={() => revokeInviteMutation.mutate(invite.id)}
+                    />
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ── Invite code generation dialog ── */}
+      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {generatedInvite ? 'Convite gerado!' : 'Gerar codigo de convite'}
+            </DialogTitle>
+            <DialogDescription>
+              {generatedInvite
+                ? 'Copie e compartilhe o codigo com o novo membro da equipe.'
+                : 'Defina o papel e cargo do novo membro. O codigo sera valido por 7 dias.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {generatedInvite ? (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-primary/20 bg-primary/[0.06] p-6">
+                <code className="rounded-xl bg-primary/10 px-6 py-3 font-mono text-[28px] font-bold tracking-[0.3em] text-primary">
+                  {generatedInvite.code}
+                </code>
+                <div className="flex gap-2">
+                  <Badge variant="secondary">
+                    {inviteRoleLabelMap[generatedInvite.role] ?? generatedInvite.role}
+                  </Badge>
+                  {generatedInvite.title ? (
+                    <Badge variant="secondary">{generatedInvite.title}</Badge>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Empresa: {generatedInvite.companyName}
+                </p>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={() => handleCopyCode(generatedInvite.code)}
+              >
+                {copiedCode ? (
+                  <Check className="mr-2 h-4 w-4" />
+                ) : (
+                  <ClipboardCopy className="mr-2 h-4 w-4" />
+                )}
+                {copiedCode ? 'Copiado!' : 'Copiar codigo'}
+              </Button>
+
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => setInviteDialogOpen(false)}
+              >
+                Fechar
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium" htmlFor="invite-role">
+                  Papel
+                </label>
+                <select
+                  id="invite-role"
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="ADMIN">Administrador</option>
+                  <option value="SELLER">Vendedor</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium" htmlFor="invite-title">
+                  Cargo (opcional)
+                </label>
+                <input
+                  id="invite-title"
+                  type="text"
+                  placeholder="Ex: Gerente Comercial"
+                  value={inviteTitle}
+                  onChange={(e) => setInviteTitle(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={() =>
+                  generateInviteMutation.mutate({
+                    role: inviteRole,
+                    title: inviteTitle || undefined,
+                  })
+                }
+                disabled={generateInviteMutation.isPending}
+              >
+                {generateInviteMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="mr-2 h-4 w-4" />
+                )}
+                Gerar codigo de convite
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(permissionsMember)} onOpenChange={(open) => !open && setPermissionsMember(null)}>
         <DialogContent className="max-w-3xl">

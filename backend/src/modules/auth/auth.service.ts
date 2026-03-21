@@ -25,6 +25,7 @@ import {
   CompanyStatus,
   GlobalUser,
   GlobalUserStatus,
+  InviteCodeStatus,
   MembershipStatus,
   PlatformAuditAction,
   PlatformRole,
@@ -40,7 +41,9 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SocialLoginDto,
   SwitchCompanyDto,
+  ValidateInviteCodeDto,
 } from './auth.dto';
 import { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { TenantConnectionService } from '../../common/tenancy/tenant-connection.service';
@@ -109,6 +112,15 @@ export class AuthService {
       throw new BadRequestException('Ja existe uma conta com este email.');
     }
 
+    // ── Invite code flow: join existing company ──
+    if (dto.inviteCode) {
+      return this.registerWithInviteCode(dto, email, existingGlobalUser);
+    }
+
+    if (!dto.companyName) {
+      throw new BadRequestException('Informe o nome da empresa.');
+    }
+
     const companySlug = await this.generateUniqueCompanySlug(dto.companyName);
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const companyId = randomUUID();
@@ -120,8 +132,9 @@ export class AuthService {
           data: {
             id: companyId,
             workspaceId,
-            name: dto.companyName,
+            name: dto.companyName!,
             slug: companySlug,
+            segment: dto.segment ?? null,
             status: CompanyStatus.ACTIVE,
           },
         });
@@ -208,6 +221,430 @@ export class AuthService {
     } satisfies SessionMembership;
 
     return this.issueSession(globalUser, hydratedMembership);
+  }
+
+  async validateInviteCode(dto: ValidateInviteCodeDto) {
+    const code = dto.code.toUpperCase().trim();
+    const invite = await this.controlPlanePrisma.companyInviteCode.findUnique({
+      where: { code },
+      include: { company: true },
+    });
+
+    if (
+      !invite ||
+      invite.status !== InviteCodeStatus.ACTIVE ||
+      invite.company.status !== CompanyStatus.ACTIVE
+    ) {
+      throw new BadRequestException('Codigo de convite invalido ou expirado.');
+    }
+
+    if (invite.expiresAt && invite.expiresAt <= new Date()) {
+      await this.controlPlanePrisma.companyInviteCode.update({
+        where: { id: invite.id },
+        data: { status: InviteCodeStatus.EXPIRED },
+      });
+      throw new BadRequestException('Codigo de convite expirado.');
+    }
+
+    return {
+      valid: true,
+      companyName: invite.company.name,
+      role: invite.role,
+      title: invite.title,
+    };
+  }
+
+  private async registerWithInviteCode(
+    dto: RegisterDto,
+    email: string,
+    existingGlobalUser: GlobalUser | null,
+  ) {
+    const code = dto.inviteCode!.toUpperCase().trim();
+    const invite = await this.controlPlanePrisma.companyInviteCode.findUnique({
+      where: { code },
+      include: { company: true },
+    });
+
+    if (
+      !invite ||
+      invite.status !== InviteCodeStatus.ACTIVE ||
+      invite.company.status !== CompanyStatus.ACTIVE
+    ) {
+      throw new BadRequestException('Codigo de convite invalido ou expirado.');
+    }
+
+    if (invite.expiresAt && invite.expiresAt <= new Date()) {
+      await this.controlPlanePrisma.companyInviteCode.update({
+        where: { id: invite.id },
+        data: { status: InviteCodeStatus.EXPIRED },
+      });
+      throw new BadRequestException('Codigo de convite expirado.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const tenantRole = invite.role;
+    const prismaRole = this.mapTenantRoleToTenantRoleEnum(tenantRole);
+
+    // Create or update global user + membership in control plane
+    const { globalUser, membership } =
+      await this.controlPlanePrisma.$transaction(async (tx) => {
+        const createdGlobalUser = existingGlobalUser
+          ? await tx.globalUser.update({
+              where: { id: existingGlobalUser.id },
+              data: {
+                name: dto.name,
+                passwordHash,
+                status: GlobalUserStatus.ACTIVE,
+                deletedAt: null,
+                blockedAt: null,
+              },
+            })
+          : await tx.globalUser.create({
+              data: {
+                name: dto.name,
+                email,
+                passwordHash,
+                status: GlobalUserStatus.ACTIVE,
+              },
+            });
+
+        const hasActiveMembership = await tx.companyMembership.findFirst({
+          where: {
+            globalUserId: createdGlobalUser.id,
+            status: MembershipStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+
+        const createdMembership = await tx.companyMembership.create({
+          data: {
+            companyId: invite.companyId,
+            globalUserId: createdGlobalUser.id,
+            tenantRole,
+            status: MembershipStatus.ACTIVE,
+            isDefault: !hasActiveMembership,
+          },
+        });
+
+        // Mark invite code as used
+        await tx.companyInviteCode.update({
+          where: { id: invite.id },
+          data: {
+            status: InviteCodeStatus.USED,
+            usedByGlobalUserId: createdGlobalUser.id,
+            usedAt: new Date(),
+          },
+        });
+
+        return {
+          globalUser: createdGlobalUser,
+          membership: createdMembership,
+        };
+      });
+
+    // Create tenant user in the company's workspace
+    const workspaceId = invite.company.workspaceId;
+    await this.prisma.runWithTenant(invite.companyId, async () => {
+      const existingTenantUser = await this.prisma.user.findFirst({
+        where: {
+          workspaceId,
+          OR: [{ globalUserId: globalUser.id }, { email }],
+        },
+      });
+
+      if (!existingTenantUser) {
+        const tenantUser = await this.prisma.user.create({
+          data: {
+            workspaceId,
+            globalUserId: globalUser.id,
+            name: dto.name,
+            email,
+            passwordHash,
+            role: prismaRole,
+            status: UserStatus.ACTIVE,
+            title: invite.title,
+          },
+        });
+
+        // Also create team member record
+        await this.prisma.teamMember.create({
+          data: {
+            workspaceId,
+            userId: tenantUser.id,
+            name: dto.name,
+            email,
+            title: invite.title,
+            role: prismaRole,
+            status: UserStatus.ACTIVE,
+            inviteToken: null,
+          },
+        });
+      }
+    });
+
+    await this.controlPlaneAuditService.log({
+      actorId: globalUser.id,
+      action: PlatformAuditAction.MEMBERSHIP_CREATED,
+      entityType: 'company_membership',
+      entityId: membership.id,
+      metadata: {
+        companyId: invite.companyId,
+        inviteCode: code,
+        role: tenantRole,
+      },
+    });
+
+    const hydratedMembership = {
+      ...membership,
+      company: invite.company,
+    } satisfies SessionMembership;
+
+    return this.issueSession(globalUser, hydratedMembership);
+  }
+
+  async socialLogin(
+    dto: SocialLoginDto,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const profile = await this.verifySocialToken(dto.provider, dto.token);
+
+    if (!profile.email) {
+      throw new BadRequestException(
+        'Nao foi possivel obter o email do provedor. Verifique as permissoes.',
+      );
+    }
+
+    const email = profile.email.toLowerCase().trim();
+    const name: string = dto.name || profile.name || email.split('@')[0] || 'Usuario';
+
+    let globalUser = await this.controlPlanePrisma.globalUser.findUnique({
+      where: { email },
+    });
+
+    if (globalUser && globalUser.deletedAt !== null) {
+      globalUser = await this.controlPlanePrisma.globalUser.update({
+        where: { id: globalUser.id },
+        data: {
+          name,
+          status: GlobalUserStatus.ACTIVE,
+          deletedAt: null,
+          blockedAt: null,
+        },
+      });
+    }
+
+    if (globalUser) {
+      const memberships =
+        await this.controlPlanePrisma.companyMembership.findMany({
+          where: {
+            globalUserId: globalUser.id,
+            status: MembershipStatus.ACTIVE,
+            company: { status: CompanyStatus.ACTIVE },
+          },
+          include: { company: true },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+        });
+
+      const membership = memberships[0] ?? null;
+      if (
+        !membership &&
+        globalUser.platformRole !== PlatformRole.SUPER_ADMIN
+      ) {
+        throw new UnauthorizedException(
+          'Usuario sem empresa ativa vinculada.',
+        );
+      }
+
+      await this.controlPlanePrisma.globalUser.update({
+        where: { id: globalUser.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      await this.controlPlaneAuditService.log({
+        actorId: globalUser.id,
+        action: PlatformAuditAction.LOGIN,
+        entityType: 'global_user',
+        entityId: globalUser.id,
+        metadata: {
+          provider: dto.provider,
+          companyId: membership?.companyId ?? null,
+        },
+        ipAddress,
+        userAgent,
+      });
+
+      return this.issueSession(globalUser, membership, {
+        userAgent,
+        ipAddress,
+      });
+    }
+
+    const allowPublicSignup =
+      (this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'false')
+        .trim()
+        .toLowerCase() === 'true';
+
+    if (!allowPublicSignup) {
+      throw new BadRequestException(
+        'Cadastro direto desativado. Entre em contato com o administrador.',
+      );
+    }
+
+    const companyName =
+      dto.companyName || `Empresa de ${name.split(' ')[0]}`;
+    const companySlug = await this.generateUniqueCompanySlug(companyName);
+    const randomPassword = randomUUID();
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
+    const companyId = randomUUID();
+    const workspaceId = companyId;
+
+    const { company, membership, globalUser: newGlobalUser } =
+      await this.controlPlanePrisma.$transaction(async (tx) => {
+        const createdCompany = await tx.company.create({
+          data: {
+            id: companyId,
+            workspaceId,
+            name: companyName,
+            slug: companySlug,
+            status: CompanyStatus.ACTIVE,
+          },
+        });
+
+        const createdGlobalUser = await tx.globalUser.create({
+          data: {
+            name,
+            email,
+            passwordHash,
+            status: GlobalUserStatus.ACTIVE,
+          },
+        });
+
+        const createdMembership = await tx.companyMembership.create({
+          data: {
+            companyId: createdCompany.id,
+            globalUserId: createdGlobalUser.id,
+            tenantRole: TenantRole.ADMIN,
+            status: MembershipStatus.ACTIVE,
+            isDefault: true,
+          },
+        });
+
+        return {
+          company: createdCompany,
+          membership: createdMembership,
+          globalUser: createdGlobalUser,
+        };
+      });
+
+    try {
+      await this.tenantProvisioningService.provisionTenant({
+        companyId: company.id,
+        companyName: company.name,
+        companySlug: company.slug,
+        workspaceId: company.workspaceId,
+        requestedById: newGlobalUser.id,
+        admin: {
+          globalUserId: newGlobalUser.id,
+          name: newGlobalUser.name,
+          email: newGlobalUser.email,
+          passwordHash,
+        },
+      });
+    } catch (error) {
+      await this.controlPlanePrisma.company.update({
+        where: { id: company.id },
+        data: { status: CompanyStatus.INACTIVE },
+      });
+      throw error;
+    }
+
+    await this.controlPlaneAuditService.log({
+      actorId: newGlobalUser.id,
+      action: PlatformAuditAction.COMPANY_CREATED,
+      entityType: 'company',
+      entityId: company.id,
+      metadata: { slug: company.slug, provider: dto.provider },
+    });
+
+    const hydratedMembership = {
+      ...membership,
+      company,
+    } satisfies SessionMembership;
+
+    return this.issueSession(newGlobalUser, hydratedMembership, {
+      userAgent,
+      ipAddress,
+    });
+  }
+
+  private async verifySocialToken(
+    provider: 'google' | 'facebook',
+    token: string,
+  ): Promise<{ email: string; name?: string }> {
+    switch (provider) {
+      case 'google':
+        return this.verifyGoogleToken(token);
+      case 'facebook':
+        return this.verifyFacebookToken(token);
+      default:
+        throw new BadRequestException('Provedor nao suportado.');
+    }
+  }
+
+  private async verifyGoogleToken(
+    token: string,
+  ): Promise<{ email: string; name?: string }> {
+    const response = await fetch(
+      `https://www.googleapis.com/oauth2/v3/userinfo`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!response.ok) {
+      throw new UnauthorizedException('Token do Google invalido ou expirado.');
+    }
+
+    const data = (await response.json()) as {
+      email?: string;
+      name?: string;
+      email_verified?: boolean;
+    };
+
+    if (!data.email) {
+      throw new BadRequestException(
+        'Nao foi possivel obter o email da conta Google.',
+      );
+    }
+
+    return { email: data.email, name: data.name };
+  }
+
+  private async verifyFacebookToken(
+    token: string,
+  ): Promise<{ email: string; name?: string }> {
+    const response = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(token)}`,
+    );
+
+    if (!response.ok) {
+      throw new UnauthorizedException(
+        'Token do Facebook invalido ou expirado.',
+      );
+    }
+
+    const data = (await response.json()) as {
+      id?: string;
+      email?: string;
+      name?: string;
+    };
+
+    if (!data.email) {
+      throw new BadRequestException(
+        'Nao foi possivel obter o email da conta Facebook. Verifique se o email esta publico.',
+      );
+    }
+
+    return { email: data.email, name: data.name };
   }
 
   async login(dto: LoginDto, userAgent?: string, ipAddress?: string) {

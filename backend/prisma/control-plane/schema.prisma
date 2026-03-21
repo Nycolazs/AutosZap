@@ -65,6 +65,13 @@ enum PlatformAuditAction {
   SECURITY_EVENT
 }
 
+enum InviteCodeStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  REVOKED
+}
+
 enum LeadInterestStatus {
   PENDING
   CONTACTED
@@ -98,6 +105,7 @@ model Company {
   legalName        String?
   status           CompanyStatus         @default(ACTIVE)
   workspaceId      String                @unique
+  segment          String?
   featureFlags     Json?
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
@@ -106,6 +114,7 @@ model Company {
   tenantDatabase   TenantDatabase?
   provisioningJobs TenantProvisioningJob[]
   refreshTokens    GlobalRefreshToken[]
+  inviteCodes      CompanyInviteCode[]
 }
 
 model CompanyMembership {
@@ -224,4 +233,22 @@ model LeadInterest {
   @@index([status, createdAt])
   @@index([createdAt])
   @@index([email])
+}
+
+model CompanyInviteCode {
+  id                  String           @id @default(cuid())
+  companyId           String
+  code                String           @unique
+  role                TenantRole       @default(SELLER)
+  title               String?
+  status              InviteCodeStatus @default(ACTIVE)
+  usedByGlobalUserId  String?
+  createdByGlobalUserId String?
+  createdAt           DateTime         @default(now())
+  expiresAt           DateTime?
+  usedAt              DateTime?
+  company             Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([code])
 }

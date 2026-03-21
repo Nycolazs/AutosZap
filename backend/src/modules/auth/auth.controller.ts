@@ -10,7 +10,9 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SocialLoginDto,
   SwitchCompanyDto,
+  ValidateInviteCodeDto,
 } from './auth.dto';
 import { AuthService } from './auth.service';
 
@@ -34,6 +36,17 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Public()
+  @RateLimit({ limit: 10, windowSeconds: 60 })
+  @Post('social-login')
+  socialLogin(
+    @Body() dto: SocialLoginDto,
+    @Headers('user-agent') userAgent?: string,
+    @Ip() ipAddress?: string,
+  ) {
+    return this.authService.socialLogin(dto, userAgent, ipAddress);
   }
 
   @Public()
@@ -81,5 +94,12 @@ export class AuthController {
     @Body() dto: SwitchCompanyDto,
   ) {
     return this.authService.switchCompany(user, dto);
+  }
+
+  @Public()
+  @RateLimit({ limit: 20, windowSeconds: 60 })
+  @Post('validate-invite-code')
+  validateInviteCode(@Body() dto: ValidateInviteCodeDto) {
+    return this.authService.validateInviteCode(dto);
   }
 }
