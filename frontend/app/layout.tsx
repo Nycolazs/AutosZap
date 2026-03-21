@@ -13,13 +13,76 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
 });
 
+const SITE_URL = 'https://autoszap.com';
+
 export const metadata: Metadata = {
-  title: 'AutosZap',
-  description: 'Inbox, CRM e automacao premium para WhatsApp Business Platform.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    template: '%s | AutosZap',
+  },
+  description:
+    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+  keywords: [
+    'whatsapp business',
+    'whatsapp api',
+    'crm whatsapp',
+    'atendimento whatsapp',
+    'inbox whatsapp',
+    'automacao whatsapp',
+    'whatsapp business platform',
+    'multiatendimento whatsapp',
+    'plataforma whatsapp',
+    'autoszap',
+  ],
+  authors: [{ name: 'AutosZap', url: SITE_URL }],
+  creator: 'AutosZap',
+  publisher: 'AutosZap',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'pt_BR',
+    url: SITE_URL,
+    siteName: 'AutosZap',
+    title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    description:
+      'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+    images: [
+      {
+        url: '/brand/autoszap-og.png',
+        width: 1200,
+        height: 630,
+        alt: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+    description:
+      'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+    images: ['/brand/autoszap-og.png'],
+  },
+  alternates: {
+    canonical: SITE_URL,
+  },
   icons: {
     icon: '/brand/autoszap-mark.png',
     shortcut: '/brand/autoszap-mark.png',
     apple: '/brand/autoszap-mark.png',
+  },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
   },
 };
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -13,6 +14,36 @@ import { LeadInterestForm } from '@/components/marketing/lead-interest-form';
 import { ScreenshotShowcase } from '@/components/marketing/screenshot-showcase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+
+export const metadata: Metadata = {
+  title: 'AutosZap — Atendimento, CRM e Automacao para WhatsApp Business',
+  description:
+    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao em uma experiencia unica para equipes que usam WhatsApp Business Platform.',
+  alternates: { canonical: 'https://autoszap.com' },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'AutosZap',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: 'https://autoszap.com',
+  description:
+    'Plataforma B2B que une inbox multiatendente, CRM com pipeline e automacao para WhatsApp Business Platform.',
+  offers: {
+    '@type': 'Offer',
+    category: 'SaaS',
+  },
+  featureList: [
+    'Inbox multiatendente com distribuicao de conversas',
+    'CRM com pipeline para leads e oportunidades',
+    'Campanhas e listas para operacao comercial',
+    'Automacoes para reduzir retrabalho no atendimento',
+    'Gestao de equipe e perfis de acesso',
+    'Indicadores de desempenho para decisao rapida',
+  ],
+};
 
 const valueCards = [
   {
@@ -61,6 +92,10 @@ const integrationChecklist = [
 export default function HomePage() {
   return (
     <main className="relative h-dvh overflow-y-auto">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_6%,rgba(56,145,255,0.16),transparent_30%),radial-gradient(circle_at_84%_88%,rgba(22,152,196,0.12),transparent_28%)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-[1080px] px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pt-8">

@@ -1,7 +1,15 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileText, KeyRound, Smartphone, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+
+export const metadata: Metadata = {
+  title: 'Como integrar seu numero ao AutosZap',
+  description:
+    'Guia completo de como integrar seu numero de WhatsApp ao AutosZap. Passo a passo para conectar com a API oficial do WhatsApp Business Platform.',
+  alternates: { canonical: 'https://autoszap.com/como-integrar' },
+};
 
 const steps = [
   {
