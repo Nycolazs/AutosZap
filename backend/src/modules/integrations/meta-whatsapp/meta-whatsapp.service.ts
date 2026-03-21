@@ -676,16 +676,25 @@ export class MetaWhatsAppService {
     );
     const firstPhoneNumberId =
       parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
+    this.logger.log(`[Webhook] phoneNumberId=${firstPhoneNumberId}`);
     const tenantResolution = firstPhoneNumberId
       ? await this.tenantConnectionService.resolveTenantByPhoneNumberId(
           firstPhoneNumberId,
         )
       : null;
+    this.logger.log(`[Webhook] tenantResolution=${JSON.stringify(tenantResolution)}`);
 
     if (tenantResolution?.companyId) {
-      return this.prisma.runWithTenant(tenantResolution.companyId, () =>
-        this.handleWebhookInTenantContext(payload, parsed, context),
-      );
+      try {
+        const result = await this.prisma.runWithTenant(tenantResolution.companyId, () =>
+          this.handleWebhookInTenantContext(payload, parsed, context),
+        );
+        this.logger.log(`[Webhook] handleWebhookInTenantContext completed successfully`);
+        return result;
+      } catch (error) {
+        this.logger.error(`[Webhook] handleWebhookInTenantContext FAILED: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
+        throw error;
+      }
     }
 
     return this.handleWebhookInTenantContext(payload, parsed, context);
@@ -749,8 +758,10 @@ export class MetaWhatsAppService {
         }));
 
       if (!inboundInstance) {
+        this.logger.warn(`[Webhook] No instance found for phoneNumberId=${inbound.phoneNumberId}`);
         continue;
       }
+      this.logger.log(`[Webhook] Processing message type=${inbound.messageType} for instance=${inboundInstance.id}`);
 
       const contact = await this.ensureContact(
         inboundInstance.workspaceId,
