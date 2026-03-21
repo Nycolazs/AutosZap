@@ -159,7 +159,7 @@ export function launchEmbeddedSignup(): Promise<EmbeddedSignupResult> {
         response_type: 'code',
         override_default_response_type: true,
         scope:
-          'business_management,whatsapp_business_messaging,whatsapp_business_management',
+          'whatsapp_business_messaging,whatsapp_business_management',
         extras: {
           feature: 'whatsapp_embedded_signup',
           sessionInfoVersion: 2,
