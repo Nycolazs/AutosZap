@@ -112,12 +112,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <div
             className={cn(
-              'h-full px-3 py-3 sm:p-4 lg:p-5',
-              shouldShowMobileBottomNav && 'pb-24',
+              'min-h-full px-3 py-3 sm:p-4 lg:p-5',
+              shouldShowMobileBottomNav && 'pb-24 lg:pb-5',
               isInboxRoute && 'overflow-hidden',
             )}
           >
-            <RouteTransition className="h-full">{children}</RouteTransition>
+            <RouteTransition className="min-h-full">{children}</RouteTransition>
           </div>
         </main>
         {shouldShowMobileBottomNav ? (
