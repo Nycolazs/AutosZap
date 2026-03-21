@@ -19,7 +19,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/api-client';
 import { PlatformMeResponse } from '@/lib/types';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -122,6 +122,7 @@ function SidebarContent({
       <div className="border-t border-border/60 px-3 pt-3 pb-1">
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9 ring-2 ring-primary/20">
+            {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
             <AvatarFallback className="text-[11px]">
               {user.name?.slice(0, 2).toUpperCase() ?? 'AD'}
             </AvatarFallback>
@@ -302,6 +303,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
+              {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
               <AvatarFallback className="text-[10px]">
                 {user.name?.slice(0, 2).toUpperCase() ?? 'AD'}
               </AvatarFallback>

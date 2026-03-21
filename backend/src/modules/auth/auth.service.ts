@@ -417,6 +417,7 @@ export class AuthService {
 
     const email = profile.email.toLowerCase().trim();
     const name: string = dto.name || profile.name || email.split('@')[0] || 'Usuario';
+    const avatarUrl = profile.picture || undefined;
 
     let globalUser = await this.controlPlanePrisma.globalUser.findUnique({
       where: { email },
@@ -427,6 +428,7 @@ export class AuthService {
         where: { id: globalUser.id },
         data: {
           name,
+          avatarUrl: avatarUrl ?? globalUser.avatarUrl,
           status: GlobalUserStatus.ACTIVE,
           deletedAt: null,
           blockedAt: null,
@@ -458,7 +460,10 @@ export class AuthService {
 
       await this.controlPlanePrisma.globalUser.update({
         where: { id: globalUser.id },
-        data: { lastLoginAt: new Date() },
+        data: {
+          lastLoginAt: new Date(),
+          ...(avatarUrl ? { avatarUrl } : {}),
+        },
       });
 
       await this.controlPlaneAuditService.log({
@@ -528,6 +533,7 @@ export class AuthService {
             name,
             email,
             passwordHash,
+            avatarUrl,
             status: GlobalUserStatus.ACTIVE,
           },
         });
@@ -745,7 +751,7 @@ export class AuthService {
   private async verifySocialToken(
     provider: 'google' | 'facebook',
     token: string,
-  ): Promise<{ email: string; name?: string }> {
+  ): Promise<{ email: string; name?: string; picture?: string }> {
     switch (provider) {
       case 'google':
         return this.verifyGoogleToken(token);
@@ -758,7 +764,7 @@ export class AuthService {
 
   private async verifyGoogleToken(
     token: string,
-  ): Promise<{ email: string; name?: string }> {
+  ): Promise<{ email: string; name?: string; picture?: string }> {
     const response = await fetch(
       `https://www.googleapis.com/oauth2/v3/userinfo`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -771,6 +777,7 @@ export class AuthService {
     const data = (await response.json()) as {
       email?: string;
       name?: string;
+      picture?: string;
       email_verified?: boolean;
     };
 
@@ -780,7 +787,7 @@ export class AuthService {
       );
     }
 
-    return { email: data.email, name: data.name };
+    return { email: data.email, name: data.name, picture: data.picture };
   }
 
   private async verifyFacebookToken(
@@ -1182,6 +1189,7 @@ export class AuthService {
         id: globalUser.id,
         name: globalUser.name,
         email: globalUser.email,
+        avatarUrl: globalUser.avatarUrl,
         role: Role.ADMIN,
         normalizedRole: normalizeRole(Role.ADMIN),
         title: 'Administrador da plataforma',
@@ -1253,6 +1261,7 @@ export class AuthService {
       id: tenantUser.id,
       name: tenantUser.name,
       email: tenantUser.email,
+      avatarUrl: tenantUser.avatarUrl ?? globalUser.avatarUrl,
       role: tenantUser.role,
       normalizedRole: normalizeRole(tenantUser.role),
       title: tenantUser.title,

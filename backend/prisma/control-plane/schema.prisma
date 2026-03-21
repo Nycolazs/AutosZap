@@ -84,6 +84,7 @@ model GlobalUser {
   email                    String                     @unique
   name                     String
   passwordHash             String
+  avatarUrl                String?
   status                   GlobalUserStatus           @default(ACTIVE)
   platformRole             PlatformRole?
   blockedAt                DateTime?

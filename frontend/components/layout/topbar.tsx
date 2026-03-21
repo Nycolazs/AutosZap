@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Menu, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAV_SECTIONS } from '@/components/layout/app-sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,10 +38,12 @@ function isRouteActive(pathname: string, href: string) {
 export function Topbar({
   userName,
   userRole,
+  userAvatarUrl,
   permissionMap,
 }: {
   userName?: string;
   userRole?: string;
+  userAvatarUrl?: string | null;
   permissionMap?: PermissionMap;
 }) {
   const router = useRouter();
@@ -207,6 +209,7 @@ export function Topbar({
 
           <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-2 md:gap-3 md:px-3">
             <Avatar>
+              {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={userName ?? 'Avatar'} />}
               <AvatarFallback>
                 {userName?.slice(0, 2).toUpperCase() ?? 'AS'}
               </AvatarFallback>

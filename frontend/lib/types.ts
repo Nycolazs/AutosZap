@@ -421,6 +421,7 @@ export interface AuthMeResponse {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string | null;
   role: string;
   normalizedRole: 'ADMIN' | 'SELLER';
   title?: string | null;
@@ -572,6 +573,7 @@ export interface PlatformMeResponse {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string | null;
   status: string;
   platformRole?: string | null;
   isPlatformAdmin: boolean;

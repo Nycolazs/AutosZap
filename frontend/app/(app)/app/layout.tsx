@@ -84,6 +84,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Topbar
             userName={me.name}
             userRole={me.normalizedRole}
+            userAvatarUrl={me.avatarUrl}
             permissionMap={me.permissionMap}
           />
           <main data-app-shell className="min-h-0 flex-1 overflow-auto">
@@ -103,6 +104,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Topbar
           userName={me?.name}
           userRole={me?.normalizedRole}
+          userAvatarUrl={me?.avatarUrl}
           permissionMap={me?.permissionMap}
         />
         <main
