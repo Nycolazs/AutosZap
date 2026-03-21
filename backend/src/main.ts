@@ -34,8 +34,8 @@ async function bootstrap() {
   app.use(
     json({
       limit: '2mb',
-      verify: (req: { rawBody?: Buffer }, _res, buf) => {
-        req.rawBody = buf;
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody?: Buffer }).rawBody = buf;
       },
     }),
   );
