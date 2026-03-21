@@ -109,6 +109,32 @@ describe('JwtStrategy', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('deve validar usuario SUPPORT sem membership ativa', async () => {
+    findGlobalUserMock.mockResolvedValue({
+      id: 'user-support',
+      email: 'support@autoszap.com',
+      name: 'Support',
+      status: 'ACTIVE',
+      deletedAt: null,
+      platformRole: 'SUPPORT',
+    } as never);
+    findMembershipMock.mockResolvedValue(null as never);
+
+    const user = await strategy.validate({
+      sub: 'user-support',
+      email: 'support@autoszap.com',
+      name: 'Support',
+      workspaceId: '',
+      role: 'ADMIN' as never,
+    });
+
+    expect(user.sub).toBe('user-support');
+    expect(user.globalUserId).toBe('user-support');
+    expect(user.companyId).toBeUndefined();
+    expect(user.platformRole).toBe('SUPPORT');
+    expect(runWithTenantMock).not.toHaveBeenCalled();
+  });
+
   it('deve aceitar accessToken na query para requisicoes GET/HEAD', () => {
     expect(
       extractAccessTokenFromReadonlyQuery({

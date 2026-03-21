@@ -34,8 +34,7 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const tokenPayload = decodeJwtPayload(accessToken);
-  const authenticatedHome =
-    tokenPayload?.platformRole === 'SUPER_ADMIN' ? '/platform' : '/app';
+  const authenticatedHome = tokenPayload?.platformRole ? '/platform' : '/app';
   const isPublicRoute =
     publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
     pathname.startsWith('/reset-password/');

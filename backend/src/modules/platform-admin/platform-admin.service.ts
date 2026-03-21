@@ -710,7 +710,7 @@ export class PlatformAdminService {
       avatarUrl: user.avatarUrl,
       status: user.status,
       platformRole: user.platformRole,
-      isPlatformAdmin: user.platformRole === 'SUPER_ADMIN',
+      isPlatformAdmin: user.platformRole != null,
       memberships: user.memberships,
     };
   }

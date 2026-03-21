@@ -53,7 +53,7 @@ export class TenantContextGuard implements CanActivate {
     });
 
     if (isPlatformRoute) {
-      if (user.platformRole !== 'SUPER_ADMIN') {
+      if (user.platformRole == null) {
         throw new ForbiddenException(
           'Acesso permitido apenas para administradores da plataforma.',
         );

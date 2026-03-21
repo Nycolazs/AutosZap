@@ -150,7 +150,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
     }
 
-    if (!membership && globalUser.platformRole !== PlatformRole.SUPER_ADMIN) {
+    if (!membership && globalUser.platformRole == null) {
       throw new UnauthorizedException('Sessao invalida ou expirada.');
     }
 

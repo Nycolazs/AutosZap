@@ -85,6 +85,31 @@ describe('TenantContextGuard', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('permite rota de plataforma para usuario com role SUPPORT', async () => {
+    reflector.getAllAndOverride.mockImplementation((key: string) => {
+      if (key === IS_PUBLIC_KEY) return false;
+      if (key === PLATFORM_ADMIN_KEY) return true;
+      return false;
+    });
+
+    const canActivate = await guard.canActivate(
+      buildExecutionContext({
+        user: {
+          sub: 'user-1',
+          email: 'support@autoszap.com',
+          name: 'Support',
+          role: 'ADMIN',
+          workspaceId: 'ws-1',
+          platformRole: 'SUPPORT',
+        },
+      }),
+    );
+
+    expect(canActivate).toBe(true);
+    expect(getTenantClientMock).not.toHaveBeenCalled();
+    expect(patchTenantContextMock).toHaveBeenCalledTimes(1);
+  });
+
   it('resolve tenant client em rota comum', async () => {
     reflector.getAllAndOverride.mockImplementation((key: string) => {
       if (key === IS_PUBLIC_KEY) return false;

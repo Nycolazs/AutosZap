@@ -449,10 +449,7 @@ export class AuthService {
         });
 
       const membership = memberships[0] ?? null;
-      if (
-        !membership &&
-        globalUser.platformRole !== PlatformRole.SUPER_ADMIN
-      ) {
+      if (!membership && globalUser.platformRole == null) {
         throw new UnauthorizedException(
           'Usuario sem empresa ativa vinculada.',
         );
@@ -885,7 +882,7 @@ export class AuthService {
       });
 
     const membership = memberships[0] ?? null;
-    if (!membership && globalUser.platformRole !== PlatformRole.SUPER_ADMIN) {
+    if (!membership && globalUser.platformRole == null) {
       throw new UnauthorizedException('Usuario sem empresa ativa vinculada.');
     }
 
@@ -966,10 +963,7 @@ export class AuthService {
       membership = await this.getDefaultMembership(existingToken.globalUserId);
     }
 
-    if (
-      !membership &&
-      existingToken.globalUser.platformRole !== PlatformRole.SUPER_ADMIN
-    ) {
+    if (!membership && existingToken.globalUser.platformRole == null) {
       throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
     }
 
@@ -1212,7 +1206,7 @@ export class AuthService {
         })),
         platform: {
           role: globalUser.platformRole,
-          isPlatformAdmin: globalUser.platformRole === PlatformRole.SUPER_ADMIN,
+          isPlatformAdmin: globalUser.platformRole != null,
         },
       };
     }
@@ -1286,7 +1280,7 @@ export class AuthService {
       })),
       platform: {
         role: globalUser.platformRole,
-        isPlatformAdmin: globalUser.platformRole === PlatformRole.SUPER_ADMIN,
+        isPlatformAdmin: globalUser.platformRole != null,
       },
       companyId: selectedMembership.companyId,
       membershipId: selectedMembership.id,
@@ -1364,7 +1358,7 @@ export class AuthService {
         companyId: membership?.companyId ?? null,
         globalUserId: globalUser.id,
         platformRole: globalUser.platformRole ?? null,
-        isPlatformAdmin: globalUser.platformRole === PlatformRole.SUPER_ADMIN,
+        isPlatformAdmin: globalUser.platformRole != null,
       },
       workspace: membership
         ? {
