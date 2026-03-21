@@ -1085,16 +1085,24 @@ export class MetaWhatsAppService {
     }
 
     if (!signature || !rawBody) {
+      this.logger.warn(`[Webhook] Signature check: signature=${signature ? 'present' : 'MISSING'}, rawBody=${rawBody ? `${rawBody.length} bytes` : 'MISSING'}`);
       throw new UnauthorizedException(
         'Assinatura X-Hub-Signature-256 obrigatoria para webhooks em producao.',
       );
     }
+
+    this.logger.log(`[Webhook] Signature check: sig=${signature.substring(0, 20)}..., rawBody=${rawBody.length} bytes, secrets=${secrets.length}`);
 
     const valid = secrets.some((secret) =>
       this.provider.validateWebhookSignature(rawBody, signature, secret),
     );
 
     if (!valid) {
+      // Log what the expected hash would be for debugging
+      const { createHmac } = require('crypto');
+      const expected = createHmac('sha256', secrets[0]).update(rawBody).digest('hex');
+      this.logger.error(`[Webhook] Signature mismatch! received=${signature.replace('sha256=', '').substring(0, 16)}... expected=${expected.substring(0, 16)}...`);
+      this.logger.error(`[Webhook] rawBody is Buffer: ${Buffer.isBuffer(rawBody)}, first 100 chars: ${rawBody.toString('utf8').substring(0, 100)}`);
       throw new UnauthorizedException('Assinatura do webhook Meta invalida.');
     }
   }
