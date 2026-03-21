@@ -667,34 +667,19 @@ export class MetaWhatsAppService {
       rawBody?: Buffer;
     },
   ) {
-    this.logger.log(
-      `[Webhook] Received payload with ${JSON.stringify(payload).length} bytes`,
-    );
     const parsed = this.provider.parseWebhook(payload);
-    this.logger.log(
-      `[Webhook] Parsed ${parsed.messages.length} messages, ${parsed.statuses.length} statuses. Types: ${parsed.messages.map((m) => m.messageType).join(', ') || 'none'}`,
-    );
     const firstPhoneNumberId =
       parsed.messages[0]?.phoneNumberId ?? parsed.statuses[0]?.phoneNumberId;
-    this.logger.log(`[Webhook] phoneNumberId=${firstPhoneNumberId}`);
     const tenantResolution = firstPhoneNumberId
       ? await this.tenantConnectionService.resolveTenantByPhoneNumberId(
           firstPhoneNumberId,
         )
       : null;
-    this.logger.log(`[Webhook] tenantResolution=${JSON.stringify(tenantResolution)}`);
 
     if (tenantResolution?.companyId) {
-      try {
-        const result = await this.prisma.runWithTenant(tenantResolution.companyId, () =>
-          this.handleWebhookInTenantContext(payload, parsed, context),
-        );
-        this.logger.log(`[Webhook] handleWebhookInTenantContext completed successfully`);
-        return result;
-      } catch (error) {
-        this.logger.error(`[Webhook] handleWebhookInTenantContext FAILED: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
-        throw error;
-      }
+      return this.prisma.runWithTenant(tenantResolution.companyId, () =>
+        this.handleWebhookInTenantContext(payload, parsed, context),
+      );
     }
 
     return this.handleWebhookInTenantContext(payload, parsed, context);
@@ -758,10 +743,8 @@ export class MetaWhatsAppService {
         }));
 
       if (!inboundInstance) {
-        this.logger.warn(`[Webhook] No instance found for phoneNumberId=${inbound.phoneNumberId}`);
         continue;
       }
-      this.logger.log(`[Webhook] Processing message type=${inbound.messageType} for instance=${inboundInstance.id}`);
 
       const contact = await this.ensureContact(
         inboundInstance.workspaceId,
@@ -1091,18 +1074,11 @@ export class MetaWhatsAppService {
       );
     }
 
-    this.logger.log(`[Webhook] Signature check: sig=${signature.substring(0, 20)}..., rawBody=${rawBody.length} bytes, secrets=${secrets.length}`);
-
     const valid = secrets.some((secret) =>
       this.provider.validateWebhookSignature(rawBody, signature, secret),
     );
 
     if (!valid) {
-      // Log what the expected hash would be for debugging
-      const { createHmac } = require('crypto');
-      const expected = createHmac('sha256', secrets[0]).update(rawBody).digest('hex');
-      this.logger.error(`[Webhook] Signature mismatch! received=${signature.replace('sha256=', '').substring(0, 16)}... expected=${expected.substring(0, 16)}...`);
-      this.logger.error(`[Webhook] rawBody is Buffer: ${Buffer.isBuffer(rawBody)}, first 100 chars: ${rawBody.toString('utf8').substring(0, 100)}`);
       throw new UnauthorizedException('Assinatura do webhook Meta invalida.');
     }
   }
