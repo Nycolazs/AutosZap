@@ -101,4 +101,8 @@ export class SocialLoginDto {
   @IsOptional()
   @IsString()
   companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  inviteCode?: string;
 }

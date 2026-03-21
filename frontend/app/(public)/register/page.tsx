@@ -673,9 +673,24 @@ export default function RegisterPage() {
                 </div>
               ) : null}
 
-              {/* User details (only after invite validated) */}
+              {/* After invite validated: social login + manual form */}
               {inviteValidated ? (
                 <>
+                  {/* Social login — fastest path */}
+                  <SocialLoginButtons
+                    mode="register"
+                    inviteCode={joinForm.getValues('inviteCode').trim()}
+                  />
+
+                  {/* Manual form toggle */}
+                  <div className="relative flex items-center gap-3 py-1">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-[11px] text-muted-foreground">
+                      ou preencha manualmente
+                    </span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label htmlFor="join-name" className="text-[12px]">

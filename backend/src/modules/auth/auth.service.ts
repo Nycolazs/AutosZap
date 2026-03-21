@@ -480,6 +480,18 @@ export class AuthService {
       });
     }
 
+    // ── Social login with invite code (join existing company) ──
+    if (dto.inviteCode) {
+      return this.socialLoginWithInviteCode(
+        dto,
+        email,
+        name,
+        globalUser ?? null,
+        userAgent,
+        ipAddress,
+      );
+    }
+
     const allowPublicSignup =
       (this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'false')
         .trim()
@@ -573,6 +585,158 @@ export class AuthService {
     } satisfies SessionMembership;
 
     return this.issueSession(newGlobalUser, hydratedMembership, {
+      userAgent,
+      ipAddress,
+    });
+  }
+
+  private async socialLoginWithInviteCode(
+    dto: SocialLoginDto,
+    email: string,
+    name: string,
+    existingGlobalUser: GlobalUser | null,
+    userAgent?: string,
+    ipAddress?: string,
+  ) {
+    const code = dto.inviteCode!.toUpperCase().trim();
+    const invite = await this.controlPlanePrisma.companyInviteCode.findUnique({
+      where: { code },
+      include: { company: true },
+    });
+
+    if (
+      !invite ||
+      invite.status !== InviteCodeStatus.ACTIVE ||
+      invite.company.status !== CompanyStatus.ACTIVE
+    ) {
+      throw new BadRequestException('Codigo de convite invalido ou expirado.');
+    }
+
+    if (invite.expiresAt && invite.expiresAt <= new Date()) {
+      await this.controlPlanePrisma.companyInviteCode.update({
+        where: { id: invite.id },
+        data: { status: InviteCodeStatus.EXPIRED },
+      });
+      throw new BadRequestException('Codigo de convite expirado.');
+    }
+
+    const randomPassword = randomUUID();
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
+    const tenantRole = invite.role;
+    const prismaRole = this.mapTenantRoleToTenantRoleEnum(tenantRole);
+
+    const { globalUser, membership } =
+      await this.controlPlanePrisma.$transaction(async (tx) => {
+        const createdGlobalUser = existingGlobalUser
+          ? await tx.globalUser.update({
+              where: { id: existingGlobalUser.id },
+              data: {
+                name,
+                status: GlobalUserStatus.ACTIVE,
+                deletedAt: null,
+                blockedAt: null,
+              },
+            })
+          : await tx.globalUser.create({
+              data: {
+                name,
+                email,
+                passwordHash,
+                status: GlobalUserStatus.ACTIVE,
+              },
+            });
+
+        const hasActiveMembership = await tx.companyMembership.findFirst({
+          where: {
+            globalUserId: createdGlobalUser.id,
+            status: MembershipStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+
+        const createdMembership = await tx.companyMembership.create({
+          data: {
+            companyId: invite.companyId,
+            globalUserId: createdGlobalUser.id,
+            tenantRole,
+            status: MembershipStatus.ACTIVE,
+            isDefault: !hasActiveMembership,
+          },
+        });
+
+        await tx.companyInviteCode.update({
+          where: { id: invite.id },
+          data: {
+            status: InviteCodeStatus.USED,
+            usedByGlobalUserId: createdGlobalUser.id,
+            usedAt: new Date(),
+          },
+        });
+
+        return {
+          globalUser: createdGlobalUser,
+          membership: createdMembership,
+        };
+      });
+
+    // Create tenant user in the company's workspace
+    const workspaceId = invite.company.workspaceId;
+    await this.prisma.runWithTenant(invite.companyId, async () => {
+      const existingTenantUser = await this.prisma.user.findFirst({
+        where: {
+          workspaceId,
+          OR: [{ globalUserId: globalUser.id }, { email }],
+        },
+      });
+
+      if (!existingTenantUser) {
+        const tenantUser = await this.prisma.user.create({
+          data: {
+            workspaceId,
+            globalUserId: globalUser.id,
+            name,
+            email,
+            passwordHash,
+            role: prismaRole,
+            status: UserStatus.ACTIVE,
+            title: invite.title,
+          },
+        });
+
+        await this.prisma.teamMember.create({
+          data: {
+            workspaceId,
+            userId: tenantUser.id,
+            name,
+            email,
+            title: invite.title,
+            role: prismaRole,
+            status: UserStatus.ACTIVE,
+            inviteToken: null,
+          },
+        });
+      }
+    });
+
+    await this.controlPlaneAuditService.log({
+      actorId: globalUser.id,
+      action: PlatformAuditAction.MEMBERSHIP_CREATED,
+      entityType: 'company_membership',
+      entityId: membership.id,
+      metadata: {
+        companyId: invite.companyId,
+        inviteCode: code,
+        role: tenantRole,
+        provider: dto.provider,
+      },
+    });
+
+    const hydratedMembership = {
+      ...membership,
+      company: invite.company,
+    } satisfies SessionMembership;
+
+    return this.issueSession(globalUser, hydratedMembership, {
       userAgent,
       ipAddress,
     });

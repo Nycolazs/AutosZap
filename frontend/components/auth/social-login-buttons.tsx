@@ -70,9 +70,10 @@ function loadScript(src: string, id: string): Promise<void> {
 interface SocialLoginButtonsProps {
   mode: 'login' | 'register';
   companyName?: string;
+  inviteCode?: string;
 }
 
-export function SocialLoginButtons({ mode, companyName }: SocialLoginButtonsProps) {
+export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLoginButtonsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -86,6 +87,7 @@ export function SocialLoginButtons({ mode, companyName }: SocialLoginButtonsProp
           token,
           name,
           companyName: companyName || undefined,
+          inviteCode: inviteCode || undefined,
         }),
       });
 
@@ -109,7 +111,7 @@ export function SocialLoginButtons({ mode, companyName }: SocialLoginButtonsProp
       );
       router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
     },
-    [companyName, mode, router],
+    [companyName, inviteCode, mode, router],
   );
 
   const handleGoogle = useCallback(async () => {
