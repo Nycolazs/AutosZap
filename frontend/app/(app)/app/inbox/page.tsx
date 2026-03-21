@@ -1947,21 +1947,31 @@ function MessageBubbleContent({
       normalizedMessageType,
     );
 
-  if (normalizedMessageType === 'image' || normalizedMessageType === 'sticker') {
+  // Detect media type from mimeType when messageType is unknown/unsupported
+  const effectiveType = (() => {
+    if (!hasUnknownMedia) return normalizedMessageType;
+    const mime = mediaMetadata.mimeType ?? '';
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return normalizedMessageType;
+  })();
+
+  if (effectiveType === 'image' || effectiveType === 'sticker') {
     return (
       <div className="space-y-2">
         {quoteBlock}
         <ImageMessagePreview
           src={mediaUrl}
-          alt={normalizedMessageType === 'sticker' ? 'Figurinha' : 'Imagem'}
-          isSticker={normalizedMessageType === 'sticker'}
+          alt={effectiveType === 'sticker' ? 'Figurinha' : 'Imagem'}
+          isSticker={effectiveType === 'sticker'}
         />
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
   }
 
-  if (normalizedMessageType === 'audio') {
+  if (effectiveType === 'audio') {
     return (
       <div className="space-y-2">
         {quoteBlock}
@@ -1975,7 +1985,7 @@ function MessageBubbleContent({
     );
   }
 
-  if (normalizedMessageType === 'video') {
+  if (effectiveType === 'video') {
     return (
       <div className="space-y-2">
         {quoteBlock}
@@ -1991,7 +2001,7 @@ function MessageBubbleContent({
     );
   }
 
-  if (normalizedMessageType === 'document' || hasUnknownMedia) {
+  if (effectiveType === 'document' || hasUnknownMedia) {
     return (
       <div className="space-y-2">
         {quoteBlock}
@@ -2009,7 +2019,7 @@ function MessageBubbleContent({
     );
   }
 
-  if (normalizedMessageType === 'template') {
+  if (effectiveType === 'template') {
     return (
       <div className="space-y-2">
         {quoteBlock}
@@ -2259,44 +2269,47 @@ function CompactAudioPlayer({
   };
 
   return (
-    <div className="w-[260px] max-w-full">
+    <div className="w-[280px] max-w-full">
       <audio ref={audioRef} src={src} preload="metadata" />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <button
           type="button"
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition',
-            'bg-primary text-white hover:bg-primary/80',
-          )}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
           onClick={() => {
             void togglePlayback();
           }}
         >
-          {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+          {isPlaying ? <Pause className="h-[18px] w-[18px] fill-current" /> : <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />}
         </button>
 
         <div className="min-w-0 flex-1">
-          <div className="relative h-6">
-            <div className="pointer-events-none absolute inset-0 flex items-end gap-[1.5px] overflow-hidden">
+          {/* Waveform + seekbar */}
+          <div className="relative flex h-[28px] items-center">
+            <div className="pointer-events-none absolute inset-x-0 flex items-center justify-between gap-[1px]">
               {AUDIO_WAVEFORM_BARS.map((barHeight, index) => {
                 const threshold = ((index + 1) / AUDIO_WAVEFORM_BARS.length) * 100;
-
                 return (
                   <span
                     key={`${barHeight}-${index}`}
                     className={cn(
-                      'rounded-full transition-colors',
+                      'rounded-full transition-colors duration-150',
                       progress >= threshold
-                        ? 'bg-primary'
-                        : outgoing
-                          ? 'bg-[#ffffff40]'
-                          : 'bg-[#ffffff25]',
+                        ? outgoing ? 'bg-[#a8c9f5]' : 'bg-primary'
+                        : outgoing ? 'bg-white/30' : 'bg-white/20',
                     )}
-                    style={{ height: `${Math.max(4, Math.round(barHeight * 0.65))}px`, width: '2.5px' }}
+                    style={{ height: `${Math.max(3, Math.round(barHeight * 0.7))}px`, width: '3px', flexShrink: 0 }}
                   />
                 );
               })}
             </div>
+            {/* Seek dot indicator */}
+            <div
+              className={cn(
+                'pointer-events-none absolute top-1/2 -translate-y-1/2 h-[10px] w-[10px] rounded-full shadow-sm transition-[left]',
+                outgoing ? 'bg-[#a8c9f5]' : 'bg-primary',
+              )}
+              style={{ left: `calc(${Math.min(progress, 100)}% - 5px)` }}
+            />
             <input
               type="range"
               min={0}
@@ -2307,8 +2320,9 @@ function CompactAudioPlayer({
               className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
           </div>
-          <div className="flex items-center gap-1 text-[10px] opacity-60">
-            <span>{formatMediaDuration(duration > 0 ? (isPlaying ? currentTime : duration) : currentTime)}</span>
+          {/* Duration + mic icon */}
+          <div className="mt-0.5 flex items-center justify-between text-[10px] opacity-50">
+            <span>{formatMediaDuration(isPlaying ? currentTime : duration > 0 ? duration : currentTime)}</span>
             {isVoiceMessage && <Mic className="h-2.5 w-2.5" />}
           </div>
         </div>
