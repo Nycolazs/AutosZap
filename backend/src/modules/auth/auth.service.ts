@@ -449,7 +449,7 @@ export class AuthService {
         });
 
       const membership = memberships[0] ?? null;
-      if (!membership && globalUser.platformRole == null) {
+      if (!membership && !this.hasPlatformAccess(globalUser.platformRole)) {
         throw new UnauthorizedException(
           'Usuario sem empresa ativa vinculada.',
         );
@@ -882,7 +882,7 @@ export class AuthService {
       });
 
     const membership = memberships[0] ?? null;
-    if (!membership && globalUser.platformRole == null) {
+    if (!membership && !this.hasPlatformAccess(globalUser.platformRole)) {
       throw new UnauthorizedException('Usuario sem empresa ativa vinculada.');
     }
 
@@ -963,7 +963,10 @@ export class AuthService {
       membership = await this.getDefaultMembership(existingToken.globalUserId);
     }
 
-    if (!membership && existingToken.globalUser.platformRole == null) {
+    if (
+      !membership &&
+      !this.hasPlatformAccess(existingToken.globalUser.platformRole)
+    ) {
       throw new UnauthorizedException('Sessao expirada. Faca login novamente.');
     }
 
@@ -1206,7 +1209,7 @@ export class AuthService {
         })),
         platform: {
           role: globalUser.platformRole,
-          isPlatformAdmin: globalUser.platformRole != null,
+          isPlatformAdmin: this.hasPlatformAccess(globalUser.platformRole),
         },
       };
     }
@@ -1280,7 +1283,7 @@ export class AuthService {
       })),
       platform: {
         role: globalUser.platformRole,
-        isPlatformAdmin: globalUser.platformRole != null,
+        isPlatformAdmin: this.hasPlatformAccess(globalUser.platformRole),
       },
       companyId: selectedMembership.companyId,
       membershipId: selectedMembership.id,
@@ -1358,7 +1361,7 @@ export class AuthService {
         companyId: membership?.companyId ?? null,
         globalUserId: globalUser.id,
         platformRole: globalUser.platformRole ?? null,
-        isPlatformAdmin: globalUser.platformRole != null,
+        isPlatformAdmin: this.hasPlatformAccess(globalUser.platformRole),
       },
       workspace: membership
         ? {
@@ -1625,6 +1628,10 @@ export class AuthService {
     }
 
     return null;
+  }
+
+  private hasPlatformAccess(role: PlatformRole | null | undefined) {
+    return role === PlatformRole.SUPER_ADMIN || role === PlatformRole.SUPPORT;
   }
 
   private mapTenantRole(role: Role): TenantRole {

@@ -12,6 +12,7 @@ import {
   GlobalUserStatus,
   LeadInterestStatus,
   MembershipStatus,
+  PlatformRole,
   PlatformAuditAction,
   ProvisioningJobStatus,
   TenantRole,
@@ -710,7 +711,9 @@ export class PlatformAdminService {
       avatarUrl: user.avatarUrl,
       status: user.status,
       platformRole: user.platformRole,
-      isPlatformAdmin: user.platformRole != null,
+      isPlatformAdmin:
+        user.platformRole === PlatformRole.SUPER_ADMIN ||
+        user.platformRole === PlatformRole.SUPPORT,
       memberships: user.memberships,
     };
   }

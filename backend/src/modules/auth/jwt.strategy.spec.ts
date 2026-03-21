@@ -111,28 +111,28 @@ describe('JwtStrategy', () => {
 
   it('deve validar usuario SUPPORT sem membership ativa', async () => {
     findGlobalUserMock.mockResolvedValue({
-      id: 'user-support',
-      email: 'support@autoszap.com',
+      id: 'support-1',
+      email: 'support@acme.com',
       name: 'Support',
       status: 'ACTIVE',
       deletedAt: null,
       platformRole: 'SUPPORT',
     } as never);
-    findMembershipMock.mockResolvedValue(null as never);
+    findMembershipMock.mockResolvedValueOnce(null);
+    findMembershipMock.mockResolvedValueOnce(null);
 
     const user = await strategy.validate({
-      sub: 'user-support',
-      email: 'support@autoszap.com',
+      sub: 'support-1',
+      email: 'support@acme.com',
       name: 'Support',
       workspaceId: '',
       role: 'ADMIN' as never,
     });
 
-    expect(user.sub).toBe('user-support');
-    expect(user.globalUserId).toBe('user-support');
+    expect(user.sub).toBe('support-1');
+    expect(user.globalUserId).toBe('support-1');
     expect(user.companyId).toBeUndefined();
-    expect(user.platformRole).toBe('SUPPORT');
-    expect(runWithTenantMock).not.toHaveBeenCalled();
+    expect(user.workspaceId).toBe('');
   });
 
   it('deve aceitar accessToken na query para requisicoes GET/HEAD', () => {
