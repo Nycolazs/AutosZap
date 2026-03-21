@@ -205,7 +205,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
               reject(new Error('Login Facebook cancelado.'));
             }
           },
-          { scope: 'email,public_profile' },
+          { scope: 'email' },
         );
       });
 
