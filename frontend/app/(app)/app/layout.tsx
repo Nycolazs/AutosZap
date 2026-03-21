@@ -3,11 +3,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { AccessDenied } from '@/components/shared/access-denied';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav';
 import { RouteTransition } from '@/components/layout/route-transition';
 import { Topbar } from '@/components/layout/topbar';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest } from '@/lib/api-client';
 import {
@@ -71,6 +73,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Skeleton className="h-[calc(100%-6.5rem)] w-full rounded-[28px]" />
             </div>
           </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (meQuery.isError) {
+    return (
+      <div className="flex h-dvh min-h-dvh items-center justify-center bg-background text-foreground">
+        <div className="mx-auto max-w-sm space-y-4 px-4 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10">
+            <RefreshCw className="h-6 w-6 text-danger" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">Erro ao carregar</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Nao foi possivel conectar ao servico de autenticacao. Verifique sua conexao e tente novamente.
+            </p>
+          </div>
+          <Button className="rounded-xl" onClick={() => void meQuery.refetch()}>
+            Tentar novamente
+          </Button>
         </div>
       </div>
     );

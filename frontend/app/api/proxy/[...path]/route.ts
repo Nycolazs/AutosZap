@@ -106,7 +106,6 @@ async function handler(request: NextRequest, context: RouteContext) {
     for (const [headerName, forwardedName] of [
       ['cache-control', 'Cache-Control'],
       ['content-disposition', 'Content-Disposition'],
-      ['content-length', 'Content-Length'],
       ['content-range', 'Content-Range'],
       ['accept-ranges', 'Accept-Ranges'],
       ['etag', 'ETag'],

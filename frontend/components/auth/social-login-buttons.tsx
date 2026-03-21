@@ -96,7 +96,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
 
       const data = (await response.json()) as {
         message?: string | string[];
-        user?: { isPlatformAdmin?: boolean };
+        user?: { isPlatformAdmin?: boolean; companyId?: string | null };
       };
 
       if (!response.ok) {
@@ -112,7 +112,8 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           ? 'Conta criada com sucesso!'
           : 'Sessao iniciada com sucesso.',
       );
-      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
+      const shouldGoToPlatform = data.user?.isPlatformAdmin && !data.user?.companyId;
+      router.push(shouldGoToPlatform ? '/platform' : '/app');
     },
     [companyName, inviteCode, mode, router],
   );

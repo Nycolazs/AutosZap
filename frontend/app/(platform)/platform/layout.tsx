@@ -212,12 +212,15 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
     );
   }
 
-  /* Access denied */
+  /* Backend error — both queries failed */
   if (meQuery.isError && fallbackAuthMeQuery.isError) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md rounded-2xl border-border/50">
           <CardContent className="space-y-4 p-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10">
+              <ShieldUser className="h-7 w-7 text-danger" />
+            </div>
             <div>
               <h1 className="text-lg font-semibold">Nao foi possivel validar o acesso</h1>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -228,14 +231,18 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
               <Button
                 className="rounded-xl"
                 onClick={() => {
-                  meQuery.refetch();
-                  fallbackAuthMeQuery.refetch();
+                  void meQuery.refetch();
+                  void fallbackAuthMeQuery.refetch();
                 }}
               >
                 Tentar novamente
               </Button>
               <Button asChild variant="ghost" className="rounded-xl text-muted-foreground">
                 <Link href="/app">Voltar para o painel</Link>
+              </Button>
+              <Button variant="ghost" className="rounded-xl text-muted-foreground" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sair da conta
               </Button>
             </div>
           </CardContent>
@@ -259,6 +266,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
   const user = meQuery.data ?? fallbackUser;
 
+  /* Access denied — not a platform admin */
   if (meQuery.isSuccess && !meQuery.data.isPlatformAdmin) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background p-4">
@@ -303,8 +311,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
               <Button
                 className="rounded-xl"
                 onClick={() => {
-                  meQuery.refetch();
-                  fallbackAuthMeQuery.refetch();
+                  void meQuery.refetch();
+                  void fallbackAuthMeQuery.refetch();
                 }}
               >
                 Tentar novamente
