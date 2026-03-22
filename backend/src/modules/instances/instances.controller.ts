@@ -11,18 +11,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  InstanceMode,
-  InstanceProvider,
-  InstanceStatus,
-  PermissionKey,
-  Role,
-} from '@prisma/client';
+import { PermissionKey, Role } from '@prisma/client';
 import {
   ArrayMaxSize,
   IsArray,
   IsEmail,
-  IsEnum,
   IsIn,
   IsOptional,
   IsString,
@@ -51,49 +44,9 @@ class EmbeddedSignupDto {
   name?: string;
 }
 
-class InstanceDto {
+class RenameInstanceDto {
   @IsString()
   name!: string;
-
-  @IsOptional()
-  @IsEnum(InstanceProvider)
-  provider?: InstanceProvider;
-
-  @IsOptional()
-  @IsEnum(InstanceStatus)
-  status?: InstanceStatus;
-
-  @IsOptional()
-  @IsEnum(InstanceMode)
-  mode?: InstanceMode;
-
-  @IsOptional()
-  @IsString()
-  appId?: string;
-
-  @IsOptional()
-  @IsString()
-  phoneNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  businessAccountId?: string;
-
-  @IsOptional()
-  @IsString()
-  phoneNumberId?: string;
-
-  @IsOptional()
-  @IsString()
-  accessToken?: string;
-
-  @IsOptional()
-  @IsString()
-  webhookVerifyToken?: string;
-
-  @IsOptional()
-  @IsString()
-  appSecret?: string;
 }
 
 class SubscribeAppDto {
@@ -188,34 +141,64 @@ export class InstancesController {
     @CurrentUser() user: CurrentAuthUser,
     @Body() dto: EmbeddedSignupDto,
   ) {
-    const instance = await this.instancesService.createFromEmbeddedSignup(
+    const result = await this.instancesService.createFromEmbeddedSignup(
       user.workspaceId,
       user.sub,
       dto,
     );
 
-    const instanceId = (instance as { id: string }).id;
+    const instanceId = result.instanceId;
+    let syncError: string | null = null;
+    let subscribeError: string | null = null;
 
-    // Best-effort sync and subscribe — don't fail the request if these fail
+    // Best-effort sync and subscribe - do not fail the request if these fail
     try {
       await this.metaWhatsAppService.syncInstance(user.workspaceId, instanceId);
-    } catch {
-      // Instance was created, user can retry sync manually
+    } catch (error) {
+      syncError =
+        error instanceof Error ? error.message : 'Falha ao sincronizar a Meta.';
     }
 
     try {
       await this.metaWhatsAppService.subscribeApp(user.workspaceId, instanceId);
-    } catch {
-      // Instance was created, user can retry subscribe manually
+    } catch (error) {
+      subscribeError =
+        error instanceof Error
+          ? error.message
+          : 'Falha ao assinar o app na WABA.';
     }
 
-    return this.instancesService.findOne(instanceId, user.workspaceId);
+    const instance = await this.instancesService.findOne(
+      instanceId,
+      user.workspaceId,
+    );
+    const instanceData = instance as Record<string, unknown>;
+
+    return {
+      ...instanceData,
+      embeddedSignup: {
+        reusedExistingInstance: result.reusedExistingInstance,
+        sync: {
+          success: syncError === null,
+          message:
+            syncError ?? 'Instancia sincronizada com a Meta automaticamente.',
+        },
+        subscribe: {
+          success: subscribeError === null,
+          message:
+            subscribeError ??
+            'Webhook da Meta inscrito automaticamente para a instancia.',
+        },
+      },
+    };
   }
 
   @Roles(Role.ADMIN)
   @Post()
-  create(@CurrentUser() user: CurrentAuthUser, @Body() dto: InstanceDto) {
-    return this.instancesService.create(user.workspaceId, user.sub, dto);
+  create() {
+    throw new BadRequestException(
+      'Cadastro manual de instancias foi desativado. Use o Embedded Signup da Meta em /instances/embedded-signup.',
+    );
   }
 
   @Get(':id')
@@ -228,9 +211,11 @@ export class InstancesController {
   update(
     @CurrentUser() user: CurrentAuthUser,
     @Param('id') id: string,
-    @Body() dto: Partial<InstanceDto>,
+    @Body() dto: RenameInstanceDto,
   ) {
-    return this.instancesService.update(id, user.workspaceId, dto);
+    return this.instancesService.update(id, user.workspaceId, {
+      name: dto.name,
+    });
   }
 
   @Roles(Role.ADMIN)

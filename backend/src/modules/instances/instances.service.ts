@@ -32,6 +32,26 @@ export type EmbeddedSignupPayload = {
   name?: string;
 };
 
+type EmbeddedSignupUpsertResult = {
+  instanceId: string;
+  reusedExistingInstance: boolean;
+};
+
+type MetaEmbeddedSignupTokenResponse = {
+  access_token: string;
+};
+
+type MetaGraphErrorResponse = {
+  error?: {
+    message?: string;
+  };
+};
+
+type MetaPhoneNumberResponse = {
+  display_phone_number?: string;
+  verified_name?: string;
+};
+
 @Injectable()
 export class InstancesService {
   private readonly logger = new Logger(InstancesService.name);
@@ -245,7 +265,7 @@ export class InstancesService {
     workspaceId: string,
     actorId: string,
     payload: EmbeddedSignupPayload,
-  ) {
+  ): Promise<EmbeddedSignupUpsertResult> {
     const appId = this.configService.get<string>('META_APP_ID');
     const appSecret = this.configService.get<string>('META_APP_SECRET');
     const graphVersion =
@@ -260,7 +280,7 @@ export class InstancesService {
     // 1. Exchange authorization code for access token
     let accessToken: string;
     try {
-      const tokenResponse = await axios.get(
+      const tokenResponse = await axios.get<MetaEmbeddedSignupTokenResponse>(
         `https://graph.facebook.com/${graphVersion}/oauth/access_token`,
         {
           params: {
@@ -272,10 +292,9 @@ export class InstancesService {
       );
       accessToken = tokenResponse.data.access_token;
     } catch (error: unknown) {
-      const message =
-        axios.isAxiosError(error)
-          ? error.response?.data?.error?.message ?? error.message
-          : 'Erro desconhecido';
+      const message = axios.isAxiosError<MetaGraphErrorResponse>(error)
+        ? (error.response?.data?.error?.message ?? error.message)
+        : 'Erro desconhecido';
       this.logger.error(`Falha ao trocar codigo por token: ${message}`);
       throw new BadRequestException(
         `Falha ao obter token de acesso do Meta: ${message}`,
@@ -284,9 +303,9 @@ export class InstancesService {
 
     // 2. Fetch phone number details for display name
     let phoneNumber: string | undefined;
-    let instanceName = payload.name;
+    let instanceName = payload.name?.trim() || undefined;
     try {
-      const phoneResponse = await axios.get(
+      const phoneResponse = await axios.get<MetaPhoneNumberResponse>(
         `https://graph.facebook.com/${graphVersion}/${payload.phoneNumberId}`,
         {
           params: {
@@ -310,14 +329,27 @@ export class InstancesService {
       instanceName = `WhatsApp ${payload.phoneNumberId}`;
     }
 
-    // 3. Generate a webhook verify token
+    const existingInstance =
+      await this.findEmbeddedSignupInstanceByPhoneNumberId(
+        workspaceId,
+        payload.phoneNumberId,
+      );
+    const resolvedInstanceName = await this.resolveAvailableInstanceName(
+      workspaceId,
+      instanceName,
+      existingInstance?.id,
+    );
+
+    // Generate or preserve a verify token so webhook verification remains stable.
     const webhookVerifyToken =
+      this.cryptoService.decrypt(
+        existingInstance?.webhookVerifyTokenEncrypted,
+      ) ??
       this.configService.get<string>('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN') ??
       randomUUID();
 
-    // 4. Create the instance using existing method
-    return this.create(workspaceId, actorId, {
-      name: instanceName,
+    const instanceData = {
+      name: resolvedInstanceName,
       provider: InstanceProvider.META_WHATSAPP,
       status: InstanceStatus.CONNECTED,
       mode: InstanceMode.PRODUCTION,
@@ -325,20 +357,67 @@ export class InstancesService {
       phoneNumber,
       businessAccountId: payload.wabaId,
       phoneNumberId: payload.phoneNumberId,
-      accessToken,
-      webhookVerifyToken,
-      appSecret,
+      accessTokenEncrypted: this.cryptoService.encrypt(accessToken),
+      webhookVerifyTokenEncrypted:
+        this.cryptoService.encrypt(webhookVerifyToken),
+      appSecretEncrypted: this.cryptoService.encrypt(appSecret),
+      lastSyncAt: new Date(),
+    };
+
+    if (existingInstance) {
+      await this.prisma.instance.update({
+        where: { id: existingInstance.id },
+        data: {
+          ...instanceData,
+          deletedAt: null,
+          createdById:
+            existingInstance.deletedAt !== null
+              ? actorId
+              : existingInstance.createdById,
+        },
+      });
+
+      return {
+        instanceId: existingInstance.id,
+        reusedExistingInstance: true,
+      };
+    }
+
+    const createdInstance = await this.prisma.instance.create({
+      data: {
+        workspaceId,
+        createdById: actorId,
+        ...instanceData,
+      },
     });
+
+    return {
+      instanceId: createdInstance.id,
+      reusedExistingInstance: false,
+    };
   }
 
   getEmbeddedSignupConfig() {
     const appId = this.configService.get<string>('META_APP_ID');
+    const configurationId = this.configService.get<string>(
+      'META_EMBEDDED_SIGNUP_CONFIG_ID',
+    );
     if (!appId) {
+      throw new BadRequestException('META_APP_ID nao configurado no servidor.');
+    }
+    if (!configurationId) {
       throw new BadRequestException(
-        'META_APP_ID nao configurado no servidor.',
+        'META_EMBEDDED_SIGNUP_CONFIG_ID nao configurado no servidor.',
       );
     }
-    return { appId };
+
+    return {
+      appId,
+      configurationId,
+      graphApiVersion:
+        this.configService.get<string>('META_GRAPH_API_VERSION') ?? 'v23.0',
+      callbackUri: this.buildEmbeddedSignupCallbackUri(),
+    };
   }
 
   sanitizeInstance<
@@ -406,5 +485,87 @@ export class InstancesService {
     }
 
     return `${value.slice(0, 4)}${'*'.repeat(Math.max(value.length - 8, 4))}${value.slice(-4)}`;
+  }
+
+  private buildEmbeddedSignupCallbackUri() {
+    const backendPublicUrl = this.normalizeBaseUrl(
+      this.configService.get<string>('BACKEND_PUBLIC_URL'),
+    );
+
+    return backendPublicUrl
+      ? `${backendPublicUrl}/api/webhooks/meta/whatsapp`
+      : null;
+  }
+
+  private async findEmbeddedSignupInstanceByPhoneNumberId(
+    workspaceId: string,
+    phoneNumberId: string,
+  ) {
+    const activeInstance = await this.prisma.instance.findFirst({
+      where: {
+        workspaceId,
+        phoneNumberId,
+        deletedAt: null,
+      },
+    });
+
+    if (activeInstance) {
+      return activeInstance;
+    }
+
+    return this.prisma.instance.findFirst({
+      where: {
+        workspaceId,
+        phoneNumberId,
+        NOT: {
+          deletedAt: null,
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+  }
+
+  private async resolveAvailableInstanceName(
+    workspaceId: string,
+    preferredName: string,
+    ignoreInstanceId?: string,
+  ) {
+    const baseName = preferredName.trim() || 'WhatsApp';
+    let candidateName = baseName;
+    let sequence = 2;
+
+    while (true) {
+      const duplicate = await this.prisma.instance.findFirst({
+        where: {
+          workspaceId,
+          name: candidateName,
+          deletedAt: null,
+          ...(ignoreInstanceId
+            ? {
+                NOT: {
+                  id: ignoreInstanceId,
+                },
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!duplicate) {
+        return candidateName;
+      }
+
+      candidateName = `${baseName} (${sequence})`;
+      sequence += 1;
+    }
+  }
+
+  private normalizeBaseUrl(value?: string | null) {
+    const normalizedValue = value?.trim();
+    return normalizedValue ? normalizedValue.replace(/\/+$/, '') : null;
   }
 }
