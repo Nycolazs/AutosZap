@@ -413,12 +413,11 @@ function launchEmbeddedSignupWithFacebookSdk({
       },
       {
         config_id: configurationId,
-        auth_type: 'rerequest',
         response_type: 'code',
         override_default_response_type: true,
         extras: {
-          sessionInfoVersion: 3,
-          version: 'v3',
+          feature: 'whatsapp_embedded_signup',
+          sessionInfoVersion: '3',
           setup: {},
         },
       },
