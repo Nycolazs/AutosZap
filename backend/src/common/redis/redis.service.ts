@@ -82,6 +82,18 @@ export class RedisService implements OnModuleDestroy {
     return typeof count === 'number' ? count : 1;
   }
 
+  async del(key: string) {
+    try {
+      const client = this.getClient();
+      if (client.status === 'wait') {
+        await client.connect();
+      }
+      await client.del(key);
+    } catch {
+      return null;
+    }
+  }
+
   async onModuleDestroy() {
     if (this.client) {
       await this.client.quit();

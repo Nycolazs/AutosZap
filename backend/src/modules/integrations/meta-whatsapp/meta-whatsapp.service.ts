@@ -23,6 +23,7 @@ import {
 } from '@prisma/client';
 import { CryptoService } from '../../../common/crypto/crypto.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { RedisService } from '../../../common/redis/redis.service';
 import { TenantConnectionService } from '../../../common/tenancy/tenant-connection.service';
 import {
   buildEquivalentContactPhones,
@@ -46,6 +47,10 @@ import { normalizeConversationStatus } from '../../conversations/conversation-wo
 export class MetaWhatsAppService {
   private readonly logger = new Logger(MetaWhatsAppService.name);
 
+  private static readonly CACHE_TTL_TEMPLATES = 600; // 10 minutos
+  private static readonly CACHE_TTL_BUSINESS_PROFILE = 600; // 10 minutos
+  private static readonly CACHE_TTL_DIAGNOSTICS = 300; // 5 minutos
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantConnectionService: TenantConnectionService,
@@ -56,17 +61,57 @@ export class MetaWhatsAppService {
     private readonly workspaceSettingsService: WorkspaceSettingsService,
     private readonly notificationsService: NotificationsService,
     private readonly accessControlService: AccessControlService,
+    private readonly redis: RedisService,
   ) {}
 
+  private cacheKey(scope: string, instanceId: string) {
+    return `meta:${scope}:${instanceId}`;
+  }
+
+  private async invalidateInstanceCache(instanceId: string) {
+    await Promise.all([
+      this.redis.del(this.cacheKey('templates', instanceId)),
+      this.redis.del(this.cacheKey('business-profile', instanceId)),
+      this.redis.del(this.cacheKey('diagnostics', instanceId)),
+    ]);
+  }
+
   async testConnection(workspaceId: string, instanceId: string) {
+    const cacheKey = this.cacheKey('diagnostics', instanceId);
+    const cached =
+      await this.redis.getJson<ProviderInstanceDiagnostics>(cacheKey);
+    if (cached) {
+      return {
+        healthy: cached.healthy,
+        simulated: cached.simulated,
+        detail: cached.detail,
+        raw: cached.raw,
+      };
+    }
+
     const config = await this.getInstanceConfig(instanceId, workspaceId);
-    return this.provider.healthCheck(config);
+    const diagnostics = await this.provider.getInstanceDiagnostics(config);
+
+    await this.redis.setJson(
+      cacheKey,
+      diagnostics,
+      MetaWhatsAppService.CACHE_TTL_DIAGNOSTICS,
+    );
+
+    return {
+      healthy: diagnostics.healthy,
+      simulated: diagnostics.simulated,
+      detail: diagnostics.detail,
+      raw: diagnostics.raw,
+    };
   }
 
   async syncInstance(
     workspaceId: string,
     instanceId: string,
   ): Promise<ProviderInstanceDiagnostics> {
+    await this.invalidateInstanceCache(instanceId);
+
     const config = await this.getInstanceConfig(instanceId, workspaceId);
     const diagnostics = await this.provider.getInstanceDiagnostics(config);
 
@@ -81,6 +126,34 @@ export class MetaWhatsAppService {
         lastSyncAt: new Date(),
       },
     });
+
+    // Salva o resultado no cache para reutilizar em chamadas subsequentes
+    await this.redis.setJson(
+      this.cacheKey('diagnostics', instanceId),
+      diagnostics,
+      MetaWhatsAppService.CACHE_TTL_DIAGNOSTICS,
+    );
+
+    // Salva templates e perfil separadamente para que listTemplates e getBusinessProfile
+    // aproveitem o cache sem precisar chamar a Meta novamente
+    if (diagnostics.templates) {
+      await this.redis.setJson(
+        this.cacheKey('templates', instanceId),
+        diagnostics.templates,
+        MetaWhatsAppService.CACHE_TTL_TEMPLATES,
+      );
+    }
+
+    if (diagnostics.businessProfile) {
+      await this.redis.setJson(
+        this.cacheKey('business-profile', instanceId),
+        {
+          phoneNumber: diagnostics.phoneNumber,
+          businessProfile: diagnostics.businessProfile,
+        },
+        MetaWhatsAppService.CACHE_TTL_BUSINESS_PROFILE,
+      );
+    }
 
     return diagnostics;
   }
@@ -112,15 +185,56 @@ export class MetaWhatsAppService {
     workspaceId: string,
     instanceId: string,
   ): Promise<ProviderTemplateSummary[]> {
+    const cacheKey = this.cacheKey('templates', instanceId);
+    const cached = await this.redis.getJson<ProviderTemplateSummary[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const config = await this.getInstanceConfig(instanceId, workspaceId);
-    return this.provider.listTemplates(config);
+    const templates = await this.provider.listTemplates(config);
+
+    await this.redis.setJson(
+      cacheKey,
+      templates,
+      MetaWhatsAppService.CACHE_TTL_TEMPLATES,
+    );
+
+    return templates;
   }
 
   async getBusinessProfile(workspaceId: string, instanceId: string) {
+    const cacheKey = this.cacheKey('business-profile', instanceId);
+    const cached = await this.redis.getJson<{
+      phoneNumber: unknown;
+      businessProfile: unknown;
+    }>(cacheKey);
+
+    if (cached) {
+      return {
+        simulated: false,
+        detail: 'Perfil do WhatsApp carregado do cache.',
+        phoneNumber: cached.phoneNumber,
+        businessProfile: cached.businessProfile,
+        raw: {},
+      };
+    }
+
     const config = await this.getInstanceConfig(instanceId, workspaceId);
 
     try {
-      return await this.provider.getBusinessProfile(config);
+      const result = await this.provider.getBusinessProfile(config);
+
+      await this.redis.setJson(
+        cacheKey,
+        {
+          phoneNumber: result.phoneNumber,
+          businessProfile: result.businessProfile,
+        },
+        MetaWhatsAppService.CACHE_TTL_BUSINESS_PROFILE,
+      );
+
+      return result;
     } catch (error) {
       throw this.buildFriendlyProfileError(
         'Nao foi possivel carregar o perfil do WhatsApp.',
@@ -177,6 +291,9 @@ export class MetaWhatsAppService {
         },
       });
 
+      // Invalida cache do perfil e diagnosticos para refletir as alteracoes
+      await this.invalidateInstanceCache(instanceId);
+
       return result;
     } catch (error) {
       throw this.buildFriendlyProfileError(
@@ -218,6 +335,9 @@ export class MetaWhatsAppService {
           lastSyncAt: new Date(),
         },
       });
+
+      // Invalida cache do perfil e diagnosticos para refletir a nova foto
+      await this.invalidateInstanceCache(instanceId);
 
       return result;
     } catch (error) {

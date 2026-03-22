@@ -790,8 +790,32 @@ export class MetaWhatsAppProvider implements MessagingProvider {
   async listTemplates(
     config: MessagingInstanceConfig,
   ): Promise<ProviderTemplateSummary[]> {
-    const diagnostics = await this.getInstanceDiagnostics(config);
-    return diagnostics.templates;
+    if (!this.canUseRealTransport(config)) {
+      return [];
+    }
+
+    const templatesResult = await this.listAllTemplates(config);
+
+    return (templatesResult.data ?? []).map<ProviderTemplateSummary>(
+      (template) => ({
+        id: template.id,
+        name: template.name ?? 'template-sem-nome',
+        status: template.status,
+        language: template.language,
+        category: template.category,
+        qualityScore: template.quality_score?.score ?? null,
+        lastUpdatedTime: template.last_updated_time ?? null,
+        headerFormat: this.resolveTemplateHeaderFormat(template.components),
+        headerParameterCount: this.countTemplateComponentParameters(
+          template.components,
+          'HEADER',
+        ),
+        bodyParameterCount: this.countTemplateComponentParameters(
+          template.components,
+          'BODY',
+        ),
+      }),
+    );
   }
 
   validateWebhookSignature(
