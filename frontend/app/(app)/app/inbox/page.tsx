@@ -1382,8 +1382,8 @@ function InboxPageContent() {
                 ))}
               </div>
 
-              <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-3 py-2 sm:px-4">
-                <div className="rounded-xl bg-[#1a2a3d]/80 p-2">
+              <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-2.5 py-1.5 sm:px-3 sm:py-2">
+                <div className="rounded-[16px] bg-[#1a2a3d]/80 p-1.5 sm:p-2">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1474,7 +1474,7 @@ function InboxPageContent() {
                   {!isRecording ? (
                     <>
                       {quotedMessage ? (
-                        <div className="mb-2 flex items-start justify-between gap-2 rounded-lg border-l-[3px] border-l-primary bg-[#1a2a3d] px-2.5 py-2">
+                        <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border-l-[3px] border-l-primary bg-[#1a2a3d] px-2 py-1.5">
                           <div className="min-w-0">
                             <p className="text-[11px] font-semibold text-primary">
                               Respondendo
@@ -1507,17 +1507,18 @@ function InboxPageContent() {
                                 : 'Adicione uma legenda opcional para a mídia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
-                        className="min-h-[42px] max-h-32 resize-none border-none bg-transparent px-1 py-1 text-[13.5px] leading-5 placeholder:text-muted-foreground/50"
+                        className="min-h-[34px] max-h-28 resize-none border-none bg-transparent px-0.5 py-0.5 text-[13px] leading-5 placeholder:text-muted-foreground/50"
                         disabled={isConversationClosed}
                       />
-                      <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[max-content_max-content_max-content_1fr_max-content] sm:items-center">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:contents">
                           <Button
                             type="button"
                             variant="secondary"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={!activeConversationId || sendMediaMutation.isPending || isConversationClosed}
-                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
+                            className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
+                            title="Anexar arquivo"
                           >
                             <Paperclip className="h-3.5 w-3.5" />
                             Anexar
@@ -1527,10 +1528,11 @@ function InboxPageContent() {
                             variant="secondary"
                             onClick={() => setQuickMessagesOpen(true)}
                             disabled={!activeConversationId || sendMutation.isPending}
-                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
+                            className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
+                            title="Abrir mensagens rapidas"
                           >
                             <MessageSquareText className="h-3.5 w-3.5" />
-                            Mensagens rapidas
+                            Rapidas
                           </Button>
                           <Button
                             type="button"
@@ -1539,13 +1541,14 @@ function InboxPageContent() {
                               void startAudioRecording();
                             }}
                             disabled={!activeConversationId || Boolean(selectedFile) || sendMediaMutation.isPending || isConversationClosed}
-                            className="h-8 rounded-[12px] px-3 text-xs font-medium"
+                            className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
+                            title="Gravar audio"
                           >
                             <Mic className="h-3.5 w-3.5" />
                             Gravar áudio
                           </Button>
                         </div>
-                        <div className="sm:ml-auto">
+                        <div className="sm:col-start-5 sm:justify-self-end">
                           <Button
                             onClick={submitComposer}
                             disabled={
@@ -1555,7 +1558,7 @@ function InboxPageContent() {
                               sendMediaMutation.isPending ||
                               isConversationClosed
                             }
-                            className="h-8 w-full rounded-[12px] px-3.5 text-xs font-medium sm:w-auto"
+                            className="h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs"
                           >
                             <SendHorizontal className="h-3.5 w-3.5" />
                             {selectedFile ? 'Enviar mídia' : 'Enviar'}
@@ -2289,9 +2292,13 @@ function ImageMessagePreview({
         <img src={src} alt={alt} className="max-h-[280px] w-full max-w-[300px] object-cover" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-auto max-w-[92vw] border-white/10 bg-black/90 p-2">
+        <DialogContent className="inset-x-auto bottom-auto left-1/2 top-1/2 min-h-0 w-auto max-h-[calc(100dvh-1.5rem)] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-white/10 bg-black/90 p-2 sm:left-1/2 sm:top-1/2 sm:w-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)] sm:p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} className="max-h-[85vh] w-auto max-w-[90vw] rounded-lg object-contain" />
+          <img
+            src={src}
+            alt={alt}
+            className="block h-auto max-h-[calc(100dvh-4rem)] w-auto max-w-[calc(100vw-4rem)] rounded-[14px] object-contain"
+          />
         </DialogContent>
       </Dialog>
     </>
