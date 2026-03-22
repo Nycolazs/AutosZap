@@ -416,8 +416,6 @@ function launchEmbeddedSignupWithFacebookSdk({
         response_type: 'code',
         override_default_response_type: true,
         extras: {
-          feature: 'whatsapp_embedded_signup',
-          sessionInfoVersion: '3',
           setup: {},
         },
       },
