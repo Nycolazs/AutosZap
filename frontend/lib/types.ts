@@ -144,6 +144,7 @@ export interface Conversation {
   closeReason?: 'MANUAL' | 'UNANSWERED' | null;
   ownership: string;
   unreadCount: number;
+  createdAt: string;
   lastMessageAt?: string | null;
   lastMessagePreview?: string | null;
   contact: Contact;
@@ -229,6 +230,34 @@ export interface Instance {
   webhookVerifyTokenMasked?: string | null;
   appSecretMasked?: string | null;
   lastSyncAt?: string | null;
+}
+
+export interface EmbeddedSignupConfig {
+  appId: string;
+  configurationId: string;
+  graphApiVersion: string;
+  callbackUri?: string | null;
+}
+
+export interface CreateEmbeddedSignupPayload {
+  code: string;
+  phoneNumberId: string;
+  wabaId: string;
+  name?: string;
+}
+
+export interface EmbeddedSignupInstance extends Instance {
+  embeddedSignup: {
+    reusedExistingInstance: boolean;
+    sync: {
+      success: boolean;
+      message: string;
+    };
+    subscribe: {
+      success: boolean;
+      message: string;
+    };
+  };
 }
 
 export interface DevelopmentOverview {
