@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import { apiRequest } from '@/lib/api-client';
 import {
   AUTOSZAP_PUBLIC_APP_URL,
   launchEmbeddedSignup,
+  loadFacebookSdk,
 } from '@/lib/facebook-sdk';
 import type {
   CreateEmbeddedSignupPayload,
@@ -80,6 +81,21 @@ export function EmbeddedSignupAction({
     retry: false,
   });
 
+  // Preload the Facebook SDK as soon as config is available so that
+  // FB.login() can be called synchronously from the user's click handler
+  // (preserving user gesture context and avoiding popup blockers).
+  useEffect(() => {
+    if (!configQuery.data) {
+      return;
+    }
+
+    loadFacebookSdk({
+      appId: configQuery.data.appId,
+    }).catch(() => {
+      // Silently ignore — the SDK will be retried when the user clicks.
+    });
+  }, [configQuery.data]);
+
   async function handleEmbeddedSignup() {
     setIsLaunching(true);
 
@@ -96,7 +112,6 @@ export function EmbeddedSignupAction({
       const signupResult = await launchEmbeddedSignup({
         appId: config.appId,
         configurationId: config.configurationId,
-        graphApiVersion: config.graphApiVersion,
         bridgeBaseUrl: AUTOSZAP_PUBLIC_APP_URL,
       });
 

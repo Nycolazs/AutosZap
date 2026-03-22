@@ -1,15 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Lock, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, Lock, RefreshCw, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE,
   launchEmbeddedSignupDirect,
+  loadFacebookSdk,
   type EmbeddedSignupResult,
 } from '@/lib/facebook-sdk';
 
-type BridgeStatus = 'launching' | 'success' | 'error';
+type BridgeStatus = 'preloading' | 'ready' | 'launching' | 'success' | 'error';
 
 type BridgeState = {
   status: BridgeStatus;
@@ -31,33 +32,57 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function EmbeddedSignupBridgePage() {
-  const [bridgeState, setBridgeState] = useState<BridgeState>({
-    status: 'launching',
-    message: 'Preparando a janela segura da Meta...',
-  });
   const launchStartedRef = useRef(false);
   const openerOrigin = useMemo(() => getSearchParam('origin'), []);
   const appId = useMemo(() => getSearchParam('appId'), []);
   const configurationId = useMemo(() => getSearchParam('configurationId'), []);
   const graphApiVersion = useMemo(
-    () => getSearchParam('graphApiVersion') || 'v23.0',
+    () => getSearchParam('graphApiVersion') || 'v21.0',
     [],
   );
   const autoStart = useMemo(() => getSearchParam('autoStart') === '1', []);
 
-  useEffect(() => {
+  const initialState = useMemo<BridgeState>(() => {
     if (!autoStart) {
-      setBridgeState({
+      return {
         status: 'error',
         message:
           'Abra esta janela pelo modulo de instancias para iniciar o Embedded Signup.',
-      });
+      };
+    }
+    if (!appId || !configurationId) {
+      return {
+        status: 'error',
+        message:
+          'A configuracao do Embedded Signup nao chegou completa para esta janela.',
+      };
+    }
+    return { status: 'preloading', message: 'Carregando o Facebook SDK...' };
+  }, [autoStart, appId, configurationId]);
+
+  const [bridgeState, setBridgeState] = useState<BridgeState>(initialState);
+
+  // Preload the Facebook SDK on mount so FB.login() can be called
+  // synchronously from a user click (preserving gesture context).
+  useEffect(() => {
+    if (initialState.status === 'error') {
       return;
     }
 
-    void startEmbeddedSignup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, appId, configurationId, graphApiVersion]);
+    loadFacebookSdk({ appId, graphApiVersion })
+      .then(() => {
+        setBridgeState({
+          status: 'ready',
+          message: 'Clique abaixo para abrir a autenticacao segura da Meta.',
+        });
+      })
+      .catch((error) => {
+        setBridgeState({
+          status: 'error',
+          message: getErrorMessage(error),
+        });
+      });
+  }, [initialState.status, appId, graphApiVersion]);
 
   async function startEmbeddedSignup() {
     if (launchStartedRef.current) {
@@ -69,16 +94,6 @@ export default function EmbeddedSignupBridgePage() {
       status: 'launching',
       message: 'Abrindo autenticacao segura da Meta...',
     });
-
-    if (!appId || !configurationId) {
-      launchStartedRef.current = false;
-      setBridgeState({
-        status: 'error',
-        message:
-          'A configuracao do Embedded Signup nao chegou completa para esta janela.',
-      });
-      return;
-    }
 
     try {
       const result = await launchEmbeddedSignupDirect({
@@ -140,6 +155,8 @@ export default function EmbeddedSignupBridgePage() {
     }
   }
 
+  const isPreloading = bridgeState.status === 'preloading';
+  const isReady = bridgeState.status === 'ready';
   const isLoading = bridgeState.status === 'launching';
   const isSuccess = bridgeState.status === 'success';
   const isError = bridgeState.status === 'error';
@@ -171,10 +188,12 @@ export default function EmbeddedSignupBridgePage() {
                       : 'border-blue-400/30 bg-blue-400/10 text-blue-100',
                 ].join(' ')}
               >
-                {isLoading ? (
+                {isPreloading || isLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : isSuccess ? (
                   <CheckCircle2 className="h-5 w-5" />
+                ) : isReady ? (
+                  <Smartphone className="h-5 w-5" />
                 ) : (
                   <AlertCircle className="h-5 w-5" />
                 )}
@@ -189,7 +208,9 @@ export default function EmbeddedSignupBridgePage() {
                     ? 'Tudo certo com a Meta'
                     : isError
                       ? 'Nao foi possivel abrir o fluxo'
-                      : 'Conectando seu numero oficial'}
+                      : isReady
+                        ? 'Pronto para conectar'
+                        : 'Conectando seu numero oficial'}
                 </h1>
                 <p className="text-sm leading-6 text-white/70">
                   {bridgeState.message}
@@ -210,6 +231,15 @@ export default function EmbeddedSignupBridgePage() {
                 </div>
               </div>
             </div>
+
+            {isReady ? (
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Button type="button" onClick={() => void startEmbeddedSignup()}>
+                  <Smartphone className="h-4 w-4" />
+                  Iniciar conexao com Meta
+                </Button>
+              </div>
+            ) : null}
 
             {isError ? (
               <div className="flex flex-wrap gap-3 pt-2">
