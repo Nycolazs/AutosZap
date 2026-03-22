@@ -866,6 +866,40 @@ export class MetaWhatsAppService {
         continue;
       }
 
+      // Deduplicacao: se ja existe uma mensagem com esse externalMessageId, ignora
+      // (a Meta pode reenviar webhooks em caso de timeout ou falha de rede)
+      if (inbound.externalMessageId) {
+        const existingMessage =
+          await this.prisma.conversationMessage.findFirst({
+            where: {
+              externalMessageId: inbound.externalMessageId,
+            },
+            select: { id: true },
+          });
+
+        if (existingMessage) {
+          this.logger.warn(
+            `Webhook duplicado ignorado: mensagem ${inbound.externalMessageId} ja existe no banco.`,
+          );
+          continue;
+        }
+      }
+
+      // Verifica se a mensagem e muito antiga (> 10 minutos)
+      // A Meta pode entregar webhooks de midia com atraso significativo;
+      // nesse caso salvamos a mensagem mas nao disparamos resposta automatica
+      const messageTimestamp = inbound.timestamp
+        ? Number(inbound.timestamp) * 1000
+        : Date.now();
+      const messageAgeMs = Date.now() - messageTimestamp;
+      const isStaleMessage = messageAgeMs > 10 * 60 * 1000; // 10 minutos
+
+      if (isStaleMessage) {
+        this.logger.warn(
+          `Webhook com mensagem antiga (${Math.round(messageAgeMs / 60_000)} min atras) de ${inbound.from}. Salvando sem disparar resposta automatica.`,
+        );
+      }
+
       const contact = await this.ensureContact(
         inboundInstance.workspaceId,
         inbound.from,
@@ -894,9 +928,7 @@ export class MetaWhatsAppService {
           content: inbound.body,
           metadata: inboundMetadata as Prisma.InputJsonValue | undefined,
           status: MessageStatus.READ,
-          sentAt: inbound.timestamp
-            ? new Date(Number(inbound.timestamp) * 1000)
-            : new Date(),
+          sentAt: new Date(messageTimestamp),
           deliveredAt: new Date(),
           readAt: new Date(),
         },
@@ -928,10 +960,14 @@ export class MetaWhatsAppService {
         'conversation.message.created',
         'INBOUND',
       );
-      await this.maybeSendAutomaticReply(
-        inboundInstance.workspaceId,
-        conversation.id,
-      );
+
+      // Nao dispara resposta automatica para mensagens antigas/atrasadas
+      if (!isStaleMessage) {
+        await this.maybeSendAutomaticReply(
+          inboundInstance.workspaceId,
+          conversation.id,
+        );
+      }
     }
 
     for (const status of parsed.statuses) {
