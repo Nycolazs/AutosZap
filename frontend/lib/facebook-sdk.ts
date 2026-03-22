@@ -416,6 +416,8 @@ function launchEmbeddedSignupWithFacebookSdk({
         response_type: 'code',
         override_default_response_type: true,
         extras: {
+          sessionInfoVersion: '3',
+          version: 'v3',
           setup: {},
         },
       },
