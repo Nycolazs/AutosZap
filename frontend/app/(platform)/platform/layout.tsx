@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/api-client';
-import { PlatformMeResponse } from '@/lib/types';
+import { AuthMeResponse, PlatformMeResponse } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -159,6 +159,14 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   const meQuery = useQuery({
     queryKey: ['platform-me'],
     queryFn: () => apiRequest<PlatformMeResponse>('platform-admin/me'),
+    retry: 1,
+  });
+
+  const fallbackAuthMeQuery = useQuery({
+    queryKey: ['auth-me-fallback'],
+    queryFn: () => apiRequest<AuthMeResponse>('auth/me'),
+    enabled: meQuery.isError,
+    retry: 1,
   });
 
   const handleLogout = async () => {
@@ -167,7 +175,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   };
 
   /* Loading state */
-  if (meQuery.isLoading) {
+  if (meQuery.isLoading || (meQuery.isError && fallbackAuthMeQuery.isLoading)) {
     return (
       <div className="flex h-dvh min-h-dvh overflow-hidden bg-background text-foreground">
         <aside className="hidden w-[260px] shrink-0 border-r border-border/50 bg-background-panel/50 p-4 lg:flex lg:flex-col lg:gap-3">
@@ -205,7 +213,53 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   }
 
   /* Access denied */
-  if (meQuery.isError || !meQuery.data?.isPlatformAdmin) {
+  if (meQuery.isError && fallbackAuthMeQuery.isError) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md rounded-2xl border-border/50">
+          <CardContent className="space-y-4 p-6 text-center">
+            <div>
+              <h1 className="text-lg font-semibold">Nao foi possivel validar o acesso</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                O servico de autenticacao nao respondeu agora. Tente novamente.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                className="rounded-xl"
+                onClick={() => {
+                  meQuery.refetch();
+                  fallbackAuthMeQuery.refetch();
+                }}
+              >
+                Tentar novamente
+              </Button>
+              <Button asChild variant="ghost" className="rounded-xl text-muted-foreground">
+                <Link href="/app">Voltar para o painel</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const fallbackUser = fallbackAuthMeQuery.data?.platform?.isPlatformAdmin
+    ? ({
+        id: fallbackAuthMeQuery.data.id,
+        name: fallbackAuthMeQuery.data.name,
+        email: fallbackAuthMeQuery.data.email,
+        avatarUrl: fallbackAuthMeQuery.data.avatarUrl,
+        status: fallbackAuthMeQuery.data.status,
+        platformRole: fallbackAuthMeQuery.data.platform?.role ?? null,
+        isPlatformAdmin: true,
+        memberships: [],
+      } satisfies PlatformMeResponse)
+    : null;
+
+  const user = meQuery.data ?? fallbackUser;
+
+  if (meQuery.isSuccess && !meQuery.data.isPlatformAdmin) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md rounded-2xl border-border/50">
@@ -234,7 +288,37 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
     );
   }
 
-  const user = meQuery.data;
+  if (!user) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md rounded-2xl border-border/50">
+          <CardContent className="space-y-4 p-6 text-center">
+            <div>
+              <h1 className="text-lg font-semibold">Nao foi possivel confirmar o acesso</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                O status de permissao da plataforma nao foi validado nesta sessao.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                className="rounded-xl"
+                onClick={() => {
+                  meQuery.refetch();
+                  fallbackAuthMeQuery.refetch();
+                }}
+              >
+                Tentar novamente
+              </Button>
+              <Button variant="ghost" className="rounded-xl text-muted-foreground" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sair da conta
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-dvh min-h-dvh overflow-hidden bg-background text-foreground">

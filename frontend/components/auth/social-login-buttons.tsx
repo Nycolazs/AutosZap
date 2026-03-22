@@ -45,8 +45,11 @@ declare global {
   }
 }
 
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
-const FACEBOOK_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '';
+const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ??
+  '121260038469-oqt0ujgfinc815bmolr61md8egkkokni.apps.googleusercontent.com';
+const FACEBOOK_APP_ID =
+  process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '1904602866817490';
 
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
