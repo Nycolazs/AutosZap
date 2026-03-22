@@ -1,12 +1,13 @@
 'use client';
 
-import type { KeyboardEvent, MutableRefObject } from 'react';
+import type { CSSProperties, KeyboardEvent, MutableRefObject } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
   CheckCheck,
   ChevronLeft,
+  ChevronRight,
   FileImage,
   Inbox,
   MessageSquareText,
@@ -20,7 +21,6 @@ import {
   SlidersHorizontal,
   StickyNote,
   Trash2,
-  Volume2,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -62,6 +62,9 @@ import { useSearchParams } from 'next/navigation';
 
 const INBOX_REFRESH_INTERVAL = 12000;
 const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 18, 14, 24, 18, 28, 20, 16, 24, 14, 18, 12, 8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14];
+const INBOX_CONVERSATIONS_PANEL_WIDTH = 296;
+const INBOX_DETAILS_PANEL_WIDTH = 320;
+const INBOX_COLLAPSED_PANEL_WIDTH = 72;
 const HIDDEN_MEDIA_LABELS = new Set([
   'Imagem',
   'Audio',
@@ -70,14 +73,6 @@ const HIDDEN_MEDIA_LABELS = new Set([
   'Documento',
   'Documento anexado',
 ]);
-const MESSAGE_STATUS_LABELS: Record<string, string> = {
-  READ: 'Lida',
-  DELIVERED: 'Entregue',
-  SENT: 'Enviada',
-  FAILED: 'Falhou',
-  QUEUED: 'Na fila',
-};
-
 function formatMessageTime(value?: string | Date | null) {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
@@ -125,6 +120,22 @@ function getConversationStatusLabel(
 
   return STATUS_LABELS[status] ?? status;
 }
+
+function getContactInitials(name?: string | null) {
+  const normalized = name?.trim();
+
+  if (!normalized) {
+    return 'CT';
+  }
+
+  const parts = normalized.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
+}
 const DEFAULT_CONVERSATION_STATUS_SUMMARY: ConversationStatusSummary = {
   ALL: 0,
   NEW: 0,
@@ -169,6 +180,8 @@ function InboxPageContent() {
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isDesktopLayout, setIsDesktopLayout] = useState(false);
+  const [conversationsPanelCollapsed, setConversationsPanelCollapsed] = useState(false);
+  const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations', search, statusFilter],
@@ -661,6 +674,17 @@ function InboxPageContent() {
     Boolean(activeConversationId) &&
     !selectedConversation &&
     (selectedConversationQuery.isLoading || selectedConversationDetailsQuery.isLoading);
+  const isConversationsPanelMinimized = isDesktopLayout && conversationsPanelCollapsed;
+  const isDetailsPanelMinimized = isDesktopLayout && detailsPanelCollapsed;
+  const desktopInboxGridStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isDesktopLayout) {
+      return undefined;
+    }
+
+    return {
+      gridTemplateColumns: `${isConversationsPanelMinimized ? INBOX_COLLAPSED_PANEL_WIDTH : INBOX_CONVERSATIONS_PANEL_WIDTH}px minmax(0, 1fr) ${isDetailsPanelMinimized ? INBOX_COLLAPSED_PANEL_WIDTH : INBOX_DETAILS_PANEL_WIDTH}px`,
+    };
+  }, [isConversationsPanelMinimized, isDetailsPanelMinimized, isDesktopLayout]);
 
   const selectedTagIds = useMemo(
     () => selectedConversation?.tags.map((tag) => tag.id) ?? [],
@@ -1048,25 +1072,71 @@ function InboxPageContent() {
   }
 
   return (
-    <div className="grid h-full min-h-0 overflow-hidden gap-3 xl:gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px]">
+    <div
+      className="grid h-full min-h-0 overflow-hidden gap-3 xl:gap-4 xl:grid-cols-[296px_minmax(0,1fr)_320px] xl:transition-[grid-template-columns] xl:duration-300 xl:ease-[cubic-bezier(0.22,1,0.36,1)]"
+      style={desktopInboxGridStyle}
+    >
       <Card
         className={cn(
           'h-full min-h-0 overflow-hidden p-0',
           activeConversationId ? 'hidden xl:block' : '',
         )}
       >
-        <CardContent className="flex h-full min-h-0 flex-col p-0">
+        {isConversationsPanelMinimized ? (
+          <CardContent className="hidden h-full min-h-0 flex-col items-center gap-4 p-2 xl:flex">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-11 w-11 rounded-2xl"
+              onClick={() => setConversationsPanelCollapsed(false)}
+              title="Expandir conversas"
+              aria-label="Expandir conversas"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-white/10 bg-white/[0.02] px-2 py-4 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+                <Inbox className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Inbox
+                </p>
+                <span className="inline-flex min-w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[12px] font-medium text-white/82">
+                  {conversationSummaryQuery.data?.ALL ?? conversations.length}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        ) : (
+          <CardContent className="flex h-full min-h-0 flex-col p-0">
           <div className="shrink-0 border-b border-border p-3.5 sm:p-4">
-            <ConversationStatusFilter
-              value={statusFilter}
-              onValueChange={setStatusFilter}
-              counts={
-                conversationSummaryQuery.data ?? {
-                  ...DEFAULT_CONVERSATION_STATUS_SUMMARY,
-                  ALL: conversationsQuery.data?.meta.total ?? conversations.length,
-                }
-              }
-            />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <ConversationStatusFilter
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                  counts={
+                    conversationSummaryQuery.data ?? {
+                      ...DEFAULT_CONVERSATION_STATUS_SUMMARY,
+                      ALL: conversationsQuery.data?.meta.total ?? conversations.length,
+                    }
+                  }
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="mt-1 hidden h-10 w-10 shrink-0 rounded-2xl xl:inline-flex"
+                onClick={() => setConversationsPanelCollapsed(true)}
+                title="Minimizar conversas"
+                aria-label="Minimizar conversas"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
             <div className="relative mt-3">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -1137,7 +1207,8 @@ function InboxPageContent() {
               <EmptyState icon={Inbox} title="Nenhuma conversa aqui" description="As conversas aparecerao assim que entrarem pelo canal configurado." />
             )}
           </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       <Card
@@ -1509,39 +1580,91 @@ function InboxPageContent() {
       </Card>
 
       <Card className="hidden h-full min-h-0 overflow-hidden p-0 xl:block">
-        <CardContent className="flex h-full min-h-0 flex-col p-0">
-          <ConversationSidebar
-            selectedConversation={selectedConversation}
-            selectedTagIds={selectedTagIds}
-            tags={tagsQuery.data ?? []}
-            users={usersQuery.data ?? []}
-            canTransferConversation={canTransferConversation}
-            canResolveConversation={canResolveConversation}
-            canCloseConversation={canCloseConversation}
-            canReopenConversation={canReopenConversation}
-            isConversationClosed={isConversationClosed}
-            noteDraft={noteDraft}
-            onNoteDraftChange={setNoteDraft}
-            onAddNote={() => noteMutation.mutate()}
-            onResolve={() => resolveConversationMutation.mutate()}
-            onClose={() => closeConversationMutation.mutate()}
-            onReopen={() => reopenConversationMutation.mutate()}
-            onUpdateConversation={(payload) => updateConversationMutation.mutate(payload)}
-            reminderForm={reminderForm}
-            onReminderFormChange={setReminderForm}
-            editingReminderId={editingReminderId}
-            onEditReminder={startReminderEdit}
-            onClearReminderEditor={clearReminderEditor}
-            onSaveReminder={() => saveReminderMutation.mutateAsync()}
-            onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
-            onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
-            remindersBusy={
-              saveReminderMutation.isPending ||
-              completeReminderMutation.isPending ||
-              cancelReminderMutation.isPending
-            }
-          />
-        </CardContent>
+        {isDetailsPanelMinimized ? (
+          <CardContent className="flex h-full min-h-0 flex-col items-center gap-4 p-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-11 w-11 rounded-2xl"
+              onClick={() => setDetailsPanelCollapsed(false)}
+              title="Expandir dados do contato"
+              aria-label="Expandir dados do contato"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-white/10 bg-white/[0.02] px-2 py-4 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-foreground">
+                <span className="text-sm font-semibold">
+                  {getContactInitials(selectedConversation?.contact.name)}
+                </span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Contato
+                </p>
+                <p className="text-[11px] text-foreground/72">
+                  {selectedConversation ? 'Detalhes' : 'Vazio'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        ) : (
+          <CardContent className="flex h-full min-h-0 flex-col p-0">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3.5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Painel lateral
+                </p>
+                <p className="text-sm font-medium text-foreground/88">
+                  Dados do contato
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-2xl"
+                onClick={() => setDetailsPanelCollapsed(true)}
+                title="Minimizar dados do contato"
+                aria-label="Minimizar dados do contato"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <ConversationSidebar
+              selectedConversation={selectedConversation}
+              selectedTagIds={selectedTagIds}
+              tags={tagsQuery.data ?? []}
+              users={usersQuery.data ?? []}
+              canTransferConversation={canTransferConversation}
+              canResolveConversation={canResolveConversation}
+              canCloseConversation={canCloseConversation}
+              canReopenConversation={canReopenConversation}
+              isConversationClosed={isConversationClosed}
+              noteDraft={noteDraft}
+              onNoteDraftChange={setNoteDraft}
+              onAddNote={() => noteMutation.mutate()}
+              onResolve={() => resolveConversationMutation.mutate()}
+              onClose={() => closeConversationMutation.mutate()}
+              onReopen={() => reopenConversationMutation.mutate()}
+              onUpdateConversation={(payload) => updateConversationMutation.mutate(payload)}
+              reminderForm={reminderForm}
+              onReminderFormChange={setReminderForm}
+              editingReminderId={editingReminderId}
+              onEditReminder={startReminderEdit}
+              onClearReminderEditor={clearReminderEditor}
+              onSaveReminder={() => saveReminderMutation.mutateAsync()}
+              onCompleteReminder={(reminderId) => completeReminderMutation.mutate(reminderId)}
+              onCancelReminder={(reminderId) => cancelReminderMutation.mutate(reminderId)}
+              remindersBusy={
+                saveReminderMutation.isPending ||
+                completeReminderMutation.isPending ||
+                cancelReminderMutation.isPending
+              }
+            />
+          </CardContent>
+        )}
       </Card>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -2094,14 +2217,6 @@ function FormattedMessageText({
       className="text-[13px] leading-5"
     />
   );
-}
-
-function getMessageStatusLabel(status?: string | null) {
-  if (!status) {
-    return 'Sem status';
-  }
-
-  return MESSAGE_STATUS_LABELS[status] ?? status;
 }
 
 function MessageStatusIcon({ status }: { status?: string | null }) {
