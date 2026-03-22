@@ -196,7 +196,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
         appId,
         cookie: true,
         xfbml: false,
-        version: 'v21.0',
+        version: 'v22.0',
       });
 
       const accessToken = await new Promise<string>((resolve, reject) => {

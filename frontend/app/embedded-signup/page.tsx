@@ -37,7 +37,7 @@ export default function EmbeddedSignupBridgePage() {
   const appId = useMemo(() => getSearchParam('appId'), []);
   const configurationId = useMemo(() => getSearchParam('configurationId'), []);
   const graphApiVersion = useMemo(
-    () => getSearchParam('graphApiVersion') || 'v21.0',
+    () => getSearchParam('graphApiVersion') || 'v22.0',
     [],
   );
   const autoStart = useMemo(() => getSearchParam('autoStart') === '1', []);

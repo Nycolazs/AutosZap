@@ -75,7 +75,7 @@ type EmbeddedSignupBridgeMessage =
     };
 
 const FACEBOOK_SCRIPT_ID = 'facebook-jssdk';
-const DEFAULT_GRAPH_API_VERSION = 'v21.0';
+const DEFAULT_GRAPH_API_VERSION = 'v22.0';
 const FACEBOOK_ORIGINS = new Set([
   'https://www.facebook.com',
   'https://web.facebook.com',
