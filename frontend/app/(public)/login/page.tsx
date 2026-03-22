@@ -45,7 +45,7 @@ export default function LoginPage() {
       description="Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas com a mesma sofisticacao visual de uma plataforma enterprise."
     >
       <div
-        className="flex w-full max-w-[440px] flex-col gap-3"
+        className="desktop-low-height-auth-stack flex w-full max-w-[430px] flex-col gap-3 2xl:max-w-[440px]"
         data-deploy-marker="frontend-2026-03-14-01"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -64,7 +64,7 @@ export default function LoginPage() {
         </div>
 
         <Card className="w-full rounded-[24px] border-border/70 bg-background-panel/45 p-0 shadow-[0_16px_36px_rgba(2,10,22,0.28)] backdrop-blur-xl">
-          <CardHeader className="p-5 pb-2 sm:p-6 sm:pb-3">
+          <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-3">
             <p className="text-[11px] uppercase tracking-[0.18em] text-primary/85">Acesso da plataforma</p>
             <CardTitle className="text-[24px] font-semibold leading-snug tracking-tight">Bem-vindo de volta</CardTitle>
             <CardDescription className="text-[12px] leading-5">
@@ -72,7 +72,7 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="p-5 pt-2 sm:p-6 sm:pt-2">
+          <CardContent className="p-4 pt-2 sm:p-5 sm:pt-2">
             <form
               className="space-y-3"
               autoComplete="on"

@@ -17,7 +17,7 @@ export function AlertDialogContent({
       <AlertDialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
       <AlertDialogPrimitive.Content
         className={cn(
-          'glass-panel fixed inset-x-0 bottom-0 z-50 w-full rounded-t-[28px] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:left-1/2 sm:top-1/2 sm:w-[min(460px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:p-6',
+          'glass-panel fixed inset-x-0 bottom-0 z-50 max-h-[calc(100dvh-1rem)] w-full overflow-y-auto rounded-t-[28px] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:left-1/2 sm:top-1/2 sm:max-h-[calc(100dvh-2rem)] sm:w-[min(460px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[28px] sm:p-6',
           className,
         )}
         {...props}

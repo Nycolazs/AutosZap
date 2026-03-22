@@ -169,23 +169,23 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
     .filter((section) => section.items.length);
 
   return (
-    <aside className="hidden h-screen w-[244px] shrink-0 overflow-hidden border-r border-border bg-background-elevated px-3 py-5 lg:flex lg:flex-col">
-      <Link href="/app" className="mb-6 flex items-center gap-3 px-2">
+    <aside className="desktop-low-height-app-sidebar hidden h-screen w-[15rem] shrink-0 overflow-hidden border-r border-border bg-background-elevated px-2.5 py-4 2xl:w-[15.25rem] 2xl:px-3 2xl:py-5 lg:flex lg:flex-col">
+      <Link href="/app" className="desktop-low-height-app-sidebar-brand mb-5 flex items-center gap-3 px-2">
         <Image
           src="/brand/autoszap-mark.png"
           alt="AutosZap"
           width={56}
           height={56}
-          className="h-12 w-12 shrink-0 object-contain"
+          className="h-10 w-10 shrink-0 object-contain 2xl:h-12 2xl:w-12"
           priority
         />
         <div className="min-w-0">
-          <p className="font-heading text-[24px] font-semibold tracking-tight text-foreground">AutosZap</p>
+          <p className="font-heading text-[22px] font-semibold tracking-tight text-foreground 2xl:text-[24px]">AutosZap</p>
           <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Atendimento & CRM</p>
         </div>
       </Link>
 
-      <div className="space-y-5 overflow-y-auto pr-1">
+      <div className="desktop-low-height-app-sidebar-nav flex flex-col gap-4 overflow-y-auto pr-1">
         {visibleSections.map((section) => (
           <div key={section.label}>
             {section.items.length ? (
@@ -203,7 +203,7 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium transition-all',
+                          'flex items-center gap-3 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all 2xl:py-2.5',
                           active
                             ? 'bg-primary text-white shadow-[0_12px_28px_rgba(50,151,255,0.22)]'
                             : 'text-foreground/72 hover:bg-white/5 hover:text-foreground',

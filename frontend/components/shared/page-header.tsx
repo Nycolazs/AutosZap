@@ -10,9 +10,9 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="desktop-low-height-page-header flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div className="space-y-1.5">
-        <h1 className="font-heading text-[26px] font-semibold tracking-tight text-foreground sm:text-[28px]">
+        <h1 className="font-heading text-[24px] font-semibold tracking-tight text-foreground sm:text-[26px] 2xl:text-[28px]">
           {title}
         </h1>
         {description ? (

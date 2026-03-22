@@ -152,7 +152,7 @@ export function Topbar({
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background/72 px-3 py-3 backdrop-blur-xl md:px-4">
+      <div className="desktop-low-height-app-topbar flex shrink-0 items-center gap-3 border-b border-border bg-background/72 px-3 py-2.5 backdrop-blur-xl md:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           <Button
             variant="secondary"
@@ -207,7 +207,7 @@ export function Topbar({
             ) : null}
           </Button>
 
-          <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-2 md:gap-3 md:px-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-1.5 md:gap-3 md:px-3 md:py-2">
             <Avatar>
               {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={userName ?? 'Avatar'} />}
               <AvatarFallback>

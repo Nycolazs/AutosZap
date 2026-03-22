@@ -68,7 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               isInboxRoute ? 'overflow-hidden' : 'overflow-auto',
             )}
           >
-            <div className="h-full space-y-4 px-3 py-3 sm:p-4 lg:p-5">
+            <div className="desktop-low-height-app-main h-full space-y-4 px-3 py-3 sm:p-4 lg:px-4 lg:py-4 2xl:p-5">
               <Skeleton className="h-20 w-full rounded-2xl" />
               <Skeleton className="h-[calc(100%-6.5rem)] w-full rounded-[28px]" />
             </div>
@@ -111,7 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             permissionMap={me.permissionMap}
           />
           <main data-app-shell className="min-h-0 flex-1 overflow-auto">
-            <div className="h-full px-3 py-3 sm:p-4 lg:p-5">
+            <div className="desktop-low-height-app-main h-full px-3 py-3 sm:p-4 lg:px-4 lg:py-4 2xl:p-5">
               <AccessDenied fallbackHref={fallbackHref} />
             </div>
           </main>
@@ -139,8 +139,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <div
             className={cn(
-              'px-3 py-3 sm:p-4 lg:p-5',
-              shouldShowMobileBottomNav && 'pb-24 lg:pb-5',
+              'desktop-low-height-app-main px-3 py-3 sm:p-4 lg:px-4 lg:py-4 2xl:p-5',
+              shouldShowMobileBottomNav && 'pb-24 lg:pb-4 2xl:pb-5',
               isInboxRoute
                 ? 'box-border h-full min-h-0 overflow-hidden'
                 : 'min-h-full',

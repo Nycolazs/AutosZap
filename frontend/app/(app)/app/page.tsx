@@ -101,9 +101,9 @@ export default function DashboardPage() {
 
   if (isInitialLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5 2xl:space-y-6">
         <Skeleton className="h-24 w-full" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7 2xl:gap-4">
           {Array.from({ length: 7 }).map((_, index) => (
             <Skeleton key={index} className="h-36" />
           ))}
@@ -120,7 +120,7 @@ export default function DashboardPage() {
     hasErrors && !dashboardQuery.data && !performanceQuery.data;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 2xl:space-y-6">
       <PageHeader
         title="Painel inicial"
         description="Acompanhe a operação em tempo real e compare a performance dos vendedores por conversas resolvidas."
@@ -151,7 +151,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7 2xl:gap-4">
         <StatCard title="Conversas ativas" value={overview.metrics.activeConversations} helper="Novas, em atendimento e aguardando" icon={MessageSquareText} />
         <StatCard title="Contatos totais" value={overview.metrics.totalContacts} helper="Base disponível na empresa" icon={Users} />
         <StatCard title="Taxa de resposta" value={`${overview.metrics.responseRate}%`} helper="Mensagens entregues ou lidas" icon={Activity} />
@@ -172,7 +172,7 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardHeader className="gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <CardTitle>Performance de vendedores</CardTitle>
             <CardDescription>Compare resoluções, encerramentos, assunções e tempos médios por período.</CardDescription>
@@ -204,9 +204,9 @@ export default function DashboardPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr] 2xl:gap-5">
+          <div className="space-y-4 2xl:space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:gap-4">
               <StatCard title="Resolvidos" value={performance.totals.resolvedCount} helper="Conversas concluídas com sucesso" icon={Trophy} />
               <StatCard title="Encerrados" value={performance.totals.closedCount} helper="Atendimentos encerrados sem conversão" icon={MessageSquareText} />
               <StatCard title="Assumidos" value={performance.totals.assignedCount} helper="Total de conversas assumidas" icon={Users} />
@@ -250,7 +250,7 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-4 2xl:space-y-5">
             <Card className="border-border/70 bg-background-panel/55">
               <CardHeader>
                 <CardTitle className="text-base">Ranking de vendedores</CardTitle>
@@ -287,11 +287,11 @@ export default function DashboardPage() {
             </Card>
 
             <Card className="p-0">
-              <CardHeader className="p-6">
+              <CardHeader className="p-5 2xl:p-6">
                 <CardTitle>Atalhos rápidos</CardTitle>
                 <CardDescription>Navegação direta para as operações mais usadas.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3 p-6 pt-0">
+              <CardContent className="grid gap-3 p-5 pt-0 2xl:p-6 2xl:pt-0">
                 {overview.shortcuts.map((shortcut) => (
                   <Link
                     key={shortcut.href}
@@ -307,20 +307,20 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr] 2xl:gap-5">
         <Card className="p-0">
-          <CardHeader className="p-6">
+          <CardHeader className="p-5 2xl:p-6">
             <div>
               <CardTitle>Evolução recente</CardTitle>
               <CardDescription>Volume das últimas ações outbound na operação.</CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="p-6 pt-0">
+          <CardContent className="p-5 pt-0 2xl:p-6 2xl:pt-0">
             <div className="-mx-1 overflow-x-auto px-1">
               <div className="grid min-w-[520px] grid-cols-7 gap-3">
                 {overview.chart.map((point) => (
                   <div key={point.label} className="flex flex-col items-center gap-3">
-                    <div className="flex h-44 w-full items-end rounded-[22px] bg-white/[0.03] p-3 sm:h-48">
+                    <div className="flex h-36 w-full items-end rounded-[22px] bg-white/[0.03] p-3 sm:h-40 2xl:h-48">
                       <div
                         className="w-full rounded-2xl bg-gradient-to-t from-primary to-secondary"
                         style={{ height: `${Math.max(point.value * 12, 18)}px` }}
@@ -335,11 +335,11 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="p-0">
-          <CardHeader className="p-6">
+          <CardHeader className="p-5 2xl:p-6">
             <CardTitle>Atividade recente</CardTitle>
             <CardDescription>Auditoria resumida das últimas ações registradas.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 p-6 pt-0">
+          <CardContent className="space-y-3 p-5 pt-0 2xl:p-6 2xl:pt-0">
             {overview.recentActivity.map((activity) => (
               <div key={activity.id} className="flex items-center justify-between rounded-2xl border border-border bg-white/[0.03] px-4 py-3">
                 <div>

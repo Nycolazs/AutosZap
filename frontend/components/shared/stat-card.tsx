@@ -14,14 +14,14 @@ export function StatCard({
 }) {
   return (
     <Card className="p-0">
-      <CardContent className="flex items-start justify-between gap-4 p-4 sm:items-center">
+      <CardContent className="flex items-start justify-between gap-3 p-3.5 sm:items-center sm:p-4">
         <div className="min-w-0">
           <p className="text-[13px] text-muted-foreground">{title}</p>
-          <p className="mt-1.5 font-heading text-[24px] font-semibold sm:text-[28px]">{value}</p>
-          <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{helper}</p>
+          <p className="mt-1.5 font-heading text-[22px] font-semibold sm:text-[24px] 2xl:text-[28px]">{value}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</p>
         </div>
-        <div className="rounded-2xl bg-primary-soft p-2.5 text-primary sm:p-3">
-          <Icon className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+        <div className="rounded-2xl bg-primary-soft p-2.5 text-primary sm:p-2.5 2xl:p-3">
+          <Icon className="h-4 w-4 sm:h-4.5 sm:w-4.5 2xl:h-5 2xl:w-5" />
         </div>
       </CardContent>
     </Card>

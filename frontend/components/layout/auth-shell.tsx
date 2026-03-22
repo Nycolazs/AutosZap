@@ -24,15 +24,15 @@ export function AuthShell({
   return (
     <div className="flex min-h-dvh">
       {/* ── Left panel: occupies its own sticky viewport height, independent of right column ── */}
-      <div className="sticky top-0 hidden h-dvh w-[52%] shrink-0 flex-col justify-center overflow-hidden px-8 py-9 xl:w-[55%] xl:px-12 2xl:px-16 lg:flex">
+      <div className="desktop-low-height-auth-aside sticky top-0 hidden h-dvh w-[48%] shrink-0 flex-col justify-center overflow-y-auto overflow-x-hidden px-6 py-7 xl:w-[50%] xl:px-7 2xl:w-[55%] 2xl:px-12 2xl:py-9 lg:flex">
         {/* Background layers */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_24%,rgba(56,148,255,0.28),transparent_38%),radial-gradient(circle_at_78%_78%,rgba(20,160,195,0.20),transparent_30%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(4,17,36,0.88)_0%,rgba(3,12,24,0.70)_50%,rgba(2,10,20,0.90)_100%)]" />
         <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/[0.06]" />
 
         {/* Content */}
-        <div className="relative z-10 mx-auto w-full max-w-[480px]">
-          <Link href="/login" className="mb-7 flex w-fit items-center gap-3">
+        <div className="desktop-low-height-auth-aside-inner relative z-10 mx-auto w-full max-w-[460px]">
+          <Link href="/login" className="desktop-low-height-auth-brand mb-5 flex w-fit items-center gap-3">
             <Image
               src="/brand/autoszap-mark.png"
               alt="AutosZap"
@@ -55,11 +55,11 @@ export function AuthShell({
             {title}{' '}<span className="text-primary">{accent}</span>
           </h1>
 
-          <p className="mt-3 text-[13px] leading-[1.65] text-muted-foreground">
+          <p className="desktop-low-height-auth-copy mt-3 text-[13px] leading-[1.65] text-muted-foreground">
             {description}
           </p>
 
-          <div className="mt-5 space-y-2.5">
+          <div className="desktop-low-height-auth-bullets mt-5 flex flex-col gap-2.5">
             {bullets.map((bullet) => {
               const Icon = bullet.icon;
               return (
@@ -73,7 +73,7 @@ export function AuthShell({
             })}
           </div>
 
-          <div className="glass-panel mt-7 rounded-xl border-white/8 p-4 shadow-[0_10px_28px_rgba(2,10,22,0.26)]">
+          <div className="desktop-low-height-auth-highlight glass-panel mt-6 rounded-xl border-white/8 p-4 shadow-[0_10px_28px_rgba(2,10,22,0.26)]">
             <p className="text-[12px] italic leading-[1.6] text-foreground/75">
               &ldquo;Centralizamos atendimento, pipeline comercial e disparos sem perder a qualidade operacional.&rdquo;
             </p>
@@ -91,7 +91,7 @@ export function AuthShell({
       </div>
 
       {/* ── Right panel: always full-height, centers content independently ── */}
-      <div className="flex min-h-dvh flex-1 flex-col items-center justify-start pt-6 px-4 pb-4 sm:px-6 sm:pt-8 lg:justify-center lg:px-8 lg:pt-4">
+      <div className="desktop-low-height-auth-main flex min-h-dvh flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-5 pt-5 sm:px-6 sm:pt-7 lg:justify-center lg:px-6 lg:pt-4 2xl:px-8">
         {/* Mobile logo — visible only below lg */}
         <div className="mb-4 flex w-full max-w-[420px] items-center gap-2.5 lg:hidden">
           <Image
