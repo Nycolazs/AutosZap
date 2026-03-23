@@ -1,5 +1,17 @@
 const MESSAGE_FORMAT_PREFIX_REGEX = /^\*[^*\n]+\*:\n[\s\S]+$/;
 
+function formatSellerName(userName: string) {
+  return userName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => {
+      const [firstChar = '', ...restChars] = part;
+      return `${firstChar.toLocaleUpperCase('pt-BR')}${restChars.join('').toLocaleLowerCase('pt-BR')}`;
+    })
+    .join(' ');
+}
+
 export function formatManualMessageContent(userName: string, content: string) {
   const normalizedContent = content.replace(/\r\n/g, '\n').trim();
 
@@ -11,5 +23,5 @@ export function formatManualMessageContent(userName: string, content: string) {
     return normalizedContent;
   }
 
-  return `*${userName.trim().toUpperCase()}*:\n${normalizedContent}`;
+  return `*${formatSellerName(userName)}*:\n${normalizedContent}`;
 }

@@ -16,6 +16,7 @@ import type {
   CreateCampaignPayload,
   CreateContactListPayload,
   CreateContactPayload,
+  CreateEmbeddedSignupPayload,
   CreateGroupPayload,
   CreateInstancePayload,
   CreateKnowledgeBasePayload,
@@ -25,6 +26,8 @@ import type {
   CreatePipelineStagePayload,
   CreateTeamMemberPayload,
   DashboardOverview,
+  EmbeddedSignupConfigRecord,
+  EmbeddedSignupInstanceRecord,
   ForgotPasswordPayload,
   GroupRecord,
   InstanceDiagnostics,
@@ -539,6 +542,15 @@ export function createPlatformClient(config: ClientConfig) {
 
     getInstance(instanceId: string) {
       return request<InstanceRecord>(`instances/${instanceId}`);
+    },
+    getEmbeddedSignupConfig() {
+      return request<EmbeddedSignupConfigRecord>('instances/embedded-signup-config');
+    },
+    createInstanceFromEmbeddedSignup(payload: CreateEmbeddedSignupPayload) {
+      return request<EmbeddedSignupInstanceRecord>('instances/embedded-signup', {
+        method: 'POST',
+        body: payload,
+      });
     },
     createInstance(payload: CreateInstancePayload) {
       return request<InstanceRecord>('instances', {

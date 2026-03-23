@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import {
   EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE,
   launchEmbeddedSignupDirect,
-  loadFacebookSdk,
   type EmbeddedSignupResult,
 } from '@/lib/facebook-sdk';
 
@@ -57,32 +56,10 @@ export default function EmbeddedSignupBridgePage() {
           'A configuracao do Embedded Signup nao chegou completa para esta janela.',
       };
     }
-    return { status: 'preloading', message: 'Carregando o Facebook SDK...' };
+    return { status: 'ready', message: 'Clique abaixo para abrir a autenticacao segura da Meta.' };
   }, [autoStart, appId, configurationId]);
 
   const [bridgeState, setBridgeState] = useState<BridgeState>(initialState);
-
-  // Preload the Facebook SDK on mount so FB.login() can be called
-  // synchronously from a user click (preserving gesture context).
-  useEffect(() => {
-    if (initialState.status === 'error') {
-      return;
-    }
-
-    loadFacebookSdk({ appId, graphApiVersion })
-      .then(() => {
-        setBridgeState({
-          status: 'ready',
-          message: 'Clique abaixo para abrir a autenticacao segura da Meta.',
-        });
-      })
-      .catch((error) => {
-        setBridgeState({
-          status: 'error',
-          message: getErrorMessage(error),
-        });
-      });
-  }, [initialState.status, appId, graphApiVersion]);
 
   async function startEmbeddedSignup() {
     if (launchStartedRef.current) {

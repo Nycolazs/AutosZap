@@ -254,6 +254,34 @@ export interface InstanceRecord {
   lastSyncAt?: string | null;
 }
 
+export interface EmbeddedSignupConfigRecord {
+  appId: string;
+  configurationId: string;
+  graphApiVersion: string;
+  callbackUri?: string | null;
+}
+
+export interface CreateEmbeddedSignupPayload {
+  code: string;
+  phoneNumberId: string;
+  wabaId: string;
+  name?: string;
+}
+
+export interface EmbeddedSignupInstanceRecord extends InstanceRecord {
+  embeddedSignup: {
+    reusedExistingInstance: boolean;
+    sync: {
+      success: boolean;
+      message: string;
+    };
+    subscribe: {
+      success: boolean;
+      message: string;
+    };
+  };
+}
+
 export interface WorkspaceConversationSettings {
   id: string;
   workspaceId: string;

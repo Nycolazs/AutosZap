@@ -296,19 +296,20 @@ export default function ContactListsPage() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>{editingList ? 'Editar lista' : 'Nova lista'}</DialogTitle>
             <DialogDescription>
               Selecione os contatos que devem compor essa base para campanhas e operacoes recorrentes.
             </DialogDescription>
           </DialogHeader>
           <form
-            className="space-y-4"
+            className="flex min-h-0 flex-1 flex-col"
             onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}
           >
-            <div className="space-y-2">
-              <Label>Nome</Label>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 sm:pr-2">
+              <div className="space-y-2">
+                <Label>Nome</Label>
               <Input {...form.register('name')} />
             </div>
 
@@ -335,7 +336,9 @@ export default function ContactListsPage() {
               />
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            </div>
+
+            <div className="mt-4 flex shrink-0 justify-end gap-3 border-t border-border pt-4">
               <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>

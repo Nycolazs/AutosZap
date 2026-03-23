@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { apiRequest } from '@/lib/api-client';
 import { getRoleLabel } from '@/lib/permissions';
-import { PermissionCatalogEntry, TeamMember } from '@/lib/types';
+import { PermissionCatalogEntry, TeamMember, WorkspaceRole } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 
 /* ── Invite code types ── */
@@ -48,11 +48,51 @@ const inviteRoleLabelMap: Record<string, string> = {
   SELLER: 'Vendedor',
 };
 
+const ADMIN_ROLE_SELECTION = 'system-admin';
+const DEFAULT_SELLER_ROLE_SELECTION = 'system-seller';
+
+function parseRoleSelection(roleSelection: string) {
+  if (roleSelection === ADMIN_ROLE_SELECTION) {
+    return {
+      role: 'ADMIN' as const,
+      workspaceRoleId: null,
+    };
+  }
+
+  if (roleSelection && roleSelection !== DEFAULT_SELLER_ROLE_SELECTION) {
+    return {
+      role: 'SELLER' as const,
+      workspaceRoleId: roleSelection,
+    };
+  }
+
+  return {
+    role: 'SELLER' as const,
+    workspaceRoleId: null,
+  };
+}
+
+function getMemberRoleSelection(member: TeamMember | null) {
+  if (!member) {
+    return DEFAULT_SELLER_ROLE_SELECTION;
+  }
+
+  if (member.normalizedRole === 'ADMIN') {
+    return ADMIN_ROLE_SELECTION;
+  }
+
+  if (member.workspaceRoleId) {
+    return member.workspaceRoleId;
+  }
+
+  return DEFAULT_SELLER_ROLE_SELECTION;
+}
+
 const teamMemberSchema = z.object({
   name: z.string().min(2, 'Informe ao menos 2 caracteres.'),
   email: z.string().email('Informe um email valido.'),
   title: z.string().optional(),
-  role: z.enum(['ADMIN', 'SELLER']),
+  roleSelection: z.string().min(1, 'Selecione um papel.'),
   status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
   password: z
     .string()
@@ -125,6 +165,11 @@ export default function TeamPage() {
     queryKey: ['team-permission-catalog'],
     queryFn: () => apiRequest<PermissionCatalogEntry[]>('team/permissions/catalog'),
   });
+  const workspaceRolesQuery = useQuery({
+    queryKey: ['workspace-roles'],
+    queryFn: () => apiRequest<WorkspaceRole[]>('workspace-roles'),
+    retry: false,
+  });
 
   const inviteCodesQuery = useQuery({
     queryKey: ['invite-codes'],
@@ -170,19 +215,30 @@ export default function TeamPage() {
     }, {});
   }, [permissionCatalogQuery.data]);
 
+  const workspaceRoleOptions = useMemo(
+    () =>
+      (workspaceRolesQuery.data ?? []).map((role) => ({
+        label: role.name,
+        value: role.id,
+      })),
+    [workspaceRolesQuery.data],
+  );
+
   const saveMemberMutation = useMutation({
     mutationFn: (values: TeamMemberFormValues) => {
-      if (selectedMember) {
-        const normalizedPassword = values.password?.trim() ?? '';
-        const normalizedConfirmPassword = values.confirmPassword?.trim() ?? '';
+      const { role, workspaceRoleId } = parseRoleSelection(values.roleSelection);
+      const normalizedPassword = values.password?.trim() ?? '';
+      const normalizedConfirmPassword = values.confirmPassword?.trim() ?? '';
 
+      if (selectedMember) {
         return apiRequest(`team/${selectedMember.id}`, {
           method: 'PATCH',
           body: {
             name: values.name,
             email: values.email,
             title: values.title,
-            role: values.role,
+            role,
+            workspaceRoleId,
             status: values.status,
             ...(normalizedPassword
               ? {
@@ -196,14 +252,30 @@ export default function TeamPage() {
 
       return apiRequest('team', {
         method: 'POST',
-        body: values,
+        body: {
+          name: values.name,
+          email: values.email,
+          title: values.title,
+          role,
+          workspaceRoleId,
+          status: values.status,
+          ...(normalizedPassword
+            ? {
+                password: normalizedPassword,
+                confirmPassword: normalizedConfirmPassword,
+              }
+            : {}),
+        },
       });
     },
     onSuccess: async () => {
       toast.success(selectedMember ? 'Membro atualizado.' : 'Membro criado.');
       setDialogOpen(false);
       setSelectedMember(null);
-      await queryClient.invalidateQueries({ queryKey: ['team'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['team'] }),
+        queryClient.invalidateQueries({ queryKey: ['auth-me'] }),
+      ]);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -212,7 +284,10 @@ export default function TeamPage() {
     mutationFn: (id: string) => apiRequest(`team/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
       toast.success('Membro desativado.');
-      await queryClient.invalidateQueries({ queryKey: ['team'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['team'] }),
+        queryClient.invalidateQueries({ queryKey: ['auth-me'] }),
+      ]);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -236,7 +311,10 @@ export default function TeamPage() {
     onSuccess: async () => {
       toast.success('Permissões salvas.');
       setPermissionsMember(null);
-      await queryClient.invalidateQueries({ queryKey: ['team'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['team'] }),
+        queryClient.invalidateQueries({ queryKey: ['auth-me'] }),
+      ]);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -256,7 +334,18 @@ export default function TeamPage() {
       {
         accessorKey: 'role',
         header: 'Papel',
-        cell: ({ row }) => <Badge variant="secondary">{getRoleLabel(row.original.normalizedRole)}</Badge>,
+        cell: ({ row }) => (
+          <div className="space-y-1">
+            <Badge variant="secondary">
+              {row.original.workspaceRole?.name ?? getRoleLabel(row.original.normalizedRole)}
+            </Badge>
+            {row.original.workspaceRole ? (
+              <p className="text-[11px] text-muted-foreground">
+                Base: {getRoleLabel(row.original.normalizedRole)}
+              </p>
+            ) : null}
+          </div>
+        ),
       },
       {
         accessorKey: 'status',
@@ -335,7 +424,7 @@ export default function TeamPage() {
         name: selectedMember.name,
         email: selectedMember.email,
         title: selectedMember.title ?? '',
-        role: selectedMember.normalizedRole,
+        roleSelection: getMemberRoleSelection(selectedMember),
         status:
           selectedMember.status === 'ACTIVE' || selectedMember.status === 'INACTIVE'
             ? selectedMember.status
@@ -347,7 +436,7 @@ export default function TeamPage() {
         name: '',
         email: '',
         title: '',
-        role: 'SELLER',
+        roleSelection: DEFAULT_SELLER_ROLE_SELECTION,
         status: 'PENDING',
           password: '',
           confirmPassword: '',
@@ -391,13 +480,10 @@ export default function TeamPage() {
               { name: 'email' as const, label: 'Email', type: 'email' as const },
               { name: 'title', label: 'Cargo' },
               {
-                name: 'role',
+                name: 'roleSelection',
                 label: 'Papel',
                 type: 'select',
-                options: [
-                  { label: 'Administrador', value: 'ADMIN' },
-                  { label: 'Vendedor', value: 'SELLER' },
-                ],
+                options: workspaceRoleOptions,
               },
               {
                 name: 'status',
@@ -661,8 +747,8 @@ export default function TeamPage() {
       </Dialog>
 
       <Dialog open={Boolean(permissionsMember)} onOpenChange={(open) => !open && setPermissionsMember(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>Permissões do usuário</DialogTitle>
             <DialogDescription>
               {permissionsMember?.name
@@ -671,14 +757,14 @@ export default function TeamPage() {
             </DialogDescription>
           </DialogHeader>
           {permissionsMember ? (
-            <div className="space-y-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-5">
               {permissionsMember.normalizedRole === 'ADMIN' ? (
                 <div className="rounded-[22px] border border-primary/20 bg-primary/10 p-4 text-sm text-foreground">
                   Administradores recebem acesso completo automaticamente. As permissões abaixo ficam travadas enquanto o usuário for admin.
                 </div>
               ) : null}
 
-              <div className="max-h-[80vh] space-y-4 overflow-y-auto pr-2">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
                 {Object.entries(groupedPermissions).map(([category, permissions]) => (
                   <Card key={category} className="p-0">
                     <CardHeader className="p-5 pb-3">

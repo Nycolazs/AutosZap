@@ -89,13 +89,17 @@ function getDateLabel(value: string | Date) {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function getConversationMessageTimestamp(message: Pick<ConversationMessage, 'sentAt' | 'createdAt'>) {
+  return message.sentAt ?? message.createdAt;
+}
+
 function shouldShowDateSeparator(
   messages: ConversationMessage[],
   index: number,
 ) {
   if (index === 0) return true;
-  const current = new Date(messages[index].createdAt);
-  const previous = new Date(messages[index - 1].createdAt);
+  const current = new Date(getConversationMessageTimestamp(messages[index]));
+  const previous = new Date(getConversationMessageTimestamp(messages[index - 1]));
   return current.toDateString() !== previous.toDateString();
 }
 
@@ -295,7 +299,7 @@ function InboxPageContent() {
 
         return {
           ...current,
-          lastMessageAt: message.createdAt,
+          lastMessageAt: getConversationMessageTimestamp(message),
           lastMessagePreview: preview,
           messages: [...(current.messages ?? []), message],
         };
@@ -313,7 +317,7 @@ function InboxPageContent() {
           conversation.id === conversationId
             ? {
                 ...conversation,
-                lastMessageAt: message.createdAt,
+                lastMessageAt: getConversationMessageTimestamp(message),
                 lastMessagePreview: preview,
               }
             : conversation,
@@ -372,6 +376,7 @@ function InboxPageContent() {
         content: formattedContent,
         metadata: buildQuoteMetadataForComposer(optimisticQuotedMessage),
         status: 'QUEUED',
+        sentAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
       const conversationSnapshots = queryClient.getQueriesData<Conversation | undefined>({
@@ -655,19 +660,23 @@ function InboxPageContent() {
       return baseConversation;
     }
 
-    return {
-      ...baseConversation,
-      ...detailsConversation,
-      contact: {
-        ...baseConversation.contact,
-        ...detailsConversation.contact,
-      },
-      assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
-      tags: detailsConversation.tags ?? baseConversation.tags,
-      messages: baseConversation.messages ?? detailsConversation.messages,
-      notes: detailsConversation.notes ?? baseConversation.notes,
-      reminders: detailsConversation.reminders ?? baseConversation.reminders,
-    } satisfies Conversation;
+      return {
+        ...baseConversation,
+        ...detailsConversation,
+        contact: {
+          ...baseConversation.contact,
+          ...detailsConversation.contact,
+        },
+        assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
+        tags: detailsConversation.tags ?? baseConversation.tags,
+        messages: [...(baseConversation.messages ?? detailsConversation.messages ?? [])].sort(
+          (left, right) =>
+            new Date(getConversationMessageTimestamp(left)).getTime() -
+            new Date(getConversationMessageTimestamp(right)).getTime(),
+        ),
+        notes: detailsConversation.notes ?? baseConversation.notes,
+        reminders: detailsConversation.reminders ?? baseConversation.reminders,
+      } satisfies Conversation;
   }, [selectedConversationDetailsQuery.data, selectedConversationQuery.data]);
 
   const isConversationLoading =
@@ -1316,7 +1325,7 @@ function InboxPageContent() {
                     {shouldShowDateSeparator(selectedConversation.messages!, index) && (
                       <div className="my-3 flex items-center justify-center first:mt-0">
                         <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                          {getDateLabel(message.createdAt)}
+                          {getDateLabel(getConversationMessageTimestamp(message))}
                         </span>
                       </div>
                     )}
@@ -1371,7 +1380,7 @@ function InboxPageContent() {
                                 : 'text-[#ffffff66]',
                           )}
                         >
-                          {formatMessageTime(message.createdAt)}
+                          {formatMessageTime(getConversationMessageTimestamp(message))}
                           {message.direction === 'OUTBOUND' && message.status !== 'QUEUED' && (
                             <MessageStatusIcon status={message.status} />
                           )}
@@ -2564,16 +2573,16 @@ function buildQuoteMetadataForComposer(message?: ConversationMessage | null) {
     return null;
   }
 
-  return {
-    quote: {
-      messageId: message.id,
-      contentPreview: buildMessageQuotePreview(message),
-      messageType: normalizeConversationMessageType(message.messageType),
-      direction: message.direction,
-      createdAt: message.createdAt,
-    },
-  };
-}
+    return {
+      quote: {
+        messageId: message.id,
+        contentPreview: buildMessageQuotePreview(message),
+        messageType: normalizeConversationMessageType(message.messageType),
+        direction: message.direction,
+        createdAt: getConversationMessageTimestamp(message),
+      },
+    };
+  }
 
 function getMessageCaption(message: ConversationMessage) {
   const content = message.content?.trim();

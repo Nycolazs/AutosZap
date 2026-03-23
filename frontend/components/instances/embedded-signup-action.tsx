@@ -198,8 +198,8 @@ export function EmbeddedSignupAction({
           }
         }}
       >
-        <DialogContent className="w-[min(520px,calc(100vw-2rem))]">
-          <DialogHeader>
+        <DialogContent className="w-[min(520px,calc(100vw-2rem))] sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>Adicionar via Embedded Signup</DialogTitle>
             <DialogDescription>
               Conecte um numero oficial pela jornada da Meta, sem preencher
@@ -207,7 +207,7 @@ export function EmbeddedSignupAction({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary">Fluxo oficial da Meta</Badge>
               <Badge variant="secondary">Sem token manual</Badge>
@@ -271,37 +271,36 @@ export function EmbeddedSignupAction({
                 {configHint}
               </div>
             ) : null}
+          </div>
 
-            <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setOpen(false)}
-                disabled={isLaunching}
-              >
-                Fechar
-              </Button>
-              <Button
-                type="button"
-                onClick={handleEmbeddedSignup}
-                disabled={
-                  isLaunching ||
-                  configQuery.isLoading ||
-                  Boolean(configError)
-                }
-              >
-                {isLaunching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Smartphone className="h-4 w-4" />
-                )}
-                Continuar com Meta
-              </Button>
-            </div>
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-3 border-t border-border pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setOpen(false)}
+              disabled={isLaunching}
+            >
+              Fechar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleEmbeddedSignup}
+              disabled={
+                isLaunching ||
+                configQuery.isLoading ||
+                Boolean(configError)
+              }
+            >
+              {isLaunching ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Smartphone className="h-4 w-4" />
+              )}
+              Continuar com Meta
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
     </>
   );
 }
-

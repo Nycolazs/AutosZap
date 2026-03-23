@@ -14,6 +14,7 @@ import {
   MessageSquareText,
   RadioTower,
   Settings,
+  ShieldCheck,
   Tags,
   Users,
   Workflow,
@@ -128,6 +129,12 @@ export const APP_NAV_SECTIONS: Array<{
         label: 'Equipe',
         icon: Users,
         requirement: { permission: 'TEAM_VIEW' },
+      },
+      {
+        href: '/app/papeis',
+        label: 'Papeis',
+        icon: ShieldCheck,
+        requirement: { permission: 'MANAGE_USER_ROLES' },
       },
       ...(isLocalDevelopment
         ? [

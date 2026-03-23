@@ -73,6 +73,7 @@ const ROUTE_PERMISSION_RULES: Array<{
     },
   },
   { prefix: '/app/configuracoes', requirement: { permission: 'SETTINGS_VIEW' } },
+  { prefix: '/app/papeis', requirement: { permission: 'MANAGE_USER_ROLES' } },
   { prefix: '/app/equipe', requirement: { permission: 'TEAM_VIEW' } },
   { prefix: '/app/instancias', requirement: { permission: 'INTEGRATIONS_VIEW' } },
   { prefix: '/app/ferramentas-ia', requirement: { permission: 'AI_TOOLS_VIEW' } },

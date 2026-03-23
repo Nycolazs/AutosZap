@@ -886,8 +886,8 @@ export default function InstancesPage() {
           }
         }}
       >
-        <DialogContent className="w-[min(760px,calc(100vw-2rem))]">
-          <DialogHeader>
+        <DialogContent className="w-[min(760px,calc(100vw-2rem))] sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>Perfil do WhatsApp Business</DialogTitle>
             <DialogDescription>
               Atualize foto, texto de perfil, links e categoria oficial do numero
@@ -895,253 +895,255 @@ export default function InstancesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
-            <div className="space-y-3">
-              <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[24px] border border-border bg-background-panel">
-                {effectivePreviewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={effectivePreviewUrl}
-                    alt="Foto atual do perfil"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-                    <RadioTower className="h-10 w-10" />
-                    <span className="text-sm">Sem foto carregada</span>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+              <div className="space-y-3">
+                <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[24px] border border-border bg-background-panel">
+                  {effectivePreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={effectivePreviewUrl}
+                      alt="Foto atual do perfil"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                      <RadioTower className="h-10 w-10" />
+                      <span className="text-sm">Sem foto carregada</span>
+                    </div>
+                  )}
+                </div>
+
+                {syncingProfile ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando perfil da Meta...
                   </div>
-                )}
+                ) : null}
               </div>
 
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                      Instancia
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {selectedInstance?.name ?? '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                      Numero
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {diagnostics?.phoneNumber?.displayPhoneNumber ??
+                        selectedInstance?.phoneNumber ??
+                        '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                      Nome verificado
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {diagnostics?.phoneNumber?.verifiedName ?? '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                      Qualidade
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {diagnostics?.phoneNumber?.qualityRating ?? '-'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="profile-picture">Nova foto de perfil</Label>
+                  <Input
+                    id="profile-picture"
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={(event) => {
+                      setSelectedFile(event.target.files?.[0] ?? null);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use PNG ou JPG quadrado para melhor resultado. O upload usa o
+                    App ID da instancia ou o `META_APP_ID` do ambiente.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="profile-about">Sobre</Label>
+                    <Input
+                      id="profile-about"
+                      maxLength={139}
+                      value={profileForm.about}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          about: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="profile-description">Descricao</Label>
+                    <Textarea
+                      id="profile-description"
+                      rows={4}
+                      maxLength={256}
+                      value={profileForm.description}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-email">Email</Label>
+                    <Input
+                      id="profile-email"
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          email: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-vertical">Categoria / vertical</Label>
+                    <NativeSelect
+                      id="profile-vertical"
+                      value={profileForm.vertical}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          vertical: event.target.value,
+                        }))
+                      }
+                    >
+                      {verticalOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="profile-address">Endereco</Label>
+                    <Input
+                      id="profile-address"
+                      value={profileForm.address}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          address: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-website-1">Website 1</Label>
+                    <Input
+                      id="profile-website-1"
+                      placeholder="https://seusite.com"
+                      value={profileForm.website1}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          website1: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="profile-website-2">Website 2</Label>
+                    <Input
+                      id="profile-website-2"
+                      placeholder="https://suporte.seusite.com"
+                      value={profileForm.website2}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          website2: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-3 border-t border-border pt-4">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (!selectedInstance) {
+                  return;
+                }
+                void refreshProfileData(
+                  selectedInstance.id,
+                  'Perfil atualizado a partir da Meta.',
+                );
+              }}
+              disabled={
+                syncingProfile ||
+                uploadingProfile ||
+                savingProfile ||
+                !selectedInstance
+              }
+            >
               {syncingProfile ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando perfil da Meta...
-                </div>
-              ) : null}
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    Instancia
-                  </p>
-                  <p className="text-sm text-foreground">
-                    {selectedInstance?.name ?? '-'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    Numero
-                  </p>
-                  <p className="text-sm text-foreground">
-                    {diagnostics?.phoneNumber?.displayPhoneNumber ??
-                      selectedInstance?.phoneNumber ??
-                      '-'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    Nome verificado
-                  </p>
-                  <p className="text-sm text-foreground">
-                    {diagnostics?.phoneNumber?.verifiedName ?? '-'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    Qualidade
-                  </p>
-                  <p className="text-sm text-foreground">
-                    {diagnostics?.phoneNumber?.qualityRating ?? '-'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="profile-picture">Nova foto de perfil</Label>
-                <Input
-                  id="profile-picture"
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  onChange={(event) => {
-                    setSelectedFile(event.target.files?.[0] ?? null);
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Use PNG ou JPG quadrado para melhor resultado. O upload usa o
-                  App ID da instancia ou o `META_APP_ID` do ambiente.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="profile-about">Sobre</Label>
-                  <Input
-                    id="profile-about"
-                    maxLength={139}
-                    value={profileForm.about}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        about: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="profile-description">Descricao</Label>
-                  <Textarea
-                    id="profile-description"
-                    rows={4}
-                    maxLength={256}
-                    value={profileForm.description}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-email">Email</Label>
-                  <Input
-                    id="profile-email"
-                    type="email"
-                    value={profileForm.email}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-vertical">Categoria / vertical</Label>
-                  <NativeSelect
-                    id="profile-vertical"
-                    value={profileForm.vertical}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        vertical: event.target.value,
-                      }))
-                    }
-                  >
-                    {verticalOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="profile-address">Endereco</Label>
-                  <Input
-                    id="profile-address"
-                    value={profileForm.address}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        address: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-website-1">Website 1</Label>
-                  <Input
-                    id="profile-website-1"
-                    placeholder="https://seusite.com"
-                    value={profileForm.website1}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        website1: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-website-2">Website 2</Label>
-                  <Input
-                    id="profile-website-2"
-                    placeholder="https://suporte.seusite.com"
-                    value={profileForm.website2}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        website2: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (!selectedInstance) {
-                      return;
-                    }
-                    void refreshProfileData(
-                      selectedInstance.id,
-                      'Perfil atualizado a partir da Meta.',
-                    );
-                  }}
-                  disabled={
-                    syncingProfile ||
-                    uploadingProfile ||
-                    savingProfile ||
-                    !selectedInstance
-                  }
-                >
-                  {syncingProfile ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  Recarregar perfil
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={updateBusinessProfile}
-                  disabled={
-                    syncingProfile ||
-                    uploadingProfile ||
-                    savingProfile ||
-                    !selectedInstance
-                  }
-                >
-                  {savingProfile ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  Atualizar perfil do WhatsApp
-                </Button>
-                <Button
-                  onClick={uploadProfilePicture}
-                  disabled={
-                    !selectedFile ||
-                    uploadingProfile ||
-                    syncingProfile ||
-                    savingProfile
-                  }
-                >
-                  {uploadingProfile ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Camera className="h-4 w-4" />
-                  )}
-                  Atualizar foto do WhatsApp
-                </Button>
-              </div>
-            </div>
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Recarregar perfil
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={updateBusinessProfile}
+              disabled={
+                syncingProfile ||
+                uploadingProfile ||
+                savingProfile ||
+                !selectedInstance
+              }
+            >
+              {savingProfile ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Atualizar perfil do WhatsApp
+            </Button>
+            <Button
+              onClick={uploadProfilePicture}
+              disabled={
+                !selectedFile ||
+                uploadingProfile ||
+                syncingProfile ||
+                savingProfile
+              }
+            >
+              {uploadingProfile ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+              Atualizar foto do WhatsApp
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

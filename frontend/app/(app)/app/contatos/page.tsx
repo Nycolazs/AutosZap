@@ -271,93 +271,95 @@ export default function ContactsPage() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:max-w-[760px]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>{selectedContact ? 'Editar contato' : 'Novo contato'}</DialogTitle>
             <DialogDescription>Cadastre e edite contatos com persistencia real no banco.</DialogDescription>
           </DialogHeader>
-          <form className="grid gap-4" onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input {...form.register('name')} />
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 sm:pr-2">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input {...form.register('name')} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Telefone</Label>
+                  <Input
+                    placeholder="(99) 99999-9999"
+                    className={cn(
+                      form.formState.errors.phone
+                        ? 'border-danger/70 ring-1 ring-danger/30 focus-visible:ring-danger/40'
+                        : undefined,
+                    )}
+                    {...form.register('phone', {
+                      onChange: (event) => {
+                        const masked = applyBrazilPhoneMask(event.target.value);
+                        form.setValue('phone', masked, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      },
+                    })}
+                  />
+                  {form.formState.errors.phone ? (
+                    <p className="text-xs text-danger">{form.formState.errors.phone.message}</p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input {...form.register('email')} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Empresa</Label>
+                  <Input {...form.register('company')} />
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Cargo</Label>
+                  <Input {...form.register('jobTitle')} />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input
-                  placeholder="(99) 99999-9999"
-                  className={cn(
-                    form.formState.errors.phone
-                      ? 'border-danger/70 ring-1 ring-danger/30 focus-visible:ring-danger/40'
-                      : undefined,
-                  )}
-                  {...form.register('phone', {
-                    onChange: (event) => {
-                      const masked = applyBrazilPhoneMask(event.target.value);
-                      form.setValue('phone', masked, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      });
-                    },
-                  })}
-                />
-                {form.formState.errors.phone ? (
-                  <p className="text-xs text-danger">{form.formState.errors.phone.message}</p>
-                ) : null}
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input {...form.register('email')} />
-              </div>
-              <div className="space-y-2">
-                <Label>Empresa</Label>
-                <Input {...form.register('company')} />
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Cargo</Label>
-                <Input {...form.register('jobTitle')} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              {availableTags.length ? (
-                <div className="grid gap-2 rounded-[24px] border border-border bg-background-panel/80 p-3 sm:grid-cols-2">
-                  {availableTags.map((tag) => {
-                    const active = (selectedTagIds ?? []).includes(tag.id);
+                <Label>Tags</Label>
+                {availableTags.length ? (
+                  <div className="grid gap-2 rounded-[24px] border border-border bg-background-panel/80 p-3 sm:grid-cols-2">
+                    {availableTags.map((tag) => {
+                      const active = (selectedTagIds ?? []).includes(tag.id);
 
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => toggleTag(tag.id)}
-                        className={cn(
-                          'flex min-h-11 items-center gap-3 rounded-2xl border px-3 py-2 text-left transition',
-                          active
-                            ? 'border-primary/60 bg-primary/15 text-foreground'
-                            : 'border-border bg-white/[0.02] text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                        )}
-                      >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
-                        <span className="text-sm font-medium">{tag.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-[24px] border border-dashed border-border bg-background-panel/70 px-4 py-5 text-sm text-muted-foreground">
-                  Nenhuma tag cadastrada ainda. Crie tags em <span className="text-foreground">Workspace &gt; Tags</span> para associar ao contato.
-                </div>
-              )}
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => toggleTag(tag.id)}
+                          className={cn(
+                            'flex min-h-11 items-center gap-3 rounded-2xl border px-3 py-2 text-left transition',
+                            active
+                              ? 'border-primary/60 bg-primary/15 text-foreground'
+                              : 'border-border bg-white/[0.02] text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                          )}
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                          <span className="text-sm font-medium">{tag.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-[24px] border border-dashed border-border bg-background-panel/70 px-4 py-5 text-sm text-muted-foreground">
+                    Nenhuma tag cadastrada ainda. Crie tags em <span className="text-foreground">Workspace &gt; Tags</span> para associar ao contato.
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Notas</Label>
+                <Textarea {...form.register('notes')} />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Notas</Label>
-              <Textarea {...form.register('notes')} />
-            </div>
-            <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
+            <div className="mt-4 flex shrink-0 flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>

@@ -46,6 +46,19 @@ export interface PermissionCatalogEntry {
   category: 'Telas' | 'Acoes' | 'Analise' | 'Configuracoes';
 }
 
+export interface WorkspaceRole {
+  id: string;
+  name: string;
+  description?: string | null;
+  permissions: string[];
+  permissionCount: number;
+  assignedMembersCount: number;
+  activeMembersCount: number;
+  createdAt: string;
+  updatedAt: string;
+  isSystem?: boolean;
+}
+
 export interface TeamMember {
   id: string;
   userId?: string | null;
@@ -54,6 +67,12 @@ export interface TeamMember {
   title?: string | null;
   role: string;
   normalizedRole: 'ADMIN' | 'SELLER';
+  workspaceRoleId?: string | null;
+  workspaceRole?: {
+    id: string;
+    name: string;
+    description?: string | null;
+  } | null;
   status: string;
   lastLoginAt?: string | null;
   permissions: Record<string, boolean>;
@@ -103,6 +122,7 @@ export interface ConversationMessage {
     bodyParameters?: string[];
   } | null;
   status: string;
+  sentAt?: string | null;
   createdAt: string;
 }
 
@@ -454,6 +474,12 @@ export interface AuthMeResponse {
   role: string;
   normalizedRole: 'ADMIN' | 'SELLER';
   title?: string | null;
+  workspaceRoleId?: string | null;
+  workspaceRole?: {
+    id: string;
+    name: string;
+    description?: string | null;
+  } | null;
   status: string;
   permissions: string[];
   permissionMap: Record<string, boolean>;

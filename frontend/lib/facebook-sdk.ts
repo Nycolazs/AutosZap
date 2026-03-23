@@ -84,6 +84,8 @@ export const AUTOSZAP_PUBLIC_APP_URL = 'https://autoszap.com';
 export const EMBEDDED_SIGNUP_BRIDGE_PATH = '/embedded-signup';
 export const EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE =
   'AUTOSZAP_EMBEDDED_SIGNUP_RESULT';
+export const OAUTH_CALLBACK_PATH = '/embedded-signup/callback';
+export const OAUTH_CALLBACK_MESSAGE_TYPE = 'AUTOSZAP_OAUTH_CALLBACK';
 
 let sdkLoadPromise: Promise<void> | null = null;
 let initializedSdkKey: string | null = null;
@@ -425,19 +427,202 @@ function launchEmbeddedSignupWithFacebookSdk({
   });
 }
 
-export async function launchEmbeddedSignupDirect({
+function buildOAuthUrl({
+  appId,
+  configurationId,
+  graphApiVersion,
+  redirectUri,
+}: {
+  appId: string;
+  configurationId: string;
+  graphApiVersion: string;
+  redirectUri: string;
+}) {
+  const url = new URL(
+    `https://www.facebook.com/${graphApiVersion}/dialog/oauth`,
+  );
+  url.searchParams.set('client_id', appId);
+  url.searchParams.set('config_id', configurationId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('override_default_response_type', 'true');
+  url.searchParams.set(
+    'extras',
+    JSON.stringify({
+      sessionInfoVersion: '3',
+      version: 'v3',
+      setup: {},
+    }),
+  );
+  return url.toString();
+}
+
+function launchEmbeddedSignupViaOAuth({
   appId,
   configurationId,
   graphApiVersion = DEFAULT_GRAPH_API_VERSION,
-}: LaunchEmbeddedSignupOptions) {
-  await loadFacebookSdk({
+  bridgeBaseUrl,
+}: LaunchEmbeddedSignupOptions): Promise<EmbeddedSignupResult> {
+  ensureBrowserEnvironment();
+
+  const resolvedBaseUrl =
+    normalizeBaseUrl(bridgeBaseUrl) ?? AUTOSZAP_PUBLIC_APP_URL;
+  const redirectUri = new URL(OAUTH_CALLBACK_PATH, resolvedBaseUrl).toString();
+
+  const oauthUrl = buildOAuthUrl({
     appId,
+    configurationId,
     graphApiVersion,
+    redirectUri,
   });
 
-  return launchEmbeddedSignupWithFacebookSdk({
-    configurationId,
+  const popupWindow = window.open(
+    oauthUrl,
+    'autoszap-meta-oauth',
+    buildPopupFeatures(),
+  );
+
+  if (!popupWindow) {
+    throw new Error(
+      'O navegador bloqueou a janela da Meta. Libere popups e tente novamente.',
+    );
+  }
+
+  popupWindow.focus();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let authCode: string | null = null;
+    let signupResult: Omit<EmbeddedSignupResult, 'code'> | null = null;
+
+    const cleanupCallbacks: Array<() => void> = [];
+
+    const settleWithError = (error: Error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanupCallbacks.forEach((callback) => callback());
+      reject(error);
+    };
+
+    const settleWithSuccess = () => {
+      if (
+        settled ||
+        !authCode ||
+        !signupResult?.phoneNumberId ||
+        !signupResult.wabaId
+      ) {
+        return;
+      }
+
+      settled = true;
+      cleanupCallbacks.forEach((callback) => callback());
+      resolve({
+        code: authCode,
+        phoneNumberId: signupResult.phoneNumberId,
+        wabaId: signupResult.wabaId,
+        businessId: signupResult.businessId,
+      });
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      settleWithError(
+        new Error('Tempo esgotado aguardando a conclusao do Embedded Signup.'),
+      );
+    }, 120000);
+    cleanupCallbacks.push(() => window.clearTimeout(timeoutId));
+
+    const onMessage = (event: MessageEvent) => {
+      // WA_EMBEDDED_SIGNUP events from Facebook (phone_number_id, waba_id)
+      if (FACEBOOK_ORIGINS.has(event.origin)) {
+        const payload = parseEmbeddedSignupMessage(event.data);
+        if (!payload || payload.type !== 'WA_EMBEDDED_SIGNUP') {
+          return;
+        }
+
+        const eventName = payload.event?.toUpperCase();
+        if (
+          eventName === 'CANCEL' ||
+          eventName === 'ERROR' ||
+          eventName === 'FINISH_ONLY_WABA'
+        ) {
+          settleWithError(
+            new Error(getEmbeddedSignupEventMessage(payload)),
+          );
+          return;
+        }
+
+        if (
+          eventName === 'FINISH' ||
+          eventName === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
+        ) {
+          signupResult = {
+            phoneNumberId: payload.data?.phone_number_id ?? '',
+            wabaId: payload.data?.waba_id ?? '',
+            businessId: payload.data?.business_id,
+          };
+
+          if (!signupResult.phoneNumberId || !signupResult.wabaId) {
+            settleWithError(
+              new Error(
+                'A Meta concluiu o fluxo, mas nao retornou phone_number_id e waba_id.',
+              ),
+            );
+            return;
+          }
+
+          settleWithSuccess();
+        }
+      }
+
+      // OAuth callback from our redirect page (auth code)
+      if (
+        event.data &&
+        typeof event.data === 'object' &&
+        event.data.type === OAUTH_CALLBACK_MESSAGE_TYPE
+      ) {
+        if (event.data.code) {
+          authCode = event.data.code as string;
+          settleWithSuccess();
+          return;
+        }
+
+        settleWithError(
+          new Error(
+            (event.data.error as string) ||
+              'Autorizacao nao concluida na Meta.',
+          ),
+        );
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    cleanupCallbacks.push(() =>
+      window.removeEventListener('message', onMessage),
+    );
+
+    const closeWatcher = window.setInterval(() => {
+      if (!popupWindow.closed) {
+        return;
+      }
+
+      window.clearInterval(closeWatcher);
+      settleWithError(
+        new Error(
+          'A janela do Embedded Signup foi fechada antes da conclusao.',
+        ),
+      );
+    }, 500);
+    cleanupCallbacks.push(() => window.clearInterval(closeWatcher));
   });
+}
+
+export function launchEmbeddedSignupDirect(
+  options: LaunchEmbeddedSignupOptions,
+): Promise<EmbeddedSignupResult> {
+  return launchEmbeddedSignupViaOAuth(options);
 }
 
 function launchEmbeddedSignupViaBridge({

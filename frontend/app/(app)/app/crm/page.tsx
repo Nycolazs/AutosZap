@@ -333,13 +333,13 @@ export default function CrmPage() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[720px]">
-          <DialogHeader>
+        <DialogContent className="sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:max-w-[720px]">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>{selectedLead ? 'Editar lead' : 'Novo lead'}</DialogTitle>
             <DialogDescription>Persistência real no banco com alterações refletidas no board.</DialogDescription>
           </DialogHeader>
           <form
-            className="grid gap-4"
+            className="flex min-h-0 flex-1 flex-col"
             onSubmit={form.handleSubmit((values) =>
               saveMutation.mutate({
                 ...values,
@@ -347,7 +347,8 @@ export default function CrmPage() {
               }),
             )}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 sm:pr-2">
+              <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Nome do lead</Label>
                 <Input {...form.register('name')} />
@@ -356,8 +357,8 @@ export default function CrmPage() {
                 <Label>Empresa</Label>
                 <Input {...form.register('company')} />
               </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Etapa</Label>
                 <NativeSelect {...form.register('stageId')}>
@@ -379,8 +380,8 @@ export default function CrmPage() {
                   ))}
                 </NativeSelect>
               </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Contato vinculado</Label>
                 <NativeSelect {...form.register('contactId')}>
@@ -396,8 +397,8 @@ export default function CrmPage() {
                 <Label>Valor estimado</Label>
                 <Input {...form.register('value')} />
               </div>
-            </div>
-            <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
               <Label>Tags</Label>
               <MultiOptionSelector
                 options={(tagsQuery.data ?? []).map((tag) => ({
@@ -409,12 +410,13 @@ export default function CrmPage() {
                 onChange={(next) => form.setValue('tagIds', next, { shouldDirty: true })}
                 emptyMessage="Nenhuma tag cadastrada ainda."
               />
-            </div>
-            <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
               <Label>Notas</Label>
               <Textarea {...form.register('notes')} />
+              </div>
             </div>
-            <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
+            <div className="mt-4 flex shrink-0 flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button variant="secondary" type="button" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
