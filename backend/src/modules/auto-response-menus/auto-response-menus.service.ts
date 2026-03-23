@@ -5,7 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 export type MenuNodeInput = {
   id?: string;
   label: string;
-  message: string;
+  message?: string;
   type?: string;
   order: number;
   parentId?: string | null;

@@ -1,0 +1,7 @@
+# Exclude heavy local artifacts not needed for frontend deploys
+**/node_modules
+apps/desktop/release
+apps/desktop/dist-renderer
+apps/desktop/dist-electron
+**/*.log
+**/*.err.log
