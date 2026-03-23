@@ -8,6 +8,7 @@ import {
   Query,
   Redirect,
 } from '@nestjs/common';
+import { IsIn, IsString, MinLength, MaxLength } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -67,4 +68,32 @@ export class PlatformController {
       ipAddress,
     });
   }
+
+  @Post('support-tickets')
+  createSupportTicket(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: CreateSupportTicketDto,
+  ) {
+    return this.platformService.createSupportTicket(user, dto);
+  }
+
+  @Get('support-tickets')
+  listMyTickets(@CurrentUser() user: CurrentAuthUser) {
+    return this.platformService.listMyTickets(user);
+  }
+}
+
+class CreateSupportTicketDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(120)
+  title!: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(5000)
+  body!: string;
+
+  @IsIn(['IMPROVEMENT', 'BUG', 'QUESTION'])
+  category!: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
 }

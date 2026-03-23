@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   ShieldUser,
+  TicketCheck,
   Users2,
   X,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/platform/companies', label: 'Empresas', icon: Building2 },
   { href: '/platform/users', label: 'Usuarios', icon: Users2 },
   { href: '/platform/interessados', label: 'Interessados', icon: ContactRound },
+  { href: '/platform/suporte', label: 'Suporte', icon: TicketCheck },
   { href: '/platform/audit', label: 'Auditoria', icon: FileText },
 ];
 

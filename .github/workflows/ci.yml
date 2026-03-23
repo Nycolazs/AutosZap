@@ -47,6 +47,9 @@ jobs:
   prisma-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/autoszap?schema=public
+      CONTROL_PLANE_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/autoszap_control?schema=public
     steps:
       - name: Checkout
         uses: actions/checkout@v4

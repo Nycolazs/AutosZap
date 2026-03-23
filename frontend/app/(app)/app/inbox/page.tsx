@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileImage,
+  Expand,
   Inbox,
   MessageSquareText,
   Mic,
@@ -21,6 +22,8 @@ import {
   SlidersHorizontal,
   StickyNote,
   Trash2,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -2111,6 +2114,7 @@ function MessageBubbleContent({
       <div className="space-y-2">
         {quoteBlock}
         <CompactAudioPlayer
+          key={mediaUrl}
           src={mediaUrl}
           isVoiceMessage={Boolean(message.metadata?.voice)}
           outgoing={message.direction === 'OUTBOUND'}
@@ -2124,13 +2128,7 @@ function MessageBubbleContent({
     return (
       <div className="space-y-2">
         {quoteBlock}
-        <video
-          controls
-          playsInline
-          preload="metadata"
-          className="max-h-[280px] w-full max-w-[300px] rounded-md bg-black object-cover"
-          src={mediaUrl}
-        />
+        <VideoMessagePlayer src={mediaUrl} />
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
@@ -2272,6 +2270,21 @@ function StatusBadge({
   );
 }
 
+function MediaLoadingSkeleton({ width, height, rounded = 'rounded-md' }: { width: string; height: string; rounded?: string }) {
+  return (
+    <div className={cn('relative flex items-center justify-center bg-white/[0.06]', rounded, width, height)}>
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="relative flex h-8 w-8 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+          <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-primary/70" />
+          <div className="h-2 w-2 rounded-full bg-primary/40" />
+        </div>
+        <span className="text-[10px] text-muted-foreground/60">Carregando...</span>
+      </div>
+    </div>
+  );
+}
+
 function ImageMessagePreview({
   src,
   alt,
@@ -2282,11 +2295,27 @@ function ImageMessagePreview({
   isSticker: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   if (isSticker) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt={alt} className="max-h-32 max-w-[132px] object-contain" />
+      <div className="relative min-h-[80px] min-w-[80px]">
+        {!isLoaded && !hasError && (
+          <MediaLoadingSkeleton width="w-24" height="h-24" rounded="rounded-xl" />
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          className={cn(
+            'max-h-32 max-w-[132px] object-contain transition-opacity duration-300',
+            isLoaded ? 'opacity-100' : 'absolute inset-0 opacity-0',
+          )}
+          onLoad={() => setIsLoaded(true)}
+          onError={() => { setHasError(true); setIsLoaded(true); }}
+        />
+      </div>
     );
   }
 
@@ -2297,8 +2326,20 @@ function ImageMessagePreview({
         className="block overflow-hidden rounded-md"
         onClick={() => setOpen(true)}
       >
+        {!isLoaded && !hasError && (
+          <MediaLoadingSkeleton width="w-[240px]" height="h-[160px]" />
+        )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} className="max-h-[280px] w-full max-w-[300px] object-cover" />
+        <img
+          src={src}
+          alt={alt}
+          className={cn(
+            'max-h-[280px] w-full max-w-[300px] object-cover transition-opacity duration-300',
+            isLoaded ? 'opacity-100' : 'hidden',
+          )}
+          onLoad={() => setIsLoaded(true)}
+          onError={() => { setHasError(true); setIsLoaded(true); }}
+        />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="inset-x-auto bottom-auto left-1/2 top-1/2 min-h-0 w-auto max-h-[calc(100dvh-1.5rem)] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-white/10 bg-black/90 p-2 sm:left-1/2 sm:top-1/2 sm:w-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)] sm:p-2">
@@ -2311,6 +2352,240 @@ function ImageMessagePreview({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function VideoMessagePlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [showControls, setShowControls] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleLoadedMetadata = () => {
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      setIsLoading(false);
+    };
+    const handleCanPlay = () => setIsLoading(false);
+    const handleTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
+      setProgress(video.duration > 0 ? (video.currentTime / video.duration) * 100 : 0);
+    };
+    const handleEnded = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0); video.currentTime = 0; };
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleError = () => { setIsLoading(false); setHasError(true); };
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('error', handleError);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      video.pause();
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('error', handleError);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+    };
+  }, [src]);
+
+  const showControlsTemporarily = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 2500);
+  };
+
+  const togglePlayback = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      try { await video.play(); } catch { toast.error('Nao foi possivel reproduzir o video.'); }
+    } else {
+      video.pause();
+    }
+    showControlsTemporarily();
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+    showControlsTemporarily();
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video || !duration) return;
+    const newTime = Number(e.target.value);
+    video.currentTime = newTime;
+    setCurrentTime(newTime);
+    showControlsTemporarily();
+  };
+
+  const enterFullscreen = async () => {
+    const container = containerRef.current;
+    if (!container) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await container.requestFullscreen();
+      }
+    } catch {
+      // fullscreen not supported, open in dialog instead
+      const video = videoRef.current;
+      if (video) window.open(src, '_blank');
+    }
+    showControlsTemporarily();
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn(
+        'group relative overflow-hidden rounded-xl bg-black',
+        isFullscreen ? 'w-full h-full' : 'max-h-[280px] w-full max-w-[300px]',
+      )}
+      onMouseMove={showControlsTemporarily}
+      onTouchStart={showControlsTemporarily}
+      onClick={togglePlayback}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        playsInline
+        preload="metadata"
+        className={cn(
+          'h-full w-full object-contain',
+          isFullscreen ? 'max-h-screen' : 'max-h-[280px]',
+          isLoading ? 'opacity-0' : 'opacity-100',
+        )}
+      />
+
+      {/* Loading state */}
+      {isLoading && !hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <MediaLoadingSkeleton width="w-full" height="h-full" rounded="rounded-xl" />
+        </div>
+      )}
+
+      {/* Error state */}
+      {hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
+          <span className="text-[12px] text-white/60">Erro ao carregar video</span>
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[12px] text-primary underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Abrir no navegador
+          </a>
+        </div>
+      )}
+
+      {/* Play button overlay (centered, shown when paused or no controls) */}
+      {!isLoading && !hasError && !isPlaying && (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          onClick={(e) => { e.stopPropagation(); void togglePlayback(); }}
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70 sm:h-14 sm:w-14">
+            <Play className="ml-1 h-5 w-5 fill-current sm:h-6 sm:w-6" />
+          </div>
+        </div>
+      )}
+
+      {/* Controls overlay */}
+      {!isLoading && !hasError && (
+        <div
+          className={cn(
+            'absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/80 to-transparent p-2 transition-opacity duration-200',
+            showControls || !isPlaying ? 'opacity-100' : 'opacity-0',
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Seekbar */}
+          <div className="relative h-1.5 w-full">
+            <div className="absolute inset-0 rounded-full bg-white/20" />
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={duration || 0}
+              step={0.1}
+              value={currentTime}
+              onChange={handleSeek}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </div>
+
+          {/* Buttons row */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+              onClick={togglePlayback}
+            >
+              {isPlaying
+                ? <Pause className="h-3.5 w-3.5 fill-current" />
+                : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
+            </button>
+            <span className="flex-1 text-[10px] tabular-nums text-white/70">
+              {formatMediaDuration(currentTime)} / {formatMediaDuration(duration)}
+            </span>
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+              onClick={toggleMute}
+            >
+              {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+              onClick={enterFullscreen}
+              title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            >
+              <Expand className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2327,6 +2602,7 @@ function CompactAudioPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -2337,7 +2613,10 @@ function CompactAudioPlayer({
 
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+      setIsLoading(false);
     };
+
+    const handleCanPlay = () => setIsLoading(false);
 
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
@@ -2352,6 +2631,7 @@ function CompactAudioPlayer({
     const handlePlay = () => setIsPlaying(true);
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('pause', handlePause);
@@ -2360,6 +2640,7 @@ function CompactAudioPlayer({
     return () => {
       audio.pause();
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('pause', handlePause);
@@ -2402,7 +2683,20 @@ function CompactAudioPlayer({
   return (
     <div className="w-[280px] max-w-full">
       <audio ref={audioRef} src={src} preload="metadata" />
-      <div className="flex items-center gap-3">
+      {isLoading ? (
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
+            <div className="relative flex h-5 w-5 items-center justify-center">
+              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-white/60" />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="h-[8px] w-full animate-pulse rounded-full bg-white/10" />
+            <div className="h-[6px] w-16 animate-pulse rounded-full bg-white/[0.07]" />
+          </div>
+        </div>
+      ) : null}
+      <div className={cn('flex items-center gap-3', isLoading ? 'hidden' : '')}>
         <button
           type="button"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
