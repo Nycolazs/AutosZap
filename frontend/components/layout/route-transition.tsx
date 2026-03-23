@@ -14,7 +14,7 @@ export function RouteTransition({
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
 
-  if (reduceMotion) {
+  if (reduceMotion || pathname === '/') {
     return <div className={className}>{children}</div>;
   }
 

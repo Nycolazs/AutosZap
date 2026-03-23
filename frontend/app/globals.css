@@ -181,6 +181,71 @@ select {
   }
 }
 
+@keyframes auth-panel-fade {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.992);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes auth-panel-from-right {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, 0, 0) scale(0.985);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes auth-panel-from-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-22px, 0, 0) scale(0.985);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes auth-panel-mode-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.972);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes auth-panel-mode-return {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0) scale(0.988);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
 @keyframes bottom-nav-in {
   from {
     opacity: 0;
@@ -194,6 +259,31 @@ select {
 
 .motion-enter {
   animation: surface-fade-up 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.auth-panel-fade {
+  animation: auth-panel-fade 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, filter;
+}
+
+.auth-panel-from-right {
+  animation: auth-panel-from-right 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, filter;
+}
+
+.auth-panel-from-left {
+  animation: auth-panel-from-left 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, filter;
+}
+
+.auth-panel-mode-enter {
+  animation: auth-panel-mode-enter 300ms cubic-bezier(0.18, 0.96, 0.32, 1);
+  will-change: transform, opacity, filter;
+}
+
+.auth-panel-mode-return {
+  animation: auth-panel-mode-return 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity, filter;
 }
 
 .motion-bottom-nav {
@@ -230,7 +320,7 @@ select {
 
 @media (min-width: 1024px) and (max-height: 820px) {
   .desktop-low-height-auth-aside {
-    justify-content: flex-start;
+    justify-content: center;
     padding-top: 1.5rem;
     padding-bottom: 1.5rem;
   }
@@ -262,7 +352,7 @@ select {
   }
 
   .desktop-low-height-auth-main {
-    justify-content: flex-start;
+    justify-content: center;
     padding-top: 1.5rem;
     padding-bottom: 1.5rem;
   }

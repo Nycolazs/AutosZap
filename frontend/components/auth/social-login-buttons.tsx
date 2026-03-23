@@ -229,7 +229,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
   if (!hasAny) return null;
 
   return (
-    <div className="space-y-2.5">
+    <div className="mx-auto w-full max-w-[410px] space-y-2.5">
       <div className="relative flex items-center gap-3 py-1">
         <div className="h-px flex-1 bg-border" />
         <span className="text-[11px] text-muted-foreground">

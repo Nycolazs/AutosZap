@@ -88,7 +88,7 @@ const faqs = [
 
 /* ── glass helpers ── */
 const glass = 'rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl';
-const glassHover = `${glass} transition-all duration-300 hover:border-blue-500/20 hover:bg-white/[0.06]`;
+const glassHover = `${glass} transition-[border-color,background-color] duration-300 hover:border-blue-500/20 hover:bg-white/[0.06]`;
 
 const navLinks = [
   { href: '#funcionalidades', label: 'Funcionalidades' },
@@ -122,12 +122,7 @@ const gridItem = {
 
 export function HomeContent() {
   return (
-    <motion.main
-      className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-[#060918] text-white"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.35, ease: 'easeOut' }}
-    >
+    <main className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-[#060918] text-white">
       {/* ── ambient gradients ── */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-[30%] -top-[20%] h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[120px] sm:h-[700px] sm:w-[700px]" />
@@ -481,6 +476,6 @@ export function HomeContent() {
           </div>
         </footer>
       </div>
-    </motion.main>
+    </main>
   );
 }
