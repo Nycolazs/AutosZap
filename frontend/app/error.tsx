@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, RefreshCw } from 'lucide-react';
 
 export default function GlobalError({
@@ -23,9 +24,9 @@ export default function GlobalError({
           <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(50,151,255,0.10),transparent_40%),radial-gradient(circle_at_80%_80%,rgba(255,107,129,0.08),transparent_35%)]" />
 
           <div className="relative z-10 flex flex-col items-center text-center">
-            <a href="/" className="mb-8 flex items-center gap-2.5">
+            <Link href="/" className="mb-8 flex items-center gap-2.5">
               <span className="font-[Space_Grotesk,sans-serif] text-[18px] font-semibold tracking-tight">AutosZap</span>
-            </a>
+            </Link>
 
             <div className="mb-6 rounded-[22px] bg-[rgba(255,107,129,0.14)] p-4 text-[#ff6b81]">
               <AlertTriangle className="h-8 w-8" />
@@ -54,13 +55,13 @@ export default function GlobalError({
                 <RefreshCw className="h-4 w-4" />
                 Tentar novamente
               </button>
-              <a
+              <Link
                 href="/"
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-5 py-2.5 text-sm font-medium text-[#eff6ff] transition hover:bg-white/[0.09]"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Página inicial
-              </a>
+              </Link>
             </div>
           </div>
         </div>
