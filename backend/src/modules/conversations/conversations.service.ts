@@ -297,7 +297,7 @@ export class ConversationsService {
     return {
       ...conversation,
       messages: conversation.messages
-        ? [...conversation.messages].reverse()
+        ? this.sortConversationMessages(conversation.messages)
         : undefined,
       tags: conversation.tags.map((item) => item.tag),
       contact: {
@@ -613,7 +613,7 @@ export class ConversationsService {
       'visualizar as mensagens desta conversa',
     );
 
-    return this.prisma.conversationMessage.findMany({
+    const messages = await this.prisma.conversationMessage.findMany({
       where: {
         workspaceId: user.workspaceId,
         conversationId,
@@ -622,6 +622,28 @@ export class ConversationsService {
         createdAt: 'asc',
       },
     });
+
+    return this.sortConversationMessages(messages);
+  }
+
+  private sortConversationMessages<
+    T extends {
+      sentAt?: Date | null;
+      createdAt: Date;
+    },
+  >(messages: T[]) {
+    return [...messages].sort(
+      (left, right) =>
+        this.getConversationMessageTimestamp(left).getTime() -
+        this.getConversationMessageTimestamp(right).getTime(),
+    );
+  }
+
+  private getConversationMessageTimestamp(message: {
+    sentAt?: Date | null;
+    createdAt: Date;
+  }) {
+    return message.sentAt ?? message.createdAt;
   }
 
   async sendMessage(

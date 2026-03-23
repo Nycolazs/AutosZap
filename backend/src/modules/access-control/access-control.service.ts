@@ -24,6 +24,7 @@ type UserPermissionRecord = {
   role: Role;
   normalizedRole: NormalizedRole;
   permissionMap: Record<PermissionKey, boolean>;
+  workspaceRoleId?: string | null;
 };
 
 @Injectable()
@@ -34,17 +35,38 @@ export class AccessControlService {
     return PERMISSION_CATALOG;
   }
 
-  getPermissionDefaults(role: Role): Record<PermissionKey, boolean> {
+  private createCustomPermissionMap(permissions: PermissionKey[]) {
+    const permissionMap = Object.fromEntries(
+      ALL_PERMISSION_KEYS.map((permission) => [permission, false]),
+    ) as Record<PermissionKey, boolean>;
+
+    for (const permission of permissions) {
+      permissionMap[permission] = true;
+    }
+
+    return permissionMap;
+  }
+
+  getPermissionDefaults(
+    role: Role,
+    workspaceRolePermissions?: PermissionKey[] | null,
+  ): Record<PermissionKey, boolean> {
     const normalizedRole = normalizeRole(role);
 
-    const permissionMap = Object.fromEntries(
-      ALL_PERMISSION_KEYS.map((permission) => [
-        permission,
-        normalizedRole === Role.ADMIN
-          ? true
-          : DEFAULT_SELLER_PERMISSIONS.has(permission),
-      ]),
-    ) as Record<PermissionKey, boolean>;
+    const permissionMap =
+      normalizedRole === Role.ADMIN
+        ? (Object.fromEntries(
+            ALL_PERMISSION_KEYS.map((permission) => [permission, true]),
+          ) as Record<PermissionKey, boolean>)
+        : workspaceRolePermissions !== undefined &&
+            workspaceRolePermissions !== null
+          ? this.createCustomPermissionMap(workspaceRolePermissions)
+          : (Object.fromEntries(
+              ALL_PERMISSION_KEYS.map((permission) => [
+                permission,
+                DEFAULT_SELLER_PERMISSIONS.has(permission),
+              ]),
+            ) as Record<PermissionKey, boolean>);
 
     return permissionMap;
   }
@@ -52,8 +74,12 @@ export class AccessControlService {
   buildPermissionMap(
     role: Role,
     overrides: Array<{ permission: PermissionKey; allowed: boolean }>,
+    workspaceRolePermissions?: PermissionKey[] | null,
   ) {
-    const permissionMap = this.getPermissionDefaults(role);
+    const permissionMap = this.getPermissionDefaults(
+      role,
+      workspaceRolePermissions,
+    );
 
     if (isAdminRole(role)) {
       return permissionMap;
@@ -74,6 +100,15 @@ export class AccessControlService {
         deletedAt: null,
       },
       include: {
+        workspaceRole: {
+          include: {
+            permissions: {
+              orderBy: {
+                permission: 'asc',
+              },
+            },
+          },
+        },
         permissionOverrides: {
           orderBy: {
             permission: 'asc',
@@ -89,12 +124,16 @@ export class AccessControlService {
     return {
       role: user.role,
       normalizedRole: normalizeRole(user.role),
+      workspaceRoleId: user.workspaceRoleId,
       permissionMap: this.buildPermissionMap(
         user.role,
         user.permissionOverrides.map((permission) => ({
           permission: permission.permission,
           allowed: permission.allowed,
         })),
+        user.workspaceRole?.permissions.map(
+          (permission) => permission.permission,
+        ) ?? null,
       ),
     } satisfies UserPermissionRecord;
   }
@@ -113,7 +152,12 @@ export class AccessControlService {
     return snapshot;
   }
 
-  async updateUserRole(userId: string, workspaceId: string, nextRole: Role) {
+  async updateUserRole(
+    userId: string,
+    workspaceId: string,
+    nextRole: Role,
+    workspaceRoleId?: string | null,
+  ) {
     const user = await this.prisma.user.findFirst({
       where: {
         id: userId,
@@ -145,6 +189,8 @@ export class AccessControlService {
         },
         data: {
           role: storedNextRole,
+          workspaceRoleId:
+            storedNextRole === Role.ADMIN ? null : (workspaceRoleId ?? null),
         },
       });
 
@@ -155,6 +201,8 @@ export class AccessControlService {
         },
         data: {
           role: storedNextRole,
+          workspaceRoleId:
+            storedNextRole === Role.ADMIN ? null : (workspaceRoleId ?? null),
         },
       });
 
@@ -184,6 +232,15 @@ export class AccessControlService {
       select: {
         id: true,
         role: true,
+        workspaceRole: {
+          select: {
+            permissions: {
+              select: {
+                permission: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -201,6 +258,13 @@ export class AccessControlService {
       return this.getUserPermissions(userId, workspaceId);
     }
 
+    const basePermissionMap = this.getPermissionDefaults(
+      user.role,
+      user.workspaceRole?.permissions.map(
+        (permission) => permission.permission,
+      ) ?? null,
+    );
+
     const desiredMap = Object.fromEntries(
       permissions.map((permission) => [
         permission.permission,
@@ -210,8 +274,8 @@ export class AccessControlService {
 
     const overrides = ALL_PERMISSION_KEYS.flatMap((permission) => {
       const desiredValue =
-        desiredMap[permission] ?? DEFAULT_SELLER_PERMISSIONS.has(permission);
-      const defaultValue = DEFAULT_SELLER_PERMISSIONS.has(permission);
+        desiredMap[permission] ?? basePermissionMap[permission];
+      const defaultValue = basePermissionMap[permission];
 
       if (desiredValue === defaultValue) {
         return [];

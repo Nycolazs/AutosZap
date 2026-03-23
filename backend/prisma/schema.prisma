@@ -281,6 +281,7 @@ model Workspace {
   messageStatuses      MessageDeliveryStatus[]
   conversationSettings WorkspaceConversationSettings?
   userPermissions      UserPermission[]
+  workspaceRoles       WorkspaceRole[]
   conversationEvents   ConversationEvent[]
   clientDevices        ClientDevice[]
   quickMessages        QuickMessage[]
@@ -299,10 +300,12 @@ model User {
   title               String?
   avatarUrl           String?
   lastLoginAt         DateTime?
+  workspaceRoleId     String?
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
   deletedAt           DateTime?
   workspace           Workspace                 @relation(fields: [workspaceId], references: [id])
+  workspaceRole       WorkspaceRole?            @relation(fields: [workspaceRoleId], references: [id], onDelete: SetNull)
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   sentMessages        ConversationMessage[]     @relation("UserMessages")
@@ -328,6 +331,7 @@ model User {
 
   @@index([workspaceId, role])
   @@index([workspaceId, globalUserId])
+  @@index([workspaceRoleId])
 }
 
 model ClientDevice {
@@ -392,17 +396,49 @@ model TeamMember {
   email         String
   title         String?
   role          Role       @default(SELLER)
+  workspaceRoleId String?
   status        UserStatus @default(PENDING)
   inviteToken   String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   deactivatedAt DateTime?
   workspace     Workspace  @relation(fields: [workspaceId], references: [id])
+  workspaceRole WorkspaceRole? @relation(fields: [workspaceRoleId], references: [id], onDelete: SetNull)
   user          User?      @relation("TeamMembership", fields: [userId], references: [id])
   invitedBy     User?      @relation("InvitedBy", fields: [invitedById], references: [id])
 
   @@unique([workspaceId, email])
   @@index([workspaceId, status])
+  @@index([workspaceRoleId])
+}
+
+model WorkspaceRole {
+  id          String                    @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  permissions WorkspaceRolePermission[]
+  users       User[]
+  teamMembers TeamMember[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, deletedAt])
+}
+
+model WorkspaceRolePermission {
+  id              String        @id @default(cuid())
+  workspaceRoleId String
+  permission      PermissionKey
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  workspaceRole   WorkspaceRole @relation(fields: [workspaceRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceRoleId, permission])
+  @@index([permission])
 }
 
 model Contact {

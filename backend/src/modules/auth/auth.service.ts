@@ -416,7 +416,8 @@ export class AuthService {
     }
 
     const email = profile.email.toLowerCase().trim();
-    const name: string = dto.name || profile.name || email.split('@')[0] || 'Usuario';
+    const name: string =
+      dto.name || profile.name || email.split('@')[0] || 'Usuario';
     const avatarUrl = profile.picture || undefined;
 
     let globalUser = await this.controlPlanePrisma.globalUser.findUnique({
@@ -450,9 +451,7 @@ export class AuthService {
 
       const membership = memberships[0] ?? null;
       if (!membership && !this.hasPlatformAccess(globalUser.platformRole)) {
-        throw new UnauthorizedException(
-          'Usuario sem empresa ativa vinculada.',
-        );
+        throw new UnauthorizedException('Usuario sem empresa ativa vinculada.');
       }
 
       await this.controlPlanePrisma.globalUser.update({
@@ -505,52 +504,54 @@ export class AuthService {
       );
     }
 
-    const companyName =
-      dto.companyName || `Empresa de ${name.split(' ')[0]}`;
+    const companyName = dto.companyName || `Empresa de ${name.split(' ')[0]}`;
     const companySlug = await this.generateUniqueCompanySlug(companyName);
     const randomPassword = randomUUID();
     const passwordHash = await bcrypt.hash(randomPassword, 10);
     const companyId = randomUUID();
     const workspaceId = companyId;
 
-    const { company, membership, globalUser: newGlobalUser } =
-      await this.controlPlanePrisma.$transaction(async (tx) => {
-        const createdCompany = await tx.company.create({
-          data: {
-            id: companyId,
-            workspaceId,
-            name: companyName,
-            slug: companySlug,
-            status: CompanyStatus.ACTIVE,
-          },
-        });
-
-        const createdGlobalUser = await tx.globalUser.create({
-          data: {
-            name,
-            email,
-            passwordHash,
-            avatarUrl,
-            status: GlobalUserStatus.ACTIVE,
-          },
-        });
-
-        const createdMembership = await tx.companyMembership.create({
-          data: {
-            companyId: createdCompany.id,
-            globalUserId: createdGlobalUser.id,
-            tenantRole: TenantRole.ADMIN,
-            status: MembershipStatus.ACTIVE,
-            isDefault: true,
-          },
-        });
-
-        return {
-          company: createdCompany,
-          membership: createdMembership,
-          globalUser: createdGlobalUser,
-        };
+    const {
+      company,
+      membership,
+      globalUser: newGlobalUser,
+    } = await this.controlPlanePrisma.$transaction(async (tx) => {
+      const createdCompany = await tx.company.create({
+        data: {
+          id: companyId,
+          workspaceId,
+          name: companyName,
+          slug: companySlug,
+          status: CompanyStatus.ACTIVE,
+        },
       });
+
+      const createdGlobalUser = await tx.globalUser.create({
+        data: {
+          name,
+          email,
+          passwordHash,
+          avatarUrl,
+          status: GlobalUserStatus.ACTIVE,
+        },
+      });
+
+      const createdMembership = await tx.companyMembership.create({
+        data: {
+          companyId: createdCompany.id,
+          globalUserId: createdGlobalUser.id,
+          tenantRole: TenantRole.ADMIN,
+          status: MembershipStatus.ACTIVE,
+          isDefault: true,
+        },
+      });
+
+      return {
+        company: createdCompany,
+        membership: createdMembership,
+        globalUser: createdGlobalUser,
+      };
+    });
 
     try {
       await this.tenantProvisioningService.provisionTenant({
@@ -1228,6 +1229,13 @@ export class AuthService {
       },
       include: {
         workspace: true,
+        workspaceRole: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
       },
     });
 
@@ -1262,6 +1270,8 @@ export class AuthService {
       role: tenantUser.role,
       normalizedRole: normalizeRole(tenantUser.role),
       title: tenantUser.title,
+      workspaceRoleId: tenantUser.workspaceRoleId,
+      workspaceRole: tenantUser.workspaceRole,
       status: tenantUser.status,
       permissions: Object.entries(permissionSnapshot.permissionMap)
         .filter(([, allowed]) => allowed)

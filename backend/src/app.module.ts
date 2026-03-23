@@ -39,6 +39,7 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
 import { TagsModule } from './modules/tags/tags.module';
 import { TeamModule } from './modules/team/team.module';
 import { UsersModule } from './modules/users/users.module';
+import { WorkspaceRolesModule } from './modules/workspace-roles/workspace-roles.module';
 import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-settings.module';
 
 @Module({
@@ -56,6 +57,7 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     AuthModule,
     UsersModule,
     WorkspaceSettingsModule,
+    WorkspaceRolesModule,
     TeamModule,
     ContactsModule,
     TagsModule,

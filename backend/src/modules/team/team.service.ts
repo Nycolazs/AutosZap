@@ -34,12 +34,37 @@ export class TeamService {
         workspaceId,
       },
       include: {
+        workspaceRole: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            permissions: {
+              select: {
+                permission: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,
             lastLoginAt: true,
             status: true,
             role: true,
+            workspaceRoleId: true,
+            workspaceRole: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                permissions: {
+                  select: {
+                    permission: true,
+                  },
+                },
+              },
+            },
             permissionOverrides: {
               select: {
                 permission: true,
@@ -56,18 +81,35 @@ export class TeamService {
 
     return members.map((member) => {
       const role = member.user?.role ?? member.role;
+      const workspaceRole = member.user?.workspaceRole ?? member.workspaceRole;
       const permissionMap = member.user
         ? this.accessControlService.buildPermissionMap(
             member.user.role,
             member.user.permissionOverrides,
+            workspaceRole?.permissions.map(
+              (permission) => permission.permission,
+            ) ?? null,
           )
-        : this.accessControlService.getPermissionDefaults(role);
+        : this.accessControlService.getPermissionDefaults(
+            role,
+            workspaceRole?.permissions.map(
+              (permission) => permission.permission,
+            ) ?? null,
+          );
 
       return {
         ...member,
         role,
         normalizedRole: normalizeRole(role),
         userId: member.user?.id ?? member.userId,
+        workspaceRoleId: workspaceRole?.id ?? null,
+        workspaceRole: workspaceRole
+          ? {
+              id: workspaceRole.id,
+              name: workspaceRole.name,
+              description: workspaceRole.description,
+            }
+          : null,
         lastLoginAt: member.user?.lastLoginAt ?? null,
         permissions: permissionMap,
         grantedPermissions: Object.entries(permissionMap)
@@ -85,6 +127,7 @@ export class TeamService {
       email: string;
       title?: string;
       role: Role;
+      workspaceRoleId?: string;
       status?: UserStatus;
       password?: string;
       confirmPassword?: string;
@@ -92,6 +135,11 @@ export class TeamService {
   ) {
     const normalizedEmail = payload.email.toLowerCase();
     const normalizedRole = normalizeRole(payload.role);
+    const workspaceRoleId = await this.resolveWorkspaceRoleId(
+      workspaceId,
+      normalizedRole,
+      payload.workspaceRoleId,
+    );
     const shouldCreateLogin =
       typeof payload.password === 'string' && payload.password.length > 0;
 
@@ -135,6 +183,7 @@ export class TeamService {
               email: normalizedEmail,
               passwordHash,
               role: normalizedRole,
+              workspaceRoleId,
               status,
               title: payload.title,
             },
@@ -149,6 +198,7 @@ export class TeamService {
               email: normalizedEmail,
               title: payload.title,
               role: normalizedRole,
+              workspaceRoleId,
               status,
               inviteToken: null,
             },
@@ -162,6 +212,7 @@ export class TeamService {
             email: normalizedEmail,
             title: payload.title,
             role: normalizedRole,
+            workspaceRoleId,
             status,
             inviteToken: generateSecureToken(16),
           },
@@ -193,6 +244,7 @@ export class TeamService {
       email?: string;
       title?: string;
       role?: Role;
+      workspaceRoleId?: string | null;
       status?: UserStatus;
       password?: string;
       confirmPassword?: string;
@@ -201,7 +253,15 @@ export class TeamService {
     const member = await this.prisma.teamMember.findFirst({
       where: { id, workspaceId },
       include: {
-        user: true,
+        user: {
+          include: {
+            workspaceRole: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -247,6 +307,17 @@ export class TeamService {
       throw new BadRequestException('As senhas informadas nao conferem.');
     }
 
+    const nextRole = payload.role
+      ? normalizeRole(payload.role)
+      : (member.user?.role ?? member.role);
+    const nextWorkspaceRoleId = await this.resolveWorkspaceRoleId(
+      workspaceId,
+      nextRole,
+      payload.workspaceRoleId !== undefined
+        ? payload.workspaceRoleId
+        : (member.user?.workspaceRoleId ?? member.workspaceRoleId ?? null),
+    );
+
     if (shouldUpdatePassword && !member.user) {
       const email = normalizedEmail ?? member.email.toLowerCase();
       const existingUser = await this.prisma.user.findUnique({
@@ -258,7 +329,6 @@ export class TeamService {
         throw new BadRequestException('Ja existe uma conta com este email.');
       }
 
-      const nextRole = payload.role ? normalizeRole(payload.role) : member.role;
       const nextStatus =
         payload.status && payload.status !== UserStatus.PENDING
           ? payload.status
@@ -273,6 +343,7 @@ export class TeamService {
             email,
             passwordHash,
             role: nextRole,
+            workspaceRoleId: nextWorkspaceRoleId,
             status: nextStatus,
             title: payload.title ?? member.title,
           },
@@ -286,6 +357,7 @@ export class TeamService {
             email,
             title: payload.title ?? member.title,
             role: nextRole,
+            workspaceRoleId: nextWorkspaceRoleId,
             status: nextStatus,
             inviteToken: null,
           },
@@ -308,11 +380,15 @@ export class TeamService {
       );
     }
 
-    if (member.user && payload.role) {
+    if (
+      member.user &&
+      (payload.role || payload.workspaceRoleId !== undefined)
+    ) {
       await this.accessControlService.updateUserRole(
         member.user.id,
         workspaceId,
-        payload.role,
+        nextRole,
+        nextWorkspaceRoleId,
       );
     }
 
@@ -355,7 +431,8 @@ export class TeamService {
         name: payload.name ?? member.name,
         email: normalizedEmail ?? member.email,
         title: payload.title ?? member.title,
-        role: payload.role ? normalizeRole(payload.role) : member.role,
+        role: nextRole,
+        workspaceRoleId: nextWorkspaceRoleId,
         status: payload.status ?? member.status,
       },
     });
@@ -546,6 +623,37 @@ export class TeamService {
       code += chars[(bytes[i] ?? 0) % chars.length];
     }
     return code;
+  }
+
+  private async resolveWorkspaceRoleId(
+    workspaceId: string,
+    role: Role,
+    workspaceRoleId?: string | null,
+  ) {
+    if (normalizeRole(role) === Role.ADMIN) {
+      return null;
+    }
+
+    if (!workspaceRoleId) {
+      return null;
+    }
+
+    const workspaceRole = await this.prisma.workspaceRole.findFirst({
+      where: {
+        id: workspaceRoleId,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!workspaceRole) {
+      throw new BadRequestException('Papel do workspace nao encontrado.');
+    }
+
+    return workspaceRole.id;
   }
 
   private async syncMemberWithControlPlane(

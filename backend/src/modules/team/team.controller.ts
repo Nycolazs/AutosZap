@@ -53,6 +53,10 @@ class CreateTeamMemberDto {
   role!: Role;
 
   @IsOptional()
+  @IsString()
+  workspaceRoleId?: string;
+
+  @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
 
@@ -83,6 +87,10 @@ class UpdateTeamMemberDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role;
+
+  @IsOptional()
+  @IsString()
+  workspaceRoleId?: string | null;
 
   @IsOptional()
   @IsEnum(UserStatus)
@@ -160,7 +168,10 @@ export class TeamController {
     );
   }
 
-  @Permissions(PermissionKey.MANAGE_USER_PERMISSIONS)
+  @AnyPermissions(
+    PermissionKey.MANAGE_USER_PERMISSIONS,
+    PermissionKey.MANAGE_USER_ROLES,
+  )
   @Get('permissions/catalog')
   listPermissionCatalog() {
     return this.accessControlService.listPermissionCatalog();
@@ -178,11 +189,7 @@ export class TeamController {
     @CurrentUser() user: CurrentAuthUser,
     @Body() dto: GenerateInviteCodeDto,
   ) {
-    return this.teamService.generateInviteCode(
-      user.workspaceId,
-      user.sub,
-      dto,
-    );
+    return this.teamService.generateInviteCode(user.workspaceId, user.sub, dto);
   }
 
   @Permissions(PermissionKey.MANAGE_TEAM)

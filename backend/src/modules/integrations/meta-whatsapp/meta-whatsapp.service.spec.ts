@@ -442,3 +442,369 @@ describe('MetaWhatsAppService automatic replies', () => {
     expect(sendTemplateConversationMessageSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('MetaWhatsAppService inbound webhook timestamps', () => {
+  function createWebhookService() {
+    const prisma = {
+      runWithTenant: jest.fn((_: string, callback: () => unknown) =>
+        callback(),
+      ),
+      instance: {
+        findFirst: jest.fn(),
+      },
+      whatsAppWebhookEvent: {
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      conversationMessage: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+      },
+      conversation: {
+        updateMany: jest.fn(),
+      },
+    };
+    const tenantConnectionService = {
+      resolveTenantByPhoneNumberId: jest.fn(),
+    };
+    const provider = {
+      parseWebhook: jest.fn(),
+    };
+    const conversationWorkflowService = {
+      registerInboundActivity: jest.fn(),
+      emitConversationRealtimeEvent: jest.fn(),
+    };
+
+    const service = new MetaWhatsAppService(
+      prisma as never,
+      tenantConnectionService as never,
+      {} as never,
+      provider as never,
+      new ConfigService(),
+      conversationWorkflowService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    return {
+      service,
+      prisma,
+      provider,
+      tenantConnectionService,
+      conversationWorkflowService,
+    };
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-22T18:30:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  it('stores stale inbound media using the original WhatsApp timestamp without reopening the conversation', async () => {
+    const {
+      service,
+      prisma,
+      provider,
+      tenantConnectionService,
+      conversationWorkflowService,
+    } = createWebhookService();
+    const assertWebhookSignatureSpy = jest
+      .spyOn(service as any, 'assertWebhookSignature')
+      .mockResolvedValue(undefined);
+    const ensureContactSpy = jest
+      .spyOn(service as any, 'ensureContact')
+      .mockResolvedValue({
+        id: 'contact-1',
+        name: 'Nycolas Rocha',
+      });
+    const ensureConversationSpy = jest
+      .spyOn(service as any, 'ensureConversation')
+      .mockResolvedValue({
+        id: 'conversation-1',
+      });
+    const enrichInboundMessageMetadataSpy = jest
+      .spyOn(service as any, 'enrichInboundMessageMetadata')
+      .mockResolvedValue({
+        mediaId: 'media-1',
+      });
+    const notifyRecipientsSpy = jest
+      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
+      .mockResolvedValue(undefined);
+    const maybeSendAutomaticReplySpy = jest
+      .spyOn(service as any, 'maybeSendAutomaticReply')
+      .mockResolvedValue(undefined);
+    const staleTimestamp = String(
+      Math.floor((Date.now() - 26 * 60 * 60_000) / 1000),
+    );
+    const staleSentAt = new Date(Number(staleTimestamp) * 1000);
+
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
+      null,
+    );
+    provider.parseWebhook.mockReturnValue({
+      messages: [
+        {
+          phoneNumberId: 'phone-1',
+          from: '5585988887777',
+          profileName: 'Nycolas Rocha',
+          externalMessageId: 'wamid.stale.1',
+          messageType: 'image',
+          body: '',
+          timestamp: staleTimestamp,
+          metadata: {
+            mediaId: 'media-1',
+          },
+        },
+      ],
+      statuses: [],
+    });
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'workspace-1',
+      phoneNumberId: 'phone-1',
+    });
+    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
+      id: 'webhook-1',
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+
+    await service.handleWebhook(
+      {
+        entry: [],
+      },
+      {
+        rawBody: Buffer.from('{}'),
+      },
+    );
+
+    expect(assertWebhookSignatureSpy).toHaveBeenCalled();
+    expect(ensureContactSpy).toHaveBeenCalledWith(
+      'workspace-1',
+      '5585988887777',
+      'Nycolas Rocha',
+    );
+    expect(ensureConversationSpy).toHaveBeenCalledWith(
+      'workspace-1',
+      'contact-1',
+      'instance-1',
+    );
+    expect(enrichInboundMessageMetadataSpy).toHaveBeenCalled();
+    expect(prisma.conversationMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: 'workspace-1',
+        conversationId: 'conversation-1',
+        externalMessageId: 'wamid.stale.1',
+        sentAt: staleSentAt,
+      }),
+    });
+    expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'conversation-1',
+        OR: [
+          {
+            lastMessageAt: null,
+          },
+          {
+            lastMessageAt: {
+              lte: staleSentAt,
+            },
+          },
+        ],
+      },
+      data: {
+        lastMessageAt: staleSentAt,
+        lastMessagePreview: 'Imagem',
+        updatedAt: new Date('2026-03-22T18:30:00.000Z'),
+      },
+    });
+    expect(
+      conversationWorkflowService.registerInboundActivity,
+    ).not.toHaveBeenCalled();
+    expect(notifyRecipientsSpy).not.toHaveBeenCalled();
+    expect(maybeSendAutomaticReplySpy).not.toHaveBeenCalled();
+    expect(
+      conversationWorkflowService.emitConversationRealtimeEvent,
+    ).toHaveBeenCalledWith(
+      'workspace-1',
+      'conversation-1',
+      'conversation.message.created',
+      'INBOUND',
+    );
+  });
+
+  it('still treats recent inbound messages as new activity', async () => {
+    const {
+      service,
+      prisma,
+      provider,
+      tenantConnectionService,
+      conversationWorkflowService,
+    } = createWebhookService();
+    const notifyRecipientsSpy = jest
+      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
+      .mockResolvedValue(undefined);
+    const maybeSendAutomaticReplySpy = jest
+      .spyOn(service as any, 'maybeSendAutomaticReply')
+      .mockResolvedValue(undefined);
+    const recentTimestamp = String(
+      Math.floor((Date.now() - 4 * 60_000) / 1000),
+    );
+
+    jest
+      .spyOn(service as any, 'assertWebhookSignature')
+      .mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'ensureContact').mockResolvedValue({
+      id: 'contact-1',
+      name: 'Nycolas Rocha',
+    });
+    jest.spyOn(service as any, 'ensureConversation').mockResolvedValue({
+      id: 'conversation-1',
+    });
+    jest
+      .spyOn(service as any, 'enrichInboundMessageMetadata')
+      .mockResolvedValue({
+        mediaId: 'media-2',
+      });
+
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
+      null,
+    );
+    provider.parseWebhook.mockReturnValue({
+      messages: [
+        {
+          phoneNumberId: 'phone-1',
+          from: '5585988887777',
+          profileName: 'Nycolas Rocha',
+          externalMessageId: 'wamid.recent.1',
+          messageType: 'image',
+          body: '',
+          timestamp: recentTimestamp,
+          metadata: {
+            mediaId: 'media-2',
+          },
+        },
+      ],
+      statuses: [],
+    });
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'workspace-1',
+      phoneNumberId: 'phone-1',
+    });
+    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
+      id: 'webhook-1',
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+
+    await service.handleWebhook(
+      {
+        entry: [],
+      },
+      {
+        rawBody: Buffer.from('{}'),
+      },
+    );
+
+    expect(
+      conversationWorkflowService.registerInboundActivity,
+    ).toHaveBeenCalledWith('conversation-1', 'workspace-1');
+    expect(notifyRecipientsSpy).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      conversationId: 'conversation-1',
+      contactName: 'Nycolas Rocha',
+      preview: 'Imagem',
+    });
+    expect(maybeSendAutomaticReplySpy).toHaveBeenCalledWith(
+      'workspace-1',
+      'conversation-1',
+    );
+  });
+
+  it('does not react as a new inbound when an out-of-order message is older than the current conversation summary', async () => {
+    const {
+      service,
+      prisma,
+      provider,
+      tenantConnectionService,
+      conversationWorkflowService,
+    } = createWebhookService();
+    const notifyRecipientsSpy = jest
+      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
+      .mockResolvedValue(undefined);
+    const maybeSendAutomaticReplySpy = jest
+      .spyOn(service as any, 'maybeSendAutomaticReply')
+      .mockResolvedValue(undefined);
+    const outOfOrderTimestamp = String(
+      Math.floor((Date.now() - 4 * 60_000) / 1000),
+    );
+
+    jest
+      .spyOn(service as any, 'assertWebhookSignature')
+      .mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'ensureContact').mockResolvedValue({
+      id: 'contact-1',
+      name: 'Nycolas Rocha',
+    });
+    jest.spyOn(service as any, 'ensureConversation').mockResolvedValue({
+      id: 'conversation-1',
+      lastMessageAt: new Date(Date.now() - 2 * 60_000),
+    });
+    jest
+      .spyOn(service as any, 'enrichInboundMessageMetadata')
+      .mockResolvedValue({
+        mediaId: 'media-3',
+      });
+
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
+      null,
+    );
+    provider.parseWebhook.mockReturnValue({
+      messages: [
+        {
+          phoneNumberId: 'phone-1',
+          from: '5585988887777',
+          profileName: 'Nycolas Rocha',
+          externalMessageId: 'wamid.out-of-order.1',
+          messageType: 'image',
+          body: '',
+          timestamp: outOfOrderTimestamp,
+          metadata: {
+            mediaId: 'media-3',
+          },
+        },
+      ],
+      statuses: [],
+    });
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'workspace-1',
+      phoneNumberId: 'phone-1',
+    });
+    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
+      id: 'webhook-1',
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+
+    await service.handleWebhook(
+      {
+        entry: [],
+      },
+      {
+        rawBody: Buffer.from('{}'),
+      },
+    );
+
+    expect(
+      conversationWorkflowService.registerInboundActivity,
+    ).not.toHaveBeenCalled();
+    expect(notifyRecipientsSpy).not.toHaveBeenCalled();
+    expect(maybeSendAutomaticReplySpy).not.toHaveBeenCalled();
+  });
+});

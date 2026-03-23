@@ -186,7 +186,8 @@ export class MetaWhatsAppService {
     instanceId: string,
   ): Promise<ProviderTemplateSummary[]> {
     const cacheKey = this.cacheKey('templates', instanceId);
-    const cached = await this.redis.getJson<ProviderTemplateSummary[]>(cacheKey);
+    const cached =
+      await this.redis.getJson<ProviderTemplateSummary[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -869,13 +870,14 @@ export class MetaWhatsAppService {
       // Deduplicacao: se ja existe uma mensagem com esse externalMessageId, ignora
       // (a Meta pode reenviar webhooks em caso de timeout ou falha de rede)
       if (inbound.externalMessageId) {
-        const existingMessage =
-          await this.prisma.conversationMessage.findFirst({
+        const existingMessage = await this.prisma.conversationMessage.findFirst(
+          {
             where: {
               externalMessageId: inbound.externalMessageId,
             },
             select: { id: true },
-          });
+          },
+        );
 
         if (existingMessage) {
           this.logger.warn(
@@ -887,16 +889,15 @@ export class MetaWhatsAppService {
 
       // Verifica se a mensagem e muito antiga (> 10 minutos)
       // A Meta pode entregar webhooks de midia com atraso significativo;
-      // nesse caso salvamos a mensagem mas nao disparamos resposta automatica
-      const messageTimestamp = inbound.timestamp
-        ? Number(inbound.timestamp) * 1000
-        : Date.now();
-      const messageAgeMs = Date.now() - messageTimestamp;
+      // nesse caso salvamos a mensagem apenas como historico, sem tratar
+      // como atividade nova.
+      const messageSentAt = this.resolveInboundMessageSentAt(inbound.timestamp);
+      const messageAgeMs = Date.now() - messageSentAt.getTime();
       const isStaleMessage = messageAgeMs > 10 * 60 * 1000; // 10 minutos
 
       if (isStaleMessage) {
         this.logger.warn(
-          `Webhook com mensagem antiga (${Math.round(messageAgeMs / 60_000)} min atras) de ${inbound.from}. Salvando sem disparar resposta automatica.`,
+          `Webhook com mensagem antiga (${Math.round(messageAgeMs / 60_000)} min atras) de ${inbound.from}. Salvando apenas no historico.`,
         );
       }
 
@@ -910,11 +911,17 @@ export class MetaWhatsAppService {
         contact.id,
         inboundInstance.id,
       );
+      const shouldTreatAsNewInboundActivity =
+        !isStaleMessage &&
+        (!conversation.lastMessageAt ||
+          messageSentAt.getTime() >= conversation.lastMessageAt.getTime());
       const inboundMetadata = await this.enrichInboundMessageMetadata({
         workspaceId: inboundInstance.workspaceId,
         conversationId: conversation.id,
         metadata: inbound.metadata,
       });
+      const inboundPreview =
+        inbound.body || this.buildMediaPlaceholder(inbound.messageType);
 
       await this.prisma.conversationMessage.create({
         data: {
@@ -928,32 +935,31 @@ export class MetaWhatsAppService {
           content: inbound.body,
           metadata: inboundMetadata as Prisma.InputJsonValue | undefined,
           status: MessageStatus.READ,
-          sentAt: new Date(messageTimestamp),
+          sentAt: messageSentAt,
           deliveredAt: new Date(),
           readAt: new Date(),
         },
       });
 
-      await this.prisma.conversation.update({
-        where: { id: conversation.id },
-        data: {
-          lastMessageAt: new Date(),
-          lastMessagePreview:
-            inbound.body || this.buildMediaPlaceholder(inbound.messageType),
-        },
+      await this.updateConversationLastMessageSnapshot({
+        conversationId: conversation.id,
+        messageSentAt,
+        preview: inboundPreview,
       });
 
-      await this.conversationWorkflowService.registerInboundActivity(
-        conversation.id,
-        inboundInstance.workspaceId,
-      );
-      await this.notifyConversationRecipientsAboutInboundMessage({
-        workspaceId: inboundInstance.workspaceId,
-        conversationId: conversation.id,
-        contactName: contact.name,
-        preview:
-          inbound.body || this.buildMediaPlaceholder(inbound.messageType),
-      });
+      if (shouldTreatAsNewInboundActivity) {
+        await this.conversationWorkflowService.registerInboundActivity(
+          conversation.id,
+          inboundInstance.workspaceId,
+        );
+        await this.notifyConversationRecipientsAboutInboundMessage({
+          workspaceId: inboundInstance.workspaceId,
+          conversationId: conversation.id,
+          contactName: contact.name,
+          preview: inboundPreview,
+        });
+      }
+
       await this.conversationWorkflowService.emitConversationRealtimeEvent(
         inboundInstance.workspaceId,
         conversation.id,
@@ -962,7 +968,7 @@ export class MetaWhatsAppService {
       );
 
       // Nao dispara resposta automatica para mensagens antigas/atrasadas
-      if (!isStaleMessage) {
+      if (shouldTreatAsNewInboundActivity) {
         await this.maybeSendAutomaticReply(
           inboundInstance.workspaceId,
           conversation.id,
@@ -1029,6 +1035,43 @@ export class MetaWhatsAppService {
       processedMessages: parsed.messages.length,
       processedStatuses: parsed.statuses.length,
     };
+  }
+
+  private resolveInboundMessageSentAt(timestamp?: string) {
+    const parsedTimestamp = timestamp ? Number(timestamp) * 1000 : Date.now();
+
+    if (!Number.isFinite(parsedTimestamp) || parsedTimestamp <= 0) {
+      return new Date();
+    }
+
+    return new Date(parsedTimestamp);
+  }
+
+  private async updateConversationLastMessageSnapshot(payload: {
+    conversationId: string;
+    messageSentAt: Date;
+    preview: string;
+  }) {
+    await this.prisma.conversation.updateMany({
+      where: {
+        id: payload.conversationId,
+        OR: [
+          {
+            lastMessageAt: null,
+          },
+          {
+            lastMessageAt: {
+              lte: payload.messageSentAt,
+            },
+          },
+        ],
+      },
+      data: {
+        lastMessageAt: payload.messageSentAt,
+        lastMessagePreview: payload.preview,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   async getMessageMedia(
@@ -1224,7 +1267,9 @@ export class MetaWhatsAppService {
     }
 
     if (!signature || !rawBody) {
-      this.logger.warn(`[Webhook] Signature check: signature=${signature ? 'present' : 'MISSING'}, rawBody=${rawBody ? `${rawBody.length} bytes` : 'MISSING'}`);
+      this.logger.warn(
+        `[Webhook] Signature check: signature=${signature ? 'present' : 'MISSING'}, rawBody=${rawBody ? `${rawBody.length} bytes` : 'MISSING'}`,
+      );
       throw new UnauthorizedException(
         'Assinatura X-Hub-Signature-256 obrigatoria para webhooks em producao.',
       );
@@ -1971,7 +2016,7 @@ export class MetaWhatsAppService {
         messageId: quotedMessage?.id ?? null,
         contentPreview: quotedMessage
           ? this.buildQuotePreview(quotedMessage)
-          : quote.contentPreview ?? 'Mensagem citada',
+          : (quote.contentPreview ?? 'Mensagem citada'),
         messageType: quotedMessage?.messageType ?? quote.messageType ?? null,
         direction: quotedMessage?.direction ?? quote.direction ?? null,
         createdAt: quotedMessage?.createdAt.toISOString() ?? null,
@@ -1992,7 +2037,10 @@ export class MetaWhatsAppService {
 
     const metadata = this.readMessageMetadata(message.metadata ?? null);
 
-    return this.buildMediaPlaceholder(message.messageType ?? undefined, metadata.fileName);
+    return this.buildMediaPlaceholder(
+      message.messageType ?? undefined,
+      metadata.fileName,
+    );
   }
 
   private readQuoteMetadata(metadata: Record<string, unknown>) {
@@ -2010,7 +2058,8 @@ export class MetaWhatsAppService {
           : null,
       contentPreview:
         typeof quote.contentPreview === 'string' ? quote.contentPreview : null,
-      messageType: typeof quote.messageType === 'string' ? quote.messageType : null,
+      messageType:
+        typeof quote.messageType === 'string' ? quote.messageType : null,
       direction:
         typeof quote.direction === 'string'
           ? (quote.direction as MessageDirection)
