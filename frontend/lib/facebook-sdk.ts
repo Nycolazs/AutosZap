@@ -79,6 +79,7 @@ const DEFAULT_GRAPH_API_VERSION = 'v22.0';
 const FACEBOOK_ORIGINS = new Set([
   'https://www.facebook.com',
   'https://web.facebook.com',
+  'https://business.facebook.com',
 ]);
 export const AUTOSZAP_PUBLIC_APP_URL = 'https://autoszap.com';
 export const EMBEDDED_SIGNUP_BRIDGE_PATH = '/embedded-signup';
@@ -427,21 +428,19 @@ function launchEmbeddedSignupWithFacebookSdk({
   });
 }
 
-function buildOAuthUrl({
+function buildEmbeddedSignupUrl({
   appId,
   configurationId,
-  graphApiVersion,
   redirectUri,
 }: {
   appId: string;
   configurationId: string;
-  graphApiVersion: string;
   redirectUri: string;
 }) {
   const url = new URL(
-    `https://www.facebook.com/${graphApiVersion}/dialog/oauth`,
+    'https://business.facebook.com/messaging/whatsapp/onboard/',
   );
-  url.searchParams.set('client_id', appId);
+  url.searchParams.set('app_id', appId);
   url.searchParams.set('config_id', configurationId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
@@ -469,10 +468,9 @@ function launchEmbeddedSignupViaOAuth({
     normalizeBaseUrl(bridgeBaseUrl) ?? AUTOSZAP_PUBLIC_APP_URL;
   const redirectUri = new URL(OAUTH_CALLBACK_PATH, resolvedBaseUrl).toString();
 
-  const oauthUrl = buildOAuthUrl({
+  const oauthUrl = buildEmbeddedSignupUrl({
     appId,
     configurationId,
-    graphApiVersion,
     redirectUri,
   });
 
