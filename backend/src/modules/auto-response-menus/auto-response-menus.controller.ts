@@ -17,10 +17,16 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CurrentUser, type CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type CurrentAuthUser,
+} from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PermissionKey } from '@prisma/client';
-import { AutoResponseMenusService, MenuNodeInput } from './auto-response-menus.service';
+import {
+  AutoResponseMenusService,
+  MenuNodeInput,
+} from './auto-response-menus.service';
 
 class MenuNodeDto implements MenuNodeInput {
   @IsOptional()

@@ -48,6 +48,10 @@ type MenuNode = {
   children?: MenuNode[];
 };
 
+type MenuTreeNode = Omit<MenuNode, 'children'> & {
+  children: MenuTreeNode[];
+};
+
 type MenuNodeDraft = {
   id?: string;
   label: string;
@@ -82,9 +86,9 @@ type MenuDraft = {
   nodes: MenuNodeDraft[];
 };
 
-function buildTree(nodes: MenuNode[]): MenuNode[] {
-  const map = new Map<string, MenuNode & { children: MenuNode[] }>();
-  const roots: (MenuNode & { children: MenuNode[] })[] = [];
+function buildTree(nodes: MenuNode[]): MenuTreeNode[] {
+  const map = new Map<string, MenuTreeNode>();
+  const roots: MenuTreeNode[] = [];
 
   for (const node of nodes) {
     map.set(node.id, { ...node, children: [] });
@@ -126,7 +130,7 @@ function emptyMenuDraft(): MenuDraft {
 function menuToEditDraft(menu: AutoResponseMenu): MenuDraft {
   const tree = buildTree(menu.nodes);
 
-  function toNodeDraft(node: MenuNode & { children?: MenuNode[] }): MenuNodeDraft {
+  function toNodeDraft(node: MenuTreeNode): MenuNodeDraft {
     return {
       id: node.id,
       label: node.label,
@@ -252,12 +256,12 @@ function FlowPreviewNode({
   depth,
   index,
 }: {
-  node: MenuNode & { children?: MenuNode[] };
+  node: MenuTreeNode;
   depth: number;
   index: number;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const hasChildren = (node.children ?? []).length > 0;
+  const hasChildren = node.children.length > 0;
   const depthBg = ['bg-primary/10', 'bg-emerald-500/10', 'bg-amber-500/10', 'bg-violet-500/10'];
   const depthText = ['text-primary', 'text-emerald-400', 'text-amber-400', 'text-violet-400'];
 
@@ -289,8 +293,8 @@ function FlowPreviewNode({
       </div>
       {hasChildren && expanded && (
         <div className="ml-4">
-          {(node.children ?? []).map((child, i) => (
-            <FlowPreviewNode key={child.id} node={child as any} depth={depth + 1} index={i} />
+          {node.children.map((child, i) => (
+            <FlowPreviewNode key={child.id} node={child} depth={depth + 1} index={i} />
           ))}
         </div>
       )}
@@ -443,7 +447,7 @@ export default function AutoResponseMenuPage() {
 
   const menus = menusQuery.data ?? [];
 
-  function nodeDraftPreviewTree(nodes: MenuNodeDraft[]): (MenuNode & { children?: MenuNode[] })[] {
+  function nodeDraftPreviewTree(nodes: MenuNodeDraft[]): MenuTreeNode[] {
     return nodes
       .filter((n) => n.label.trim())
       .map((n, i) => ({
@@ -596,7 +600,7 @@ export default function AutoResponseMenuPage() {
             )}
             <div className="space-y-1">
               {buildTree(previewMenu.nodes).map((node, i) => (
-                <FlowPreviewNode key={node.id} node={node as any} depth={0} index={i} />
+                <FlowPreviewNode key={node.id} node={node} depth={0} index={i} />
               ))}
             </div>
             {previewMenu.footerText && (

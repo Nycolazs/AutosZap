@@ -164,7 +164,9 @@ export class PlatformAdminController {
   }
 
   @Get('support-tickets')
-  listSupportTickets(@Query() query: { status?: string; page?: string; limit?: string }) {
+  listSupportTickets(
+    @Query() query: { status?: string; page?: string; limit?: string },
+  ) {
     return this.platformAdminService.listSupportTickets({
       status: query.status,
       page: query.page ? Number(query.page) : undefined,
@@ -177,6 +179,9 @@ export class PlatformAdminController {
     @Param('ticketId') ticketId: string,
     @Body() dto: UpdateSupportTicketStatusDto,
   ) {
-    return this.platformAdminService.updateSupportTicketStatus(ticketId, dto.status);
+    return this.platformAdminService.updateSupportTicketStatus(
+      ticketId,
+      dto.status,
+    );
   }
 }

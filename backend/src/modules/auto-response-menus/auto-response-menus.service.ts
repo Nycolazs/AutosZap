@@ -109,11 +109,21 @@ export class AutoResponseMenusService {
         where: { id },
         data: {
           name: payload.name ?? menu.name,
-          description: payload.description !== undefined ? payload.description : menu.description,
-          isActive: payload.isActive !== undefined ? payload.isActive : menu.isActive,
+          description:
+            payload.description !== undefined
+              ? payload.description
+              : menu.description,
+          isActive:
+            payload.isActive !== undefined ? payload.isActive : menu.isActive,
           triggerKeywords: payload.triggerKeywords ?? menu.triggerKeywords,
-          headerText: payload.headerText !== undefined ? payload.headerText : menu.headerText,
-          footerText: payload.footerText !== undefined ? payload.footerText : menu.footerText,
+          headerText:
+            payload.headerText !== undefined
+              ? payload.headerText
+              : menu.headerText,
+          footerText:
+            payload.footerText !== undefined
+              ? payload.footerText
+              : menu.footerText,
         },
       });
 

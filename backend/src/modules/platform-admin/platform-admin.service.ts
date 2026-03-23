@@ -660,14 +660,13 @@ export class PlatformAdminService {
         contactedAt:
           dto.status === LeadInterestStatus.CONTACTED ||
           dto.status === LeadInterestStatus.CONVERTED
-            ? existing.contactedAt ?? now
+            ? (existing.contactedAt ?? now)
             : existing.contactedAt,
         convertedAt:
           dto.status === LeadInterestStatus.CONVERTED
-            ? existing.convertedAt ?? now
+            ? (existing.convertedAt ?? now)
             : existing.convertedAt,
-        archivedAt:
-          dto.status === LeadInterestStatus.ARCHIVED ? now : null,
+        archivedAt: dto.status === LeadInterestStatus.ARCHIVED ? now : null,
       },
     });
 
@@ -806,12 +805,21 @@ export class PlatformAdminService {
     return Role.SELLER;
   }
 
-  async listSupportTickets(query: { status?: string; page?: number; limit?: number }) {
+  async listSupportTickets(query: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 30));
     const skip = (page - 1) * limit;
 
-    const allowedStatuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+    const allowedStatuses = [
+      'OPEN',
+      'IN_PROGRESS',
+      'RESOLVED',
+      'CLOSED',
+    ] as const;
     type AllowedStatus = (typeof allowedStatuses)[number];
 
     let where: { status?: AllowedStatus } = {};
@@ -846,7 +854,9 @@ export class PlatformAdminService {
         this.controlPlanePrisma.supportTicket.count({ where: { status } }),
       ),
     );
-    return Object.fromEntries(statuses.map((status, i) => [status, counts[i]])) as Record<(typeof statuses)[number], number>;
+    return Object.fromEntries(
+      statuses.map((status, i) => [status, counts[i]]),
+    ) as Record<(typeof statuses)[number], number>;
   }
 
   async updateSupportTicketStatus(
@@ -857,7 +867,8 @@ export class PlatformAdminService {
       where: { id: ticketId },
       data: {
         status,
-        resolvedAt: status === 'RESOLVED' || status === 'CLOSED' ? new Date() : null,
+        resolvedAt:
+          status === 'RESOLVED' || status === 'CLOSED' ? new Date() : null,
       },
     });
   }

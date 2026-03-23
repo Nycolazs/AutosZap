@@ -2114,6 +2114,7 @@ function MessageBubbleContent({
       <div className="space-y-2">
         {quoteBlock}
         <CompactAudioPlayer
+          key={mediaUrl}
           src={mediaUrl}
           isVoiceMessage={Boolean(message.metadata?.voice)}
           outgoing={message.direction === 'OUTBOUND'}
@@ -2478,7 +2479,6 @@ function VideoMessagePlayer({ src }: { src: string }) {
       onTouchStart={showControlsTemporarily}
       onClick={togglePlayback}
     >
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={videoRef}
         src={src}
@@ -2610,8 +2610,6 @@ function CompactAudioPlayer({
     if (!audio) {
       return;
     }
-
-    setIsLoading(true);
 
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);

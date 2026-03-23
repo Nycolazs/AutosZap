@@ -152,7 +152,9 @@ export class TeamService {
     });
 
     if (existing) {
-      throw new BadRequestException('Ja existe um membro com este email nesta empresa.');
+      throw new BadRequestException(
+        'Ja existe um membro com este email nesta empresa.',
+      );
     }
 
     const existingUser = await this.prisma.user.findUnique({
@@ -161,14 +163,17 @@ export class TeamService {
     });
 
     if (existingUser) {
-      throw new BadRequestException('Ja existe uma conta com este email nesta empresa.');
+      throw new BadRequestException(
+        'Ja existe uma conta com este email nesta empresa.',
+      );
     }
 
     // Check cross-company: if this email already has a global user account, block manual creation
-    const existingGlobalUser = await this.controlPlanePrisma.globalUser.findFirst({
-      where: { email: normalizedEmail },
-      select: { id: true },
-    });
+    const existingGlobalUser =
+      await this.controlPlanePrisma.globalUser.findFirst({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      });
 
     if (existingGlobalUser) {
       throw new BadRequestException(
@@ -296,7 +301,9 @@ export class TeamService {
       });
 
       if (existingMember) {
-        throw new BadRequestException('Ja existe um membro com este email nesta empresa.');
+        throw new BadRequestException(
+          'Ja existe um membro com este email nesta empresa.',
+        );
       }
 
       const existingUser = await this.prisma.user.findUnique({
@@ -308,16 +315,22 @@ export class TeamService {
         existingUser &&
         (!member.user || existingUser.id !== member.user.id)
       ) {
-        throw new BadRequestException('Ja existe uma conta com este email nesta empresa.');
+        throw new BadRequestException(
+          'Ja existe uma conta com este email nesta empresa.',
+        );
       }
 
       // Check cross-company: email already exists in another company
-      const existingGlobalUser = await this.controlPlanePrisma.globalUser.findFirst({
-        where: { email: normalizedEmail },
-        select: { id: true },
-      });
+      const existingGlobalUser =
+        await this.controlPlanePrisma.globalUser.findFirst({
+          where: { email: normalizedEmail },
+          select: { id: true },
+        });
 
-      if (existingGlobalUser && (!member.user || member.user.globalUserId !== existingGlobalUser.id)) {
+      if (
+        existingGlobalUser &&
+        (!member.user || member.user.globalUserId !== existingGlobalUser.id)
+      ) {
         throw new BadRequestException(
           'Este email ja esta cadastrado no sistema em outra empresa. Compartilhe um codigo de convite para que o usuario entre na empresa.',
         );
