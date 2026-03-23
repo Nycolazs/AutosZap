@@ -373,15 +373,21 @@ export class PlatformService {
   }
 
   async listMyTickets(user: CurrentAuthUser) {
-    const globalUser = await this.prisma.user.findUnique({
-      where: { id: user.sub },
-      select: { globalUserId: true },
-    });
+    const [globalUser, company] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { globalUserId: true },
+      }),
+      this.controlPlanePrisma.company.findFirst({
+        where: { workspaceId: user.workspaceId },
+        select: { id: true },
+      }),
+    ]);
 
-    if (!globalUser?.globalUserId) return [];
+    if (!globalUser?.globalUserId || !company) return [];
 
     return this.controlPlanePrisma.supportTicket.findMany({
-      where: { globalUserId: globalUser.globalUserId },
+      where: { globalUserId: globalUser.globalUserId, companyId: company.id },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });

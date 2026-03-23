@@ -8,7 +8,7 @@ import {
   Query,
   Redirect,
 } from '@nestjs/common';
-import { IsEnum, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsIn, IsString, MinLength, MaxLength } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -94,6 +94,6 @@ class CreateSupportTicketDto {
   @MaxLength(5000)
   body!: string;
 
-  @IsEnum(['IMPROVEMENT', 'BUG', 'QUESTION'])
+  @IsIn(['IMPROVEMENT', 'BUG', 'QUESTION'])
   category!: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
 }

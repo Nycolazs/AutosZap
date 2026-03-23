@@ -54,8 +54,7 @@ export class TenantContextGuard implements CanActivate {
 
     if (isPlatformRoute) {
       const hasPlatformAccess =
-        user.platformRole === 'SUPER_ADMIN' ||
-        user.platformRole === 'SUPPORT';
+        user.platformRole === 'SUPER_ADMIN' || user.platformRole === 'SUPPORT';
 
       if (!hasPlatformAccess) {
         throw new ForbiddenException(

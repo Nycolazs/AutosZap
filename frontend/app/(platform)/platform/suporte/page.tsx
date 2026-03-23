@@ -66,7 +66,7 @@ const STATUS_FILTERS: { value: string; label: string }[] = [
   { value: 'CLOSED', label: 'Encerrados' },
 ];
 
-export default function PlatformSupportePage() {
+export default function PlatformSuportePage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
@@ -79,6 +79,11 @@ export default function PlatformSupportePage() {
       ),
   });
 
+  const countsQuery = useQuery({
+    queryKey: ['platform-support-tickets-counts'],
+    queryFn: () => apiRequest<{ OPEN: number; IN_PROGRESS: number; RESOLVED: number; CLOSED: number }>('platform-admin/support-tickets/counts'),
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TicketStatus }) =>
       apiRequest<SupportTicket>(`platform-admin/support-tickets/${id}/status`, {
@@ -87,6 +92,7 @@ export default function PlatformSupportePage() {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['platform-support-tickets'] });
+      await queryClient.invalidateQueries({ queryKey: ['platform-support-tickets-counts'] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -108,9 +114,9 @@ export default function PlatformSupportePage() {
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((status) => {
-          const conf = STATUS_CONFIG[status as TicketStatus];
-          const count = (ticketsQuery.data?.data ?? []).filter((t) => t.status === status).length;
+        {(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as TicketStatus[]).map((status) => {
+          const conf = STATUS_CONFIG[status];
+          const count = countsQuery.data?.[status] ?? 0;
           return (
             <button
               key={status}
