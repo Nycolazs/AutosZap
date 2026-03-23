@@ -286,6 +286,7 @@ model Workspace {
   clientDevices        ClientDevice[]
   quickMessages        QuickMessage[]
   quickMessageUsages   QuickMessageUsage[]
+  autoResponseMenus    AutoResponseMenu[]
 }
 
 model User {
@@ -1140,4 +1141,37 @@ model MessageDeliveryStatus {
 
   @@index([workspaceId, externalMessageId])
   @@index([messageId, occurredAt])
+}
+
+model AutoResponseMenu {
+  id              String                 @id @default(cuid())
+  workspaceId     String
+  name            String
+  description     String?
+  isActive        Boolean                @default(false)
+  triggerKeywords String[]
+  headerText      String?
+  footerText      String?
+  nodes           AutoResponseMenuNode[]
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id])
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([workspaceId])
+}
+
+model AutoResponseMenuNode {
+  id       String                 @id @default(cuid())
+  menuId   String
+  parentId String?
+  label    String
+  message  String
+  order    Int                    @default(0)
+  menu     AutoResponseMenu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parent   AutoResponseMenuNode?  @relation("NodeChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children AutoResponseMenuNode[] @relation("NodeChildren")
+  createdAt DateTime              @default(now())
+
+  @@index([menuId])
+  @@index([parentId])
 }
