@@ -50,6 +50,10 @@ const GOOGLE_CLIENT_ID =
   '121260038469-oqt0ujgfinc815bmolr61md8egkkokni.apps.googleusercontent.com';
 const FACEBOOK_APP_ID =
   process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '1904602866817490';
+const FACEBOOK_LOGIN_GRAPH_VERSION =
+  process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_GRAPH_VERSION ?? 'v21.0';
+const FACEBOOK_LOGIN_SCOPE =
+  process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_SCOPE ?? 'public_profile,email';
 
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -201,7 +205,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
         appId,
         cookie: true,
         xfbml: false,
-        version: 'v22.0',
+        version: FACEBOOK_LOGIN_GRAPH_VERSION,
       });
 
       const accessToken = await new Promise<string>((resolve, reject) => {
@@ -213,7 +217,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
               reject(new Error('Login Facebook cancelado.'));
             }
           },
-          { scope: 'email' },
+          { scope: FACEBOOK_LOGIN_SCOPE },
         );
       });
 
