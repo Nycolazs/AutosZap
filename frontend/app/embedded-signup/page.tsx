@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, Lock, RefreshCw, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,7 +9,7 @@ import {
   type EmbeddedSignupResult,
 } from '@/lib/facebook-sdk';
 
-type BridgeStatus = 'preloading' | 'ready' | 'launching' | 'success' | 'error';
+type BridgeStatus = 'ready' | 'launching' | 'success' | 'error';
 
 type BridgeState = {
   status: BridgeStatus;
@@ -132,7 +132,6 @@ export default function EmbeddedSignupBridgePage() {
     }
   }
 
-  const isPreloading = bridgeState.status === 'preloading';
   const isReady = bridgeState.status === 'ready';
   const isLoading = bridgeState.status === 'launching';
   const isSuccess = bridgeState.status === 'success';
@@ -165,7 +164,7 @@ export default function EmbeddedSignupBridgePage() {
                       : 'border-blue-400/30 bg-blue-400/10 text-blue-100',
                 ].join(' ')}
               >
-                {isPreloading || isLoading ? (
+                {isLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : isSuccess ? (
                   <CheckCircle2 className="h-5 w-5" />
