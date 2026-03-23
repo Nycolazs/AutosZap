@@ -18,6 +18,7 @@ import {
   Tags,
   Users,
   Workflow,
+  ListTree,
 } from 'lucide-react';
 import { isLocalDevelopment } from '@/lib/environment';
 import { PermissionMap, PermissionRequirement, canAccessRequirement } from '@/lib/permissions';
@@ -68,6 +69,18 @@ export const APP_NAV_SECTIONS: Array<{
             'CONFIGURE_CONVERSATION_ROUTING',
             'CONFIGURE_AUTO_MESSAGES',
             'CONFIGURE_BUSINESS_HOURS',
+          ],
+          mode: 'any',
+        },
+      },
+      {
+        href: '/app/menu-interativo',
+        label: 'Menu Interativo',
+        icon: ListTree,
+        requirement: {
+          permissions: [
+            'SETTINGS_VIEW',
+            'CONFIGURE_AUTO_MESSAGES',
           ],
           mode: 'any',
         },
