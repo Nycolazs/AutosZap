@@ -615,8 +615,8 @@ export default function AutoResponseMenuPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setSelectedMenu(null); }}>
-        <DialogContent className="max-w-2xl max-h-[calc(100dvh-2rem)] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:w-[min(1040px,calc(100vw-1.5rem))] sm:max-w-none">
+          <DialogHeader className="shrink-0 pr-10">
             <DialogTitle>{selectedMenu ? 'Editar menu' : 'Novo menu interativo'}</DialogTitle>
             <DialogDescription>
               Configure um menu automatico com opcoes que o cliente pode selecionar digitando o numero.

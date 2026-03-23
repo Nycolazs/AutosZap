@@ -318,8 +318,8 @@ export function Topbar({
       </Dialog>
 
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
-        <DialogContent className="w-full p-0 sm:w-[min(560px,calc(100vw-1rem))]">
-          <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden p-0 sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:w-[min(680px,calc(100vw-1.5rem))] sm:max-w-none">
+          <div className="shrink-0 flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <h2 className="font-heading text-lg font-semibold">Notificações</h2>
               <p className="text-sm text-muted-foreground">
@@ -341,7 +341,7 @@ export function Topbar({
             </div>
           </div>
 
-          <div className="max-h-[82vh] overflow-y-auto px-4 py-4 sm:max-h-[80vh]">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             {notificationsQuery.data?.items.length ? (
               <div className="space-y-3">
                 {notificationsQuery.data.items.map((notification) => (
