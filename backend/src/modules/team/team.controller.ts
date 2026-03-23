@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -78,14 +79,6 @@ class CreateTeamMemberDto {
 class UpdateTeamMemberDto {
   @IsOptional()
   @IsString()
-  name?: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @IsOptional()
-  @IsString()
   title?: string;
 
   @IsOptional()
@@ -95,20 +88,6 @@ class UpdateTeamMemberDto {
   @IsOptional()
   @IsString()
   workspaceRoleId?: string | null;
-
-  @IsOptional()
-  @IsEnum(UserStatus)
-  status?: UserStatus;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(6)
-  password?: string;
-
-  @ValidateIf((object: UpdateTeamMemberDto) => object.password !== undefined)
-  @IsString()
-  @MinLength(6)
-  confirmPassword?: string;
 }
 
 class PermissionOverrideDto {
@@ -143,9 +122,11 @@ export class TeamController {
   @Post()
   create(
     @CurrentUser() user: CurrentAuthUser,
-    @Body() dto: CreateTeamMemberDto,
+    @Body() _dto: CreateTeamMemberDto,
   ) {
-    return this.teamService.create(user.workspaceId, user.sub, dto);
+    throw new BadRequestException(
+      'Adicao manual desativada. Use Gerar codigo de convite.',
+    );
   }
 
   @AnyPermissions(PermissionKey.MANAGE_TEAM, PermissionKey.MANAGE_USER_ROLES)
@@ -155,7 +136,11 @@ export class TeamController {
     @Param('id') id: string,
     @Body() dto: UpdateTeamMemberDto,
   ) {
-    return this.teamService.update(id, user.workspaceId, dto);
+    return this.teamService.update(id, user.workspaceId, {
+      title: dto.title,
+      role: dto.role,
+      workspaceRoleId: dto.workspaceRoleId,
+    });
   }
 
   @Permissions(PermissionKey.MANAGE_USER_PERMISSIONS)
@@ -163,12 +148,10 @@ export class TeamController {
   updatePermissions(
     @CurrentUser() user: CurrentAuthUser,
     @Param('id') id: string,
-    @Body() dto: UpdatePermissionsDto,
+    @Body() _dto: UpdatePermissionsDto,
   ) {
-    return this.teamService.updatePermissions(
-      id,
-      user.workspaceId,
-      dto.permissions,
+    throw new BadRequestException(
+      'Permissoes individuais desativadas. Ajuste o papel do membro ou edite os papeis do workspace.',
     );
   }
 
@@ -185,6 +168,12 @@ export class TeamController {
   @Delete(':id')
   deactivate(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.teamService.deactivate(id, user.workspaceId);
+  }
+
+  @Permissions(PermissionKey.MANAGE_TEAM)
+  @Post(':id/activate')
+  activate(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
+    return this.teamService.activate(id, user.workspaceId);
   }
 
   @Permissions(PermissionKey.MANAGE_TEAM)

@@ -257,14 +257,9 @@ export class TeamService {
     id: string,
     workspaceId: string,
     payload: {
-      name?: string;
-      email?: string;
       title?: string;
       role?: Role;
       workspaceRoleId?: string | null;
-      status?: UserStatus;
-      password?: string;
-      confirmPassword?: string;
     },
   ) {
     const member = await this.prisma.teamMember.findFirst({
@@ -286,64 +281,6 @@ export class TeamService {
       throw new NotFoundException('Membro nao encontrado.');
     }
 
-    const normalizedEmail = payload.email?.toLowerCase().trim();
-    const shouldUpdateEmail =
-      !!normalizedEmail && normalizedEmail !== member.email.toLowerCase();
-
-    if (shouldUpdateEmail) {
-      const existingMember = await this.prisma.teamMember.findFirst({
-        where: {
-          workspaceId,
-          email: normalizedEmail,
-          NOT: { id },
-        },
-        select: { id: true },
-      });
-
-      if (existingMember) {
-        throw new BadRequestException(
-          'Ja existe um membro com este email nesta empresa.',
-        );
-      }
-
-      const existingUser = await this.prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        select: { id: true },
-      });
-
-      if (
-        existingUser &&
-        (!member.user || existingUser.id !== member.user.id)
-      ) {
-        throw new BadRequestException(
-          'Ja existe uma conta com este email nesta empresa.',
-        );
-      }
-
-      // Check cross-company: email already exists in another company
-      const existingGlobalUser =
-        await this.controlPlanePrisma.globalUser.findFirst({
-          where: { email: normalizedEmail },
-          select: { id: true },
-        });
-
-      if (
-        existingGlobalUser &&
-        (!member.user || member.user.globalUserId !== existingGlobalUser.id)
-      ) {
-        throw new BadRequestException(
-          'Este email ja esta cadastrado no sistema em outra empresa. Compartilhe um codigo de convite para que o usuario entre na empresa.',
-        );
-      }
-    }
-
-    const shouldUpdatePassword =
-      typeof payload.password === 'string' && payload.password.length > 0;
-
-    if (shouldUpdatePassword && payload.password !== payload.confirmPassword) {
-      throw new BadRequestException('As senhas informadas nao conferem.');
-    }
-
     const nextRole = payload.role
       ? normalizeRole(payload.role)
       : (member.user?.role ?? member.role);
@@ -354,68 +291,6 @@ export class TeamService {
         ? payload.workspaceRoleId
         : (member.user?.workspaceRoleId ?? member.workspaceRoleId ?? null),
     );
-
-    if (shouldUpdatePassword && !member.user) {
-      const email = normalizedEmail ?? member.email.toLowerCase();
-      const existingUser = await this.prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-
-      if (existingUser) {
-        throw new BadRequestException('Ja existe uma conta com este email.');
-      }
-
-      const nextStatus =
-        payload.status && payload.status !== UserStatus.PENDING
-          ? payload.status
-          : UserStatus.ACTIVE;
-      const passwordHash = await bcrypt.hash(payload.password as string, 10);
-
-      await this.prisma.$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            workspaceId,
-            name: payload.name ?? member.name,
-            email,
-            passwordHash,
-            role: nextRole,
-            workspaceRoleId: nextWorkspaceRoleId,
-            status: nextStatus,
-            title: payload.title ?? member.title,
-          },
-        });
-
-        await tx.teamMember.update({
-          where: { id },
-          data: {
-            userId: user.id,
-            name: payload.name ?? member.name,
-            email,
-            title: payload.title ?? member.title,
-            role: nextRole,
-            workspaceRoleId: nextWorkspaceRoleId,
-            status: nextStatus,
-            inviteToken: null,
-          },
-        });
-      });
-
-      return this.list(workspaceId).then((items) =>
-        items.find((teamMember) => teamMember.id === id),
-      );
-    }
-
-    if (
-      member.user &&
-      payload.status === UserStatus.INACTIVE &&
-      normalizeRole(member.user.role) === Role.ADMIN
-    ) {
-      await this.accessControlService.ensureAnotherActiveAdmin(
-        workspaceId,
-        member.user.id,
-      );
-    }
 
     if (
       member.user &&
@@ -429,35 +304,13 @@ export class TeamService {
       );
     }
 
-    if (member.user && payload.status) {
+    if (member.user && payload.title !== undefined) {
       await this.prisma.user.update({
         where: {
           id: member.user.id,
         },
         data: {
-          status: payload.status,
-        },
-      });
-    }
-
-    if (member.user && shouldUpdateEmail) {
-      await this.prisma.user.update({
-        where: {
-          id: member.user.id,
-        },
-        data: {
-          email: normalizedEmail,
-        },
-      });
-    }
-
-    if (member.user && shouldUpdatePassword) {
-      await this.prisma.user.update({
-        where: {
-          id: member.user.id,
-        },
-        data: {
-          passwordHash: await bcrypt.hash(payload.password as string, 10),
+          title: payload.title,
         },
       });
     }
@@ -465,12 +318,9 @@ export class TeamService {
     await this.prisma.teamMember.update({
       where: { id },
       data: {
-        name: payload.name ?? member.name,
-        email: normalizedEmail ?? member.email,
         title: payload.title ?? member.title,
         role: nextRole,
         workspaceRoleId: nextWorkspaceRoleId,
-        status: payload.status ?? member.status,
       },
     });
 
@@ -517,6 +367,46 @@ export class TeamService {
         data: {
           status: UserStatus.INACTIVE,
           deactivatedAt: new Date(),
+        },
+      });
+    });
+
+    await this.syncMemberWithControlPlane(workspaceId, id);
+
+    return this.list(workspaceId).then((items) =>
+      items.find((teamMember) => teamMember.id === id),
+    );
+  }
+
+  async activate(id: string, workspaceId: string) {
+    const member = await this.prisma.teamMember.findFirst({
+      where: { id, workspaceId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Membro nao encontrado.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (member.user) {
+        await tx.user.update({
+          where: {
+            id: member.user.id,
+          },
+          data: {
+            status: UserStatus.ACTIVE,
+          },
+        });
+      }
+
+      await tx.teamMember.update({
+        where: { id },
+        data: {
+          status: member.user ? UserStatus.ACTIVE : UserStatus.PENDING,
+          deactivatedAt: null,
         },
       });
     });
