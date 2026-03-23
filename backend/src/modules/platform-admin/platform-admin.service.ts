@@ -810,7 +810,18 @@ export class PlatformAdminService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 30));
     const skip = (page - 1) * limit;
-    const where = query.status ? { status: query.status as any } : {};
+
+    const allowedStatuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+    type AllowedStatus = (typeof allowedStatuses)[number];
+
+    let where: { status?: AllowedStatus } = {};
+    if (query.status !== undefined) {
+      const normalized = query.status.toUpperCase();
+      if (!(allowedStatuses as readonly string[]).includes(normalized)) {
+        throw new BadRequestException('Invalid support ticket status');
+      }
+      where = { status: normalized as AllowedStatus };
+    }
 
     const [tickets, total] = await Promise.all([
       this.controlPlanePrisma.supportTicket.findMany({
@@ -826,6 +837,16 @@ export class PlatformAdminService {
       data: tickets,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async getSupportTicketCounts() {
+    const statuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+    const counts = await Promise.all(
+      statuses.map((status) =>
+        this.controlPlanePrisma.supportTicket.count({ where: { status } }),
+      ),
+    );
+    return Object.fromEntries(statuses.map((status, i) => [status, counts[i]])) as Record<(typeof statuses)[number], number>;
   }
 
   async updateSupportTicketStatus(

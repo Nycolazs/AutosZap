@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 export type MenuNodeInput = {
@@ -70,7 +71,7 @@ export class AutoResponseMenusService {
       });
 
       if (payload.nodes && payload.nodes.length > 0) {
-        await this.upsertNodes(tx as any, menu.id, payload.nodes, null);
+        await this.upsertNodes(tx, menu.id, payload.nodes, null);
       }
 
       return tx.autoResponseMenu.findFirst({
@@ -120,7 +121,7 @@ export class AutoResponseMenusService {
         // Delete all existing nodes and re-create from scratch
         await tx.autoResponseMenuNode.deleteMany({ where: { menuId: id } });
         if (payload.nodes.length > 0) {
-          await this.upsertNodes(tx as any, id, payload.nodes, null);
+          await this.upsertNodes(tx, id, payload.nodes, null);
         }
       }
 
@@ -161,7 +162,7 @@ export class AutoResponseMenusService {
   }
 
   private async upsertNodes(
-    tx: PrismaService,
+    tx: Prisma.TransactionClient,
     menuId: string,
     nodes: MenuNodeInput[],
     parentId: string | null,

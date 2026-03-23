@@ -2409,6 +2409,10 @@ function VideoMessagePlayer({ src }: { src: string }) {
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('error', handleError);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
     };
   }, [src]);
 

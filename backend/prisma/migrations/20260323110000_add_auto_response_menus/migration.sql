@@ -5,7 +5,7 @@ CREATE TABLE "AutoResponseMenu" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "isActive" BOOLEAN NOT NULL DEFAULT false,
-    "triggerKeywords" TEXT[],
+    "triggerKeywords" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "headerText" TEXT,
     "footerText" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

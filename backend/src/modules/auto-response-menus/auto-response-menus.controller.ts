@@ -18,6 +18,8 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, type CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PermissionKey } from '@prisma/client';
 import { AutoResponseMenusService, MenuNodeInput } from './auto-response-menus.service';
 
 class MenuNodeDto implements MenuNodeInput {
@@ -126,11 +128,13 @@ export class AutoResponseMenusController {
   }
 
   @Post()
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   create(@CurrentUser() user: CurrentAuthUser, @Body() dto: CreateMenuDto) {
     return this.service.create(user.workspaceId, dto);
   }
 
   @Patch(':id')
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   update(
     @CurrentUser() user: CurrentAuthUser,
     @Param('id') id: string,
@@ -140,11 +144,13 @@ export class AutoResponseMenusController {
   }
 
   @Patch(':id/toggle-active')
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   toggleActive(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.service.toggleActive(user.workspaceId, id);
   }
 
   @Delete(':id')
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   remove(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
     return this.service.remove(user.workspaceId, id);
   }

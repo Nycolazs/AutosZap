@@ -10,7 +10,6 @@ import {
   Loader2,
   MessageSquarePlus,
   TicketCheck,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -73,7 +72,7 @@ const STATUS_CONFIG: Record<TicketStatus, { label: string; color: string }> = {
   CLOSED: { label: 'Encerrado', color: 'border-border bg-white/[0.04] text-muted-foreground' },
 };
 
-export default function SupportePage() {
+export default function SuportePage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState('');
