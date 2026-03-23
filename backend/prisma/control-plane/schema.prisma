@@ -98,6 +98,7 @@ model GlobalUser {
   auditLogs                PlatformAuditLog[]         @relation("PlatformAuditActor")
   requestedProvisioningJobs TenantProvisioningJob[]   @relation("ProvisioningRequestedBy")
   supportTickets           SupportTicket[]
+  supportTicketMessages    SupportTicketMessage[]     @relation("SupportTicketMessageSender")
 }
 
 model Company {
@@ -271,6 +272,11 @@ enum SupportTicketStatus {
   CLOSED
 }
 
+enum SupportTicketMessageSenderType {
+  CUSTOMER
+  PLATFORM
+}
+
 model SupportTicket {
   id              String                 @id @default(cuid())
   companyId       String
@@ -287,8 +293,26 @@ model SupportTicket {
   updatedAt       DateTime               @updatedAt
   company         Company                @relation(fields: [companyId], references: [id])
   author          GlobalUser             @relation(fields: [globalUserId], references: [id])
+  messages        SupportTicketMessage[]
 
   @@index([companyId, status])
   @@index([globalUserId])
   @@index([status, createdAt])
+}
+
+model SupportTicketMessage {
+  id                String                         @id @default(cuid())
+  ticketId          String
+  senderGlobalUserId String?
+  senderType        SupportTicketMessageSenderType
+  senderName        String
+  senderEmail       String?
+  body              String
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  ticket            SupportTicket                  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender            GlobalUser?                    @relation("SupportTicketMessageSender", fields: [senderGlobalUserId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([senderGlobalUserId])
 }

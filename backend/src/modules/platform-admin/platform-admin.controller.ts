@@ -7,7 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { IsIn } from 'class-validator';
+import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PlatformAdmin } from '../../common/decorators/platform-admin.decorator';
@@ -29,6 +29,13 @@ import { PlatformAdminService } from './platform-admin.service';
 class UpdateSupportTicketStatusDto {
   @IsIn(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'])
   status!: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+}
+
+class CreateSupportTicketMessageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  body!: string;
 }
 
 @PlatformAdmin()
@@ -172,6 +179,20 @@ export class PlatformAdminController {
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
     });
+  }
+
+  @Get('support-tickets/:ticketId')
+  getSupportTicket(@Param('ticketId') ticketId: string) {
+    return this.platformAdminService.getSupportTicketDetail(ticketId);
+  }
+
+  @Post('support-tickets/:ticketId/messages')
+  addSupportTicketMessage(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('ticketId') ticketId: string,
+    @Body() dto: CreateSupportTicketMessageDto,
+  ) {
+    return this.platformAdminService.addSupportTicketMessage(user, ticketId, dto);
   }
 
   @Patch('support-tickets/:ticketId/status')

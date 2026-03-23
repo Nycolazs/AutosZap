@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'node:crypto';
+import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import {
@@ -19,6 +20,7 @@ import {
 } from '@autoszap/control-plane-client';
 import { ControlPlaneAuditService } from '../control-plane/control-plane-audit.service';
 import { TenantProvisioningService } from '../control-plane/tenant-provisioning.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreatePlatformCompanyDto,
   CreatePlatformUserDto,
@@ -31,7 +33,7 @@ import {
   UpdatePlatformUserDto,
   UpsertMembershipDto,
 } from './platform-admin.dto';
-import { Role, UserStatus } from '@prisma/client';
+import { NotificationType, Role, UserStatus } from '@prisma/client';
 
 @Injectable()
 export class PlatformAdminService {
@@ -40,6 +42,7 @@ export class PlatformAdminService {
     private readonly controlPlaneAuditService: ControlPlaneAuditService,
     private readonly tenantProvisioningService: TenantProvisioningService,
     private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getDashboard() {
@@ -834,7 +837,7 @@ export class PlatformAdminService {
     const [tickets, total] = await Promise.all([
       this.controlPlanePrisma.supportTicket.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         skip,
         take: limit,
       }),
@@ -845,6 +848,23 @@ export class PlatformAdminService {
       data: tickets,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async getSupportTicketDetail(ticketId: string) {
+    const ticket = await this.controlPlanePrisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    return ticket;
   }
 
   async getSupportTicketCounts() {
@@ -859,6 +879,57 @@ export class PlatformAdminService {
     ) as Record<(typeof statuses)[number], number>;
   }
 
+  async addSupportTicketMessage(
+    actor: CurrentAuthUser,
+    ticketId: string,
+    payload: { body: string },
+  ) {
+    const normalizedBody = payload.body.trim();
+    const actorGlobalUserId = actor.globalUserId ?? actor.sub;
+
+    const existingTicket = await this.controlPlanePrisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        title: true,
+        companyId: true,
+        globalUserId: true,
+        company: {
+          select: {
+            workspaceId: true,
+          },
+        },
+      },
+    });
+
+    if (!existingTicket) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    await this.controlPlanePrisma.$transaction([
+      this.controlPlanePrisma.supportTicketMessage.create({
+        data: {
+          ticketId: existingTicket.id,
+          senderGlobalUserId: actorGlobalUserId,
+          senderType: 'PLATFORM',
+          senderName: actor.name,
+          senderEmail: actor.email,
+          body: normalizedBody,
+        },
+      }),
+      this.controlPlanePrisma.supportTicket.update({
+        where: { id: existingTicket.id },
+        data: {
+          updatedAt: new Date(),
+        },
+      }),
+    ]);
+
+    await this.notifySupportReply(existingTicket, normalizedBody);
+
+    return this.getSupportTicketDetail(existingTicket.id);
+  }
+
   async updateSupportTicketStatus(
     ticketId: string,
     status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED',
@@ -871,6 +942,66 @@ export class PlatformAdminService {
           status === 'RESOLVED' || status === 'CLOSED' ? new Date() : null,
       },
     });
+  }
+
+  private async notifySupportReply(
+    ticket: {
+      id: string;
+      title: string;
+      companyId: string;
+      globalUserId: string;
+      company: {
+        workspaceId: string;
+      };
+    },
+    messageBody: string,
+  ) {
+    await this.prisma.runWithTenant(ticket.companyId, async () => {
+      const authorTenantUser = await this.prisma.user.findFirst({
+        where: {
+          workspaceId: ticket.company.workspaceId,
+          globalUserId: ticket.globalUserId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!authorTenantUser) {
+        return;
+      }
+
+      await this.notificationsService.createForUsers({
+        workspaceId: ticket.company.workspaceId,
+        userIds: [authorTenantUser.id],
+        title: 'Novo retorno no seu chamado de suporte',
+        body: this.buildSupportReplyNotificationBody(ticket.title, messageBody),
+        type: NotificationType.INFO,
+        entityType: 'support_ticket',
+        entityId: ticket.id,
+        linkHref: `/app/suporte?ticket=${ticket.id}`,
+        metadata: {
+          ticketId: ticket.id,
+          source: 'platform_support',
+        },
+      });
+    });
+  }
+
+  private buildSupportReplyNotificationBody(
+    ticketTitle: string,
+    messageBody: string,
+  ) {
+    const normalizedTitle = ticketTitle.trim();
+    const normalizedMessage = messageBody.replace(/\s+/g, ' ').trim();
+    const maxLength = 140;
+    const preview =
+      normalizedMessage.length > maxLength
+        ? `${normalizedMessage.slice(0, maxLength - 3)}...`
+        : normalizedMessage;
+
+    return normalizedTitle ? `${normalizedTitle}: ${preview}` : preview;
   }
 
   private async generateUniqueCompanySlug(

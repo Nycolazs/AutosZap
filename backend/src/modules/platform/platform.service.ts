@@ -344,19 +344,7 @@ export class PlatformService {
       category: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
     },
   ) {
-    const company = await this.controlPlanePrisma.company.findFirst({
-      where: { workspaceId: user.workspaceId },
-      select: { id: true, name: true },
-    });
-
-    const globalUser = await this.prisma.user.findUnique({
-      where: { id: user.sub },
-      select: { globalUserId: true, name: true, email: true },
-    });
-
-    if (!company || !globalUser?.globalUserId) {
-      throw new NotFoundException('Empresa ou usuario nao encontrado.');
-    }
+    const { company, globalUser } = await this.resolveSupportActorContext(user);
 
     return this.controlPlanePrisma.supportTicket.create({
       data: {
@@ -388,8 +376,130 @@ export class PlatformService {
 
     return this.controlPlanePrisma.supportTicket.findMany({
       where: { globalUserId: globalUser.globalUserId, companyId: company.id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       take: 50,
     });
+  }
+
+  async getMyTicketDetail(user: CurrentAuthUser, ticketId: string) {
+    const [globalUser, company] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { globalUserId: true },
+      }),
+      this.controlPlanePrisma.company.findFirst({
+        where: { workspaceId: user.workspaceId },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!globalUser?.globalUserId || !company) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    const ticket = await this.controlPlanePrisma.supportTicket.findFirst({
+      where: {
+        id: ticketId,
+        companyId: company.id,
+        globalUserId: globalUser.globalUserId,
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    return ticket;
+  }
+
+  async addMessageToMyTicket(
+    user: CurrentAuthUser,
+    ticketId: string,
+    payload: { body: string },
+  ) {
+    const [globalUser, company] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { globalUserId: true, name: true, email: true },
+      }),
+      this.controlPlanePrisma.company.findFirst({
+        where: { workspaceId: user.workspaceId },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!globalUser?.globalUserId || !company) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    const normalizedBody = payload.body.trim();
+
+    const ticket = await this.controlPlanePrisma.supportTicket.findFirst({
+      where: {
+        id: ticketId,
+        companyId: company.id,
+        globalUserId: globalUser.globalUserId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Chamado nao encontrado.');
+    }
+
+    await this.controlPlanePrisma.$transaction([
+      this.controlPlanePrisma.supportTicketMessage.create({
+        data: {
+          ticketId: ticket.id,
+          senderGlobalUserId: globalUser.globalUserId,
+          senderType: 'CUSTOMER',
+          senderName: globalUser.name,
+          senderEmail: globalUser.email,
+          body: normalizedBody,
+        },
+      }),
+      this.controlPlanePrisma.supportTicket.update({
+        where: { id: ticket.id },
+        data: {
+          updatedAt: new Date(),
+        },
+      }),
+    ]);
+
+    return this.getMyTicketDetail(user, ticket.id);
+  }
+
+  private async resolveSupportActorContext(user: CurrentAuthUser) {
+    const [company, globalUser] = await Promise.all([
+      this.controlPlanePrisma.company.findFirst({
+        where: { workspaceId: user.workspaceId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { globalUserId: true, name: true, email: true },
+      }),
+    ]);
+
+    if (!company || !globalUser?.globalUserId) {
+      throw new NotFoundException('Empresa ou usuario nao encontrado.');
+    }
+
+    const globalUserId = globalUser.globalUserId;
+
+    return {
+      company,
+      globalUser: {
+        ...globalUser,
+        globalUserId,
+      },
+    };
   }
 }

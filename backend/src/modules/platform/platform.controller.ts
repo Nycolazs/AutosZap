@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   Ip,
+  Param,
   Post,
   Query,
   Redirect,
@@ -34,6 +35,13 @@ class CreateSupportTicketDto {
 
   @IsIn(['IMPROVEMENT', 'BUG', 'QUESTION'])
   category!: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
+}
+
+class CreateSupportTicketMessageDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(5000)
+  body!: string;
 }
 
 @Controller('platform')
@@ -95,5 +103,22 @@ export class PlatformController {
   @Get('support-tickets')
   listMyTickets(@CurrentUser() user: CurrentAuthUser) {
     return this.platformService.listMyTickets(user);
+  }
+
+  @Get('support-tickets/:ticketId')
+  getMyTicket(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('ticketId') ticketId: string,
+  ) {
+    return this.platformService.getMyTicketDetail(user, ticketId);
+  }
+
+  @Post('support-tickets/:ticketId/messages')
+  addMessageToMyTicket(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('ticketId') ticketId: string,
+    @Body() dto: CreateSupportTicketMessageDto,
+  ) {
+    return this.platformService.addMessageToMyTicket(user, ticketId, dto);
   }
 }
