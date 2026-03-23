@@ -527,6 +527,7 @@ export class TeamService {
     payload: {
       role: Role;
       title?: string;
+      workspaceRoleId?: string;
     },
   ) {
     // Find the company in control plane by workspaceId
@@ -544,6 +545,21 @@ export class TeamService {
       select: { globalUserId: true },
     });
 
+    // Resolve workspace role name for display purposes
+    let workspaceRoleName: string | null = null;
+    let resolvedWorkspaceRoleId: string | null = null;
+
+    if (payload.workspaceRoleId) {
+      const workspaceRole = await this.prisma.workspaceRole.findFirst({
+        where: { id: payload.workspaceRoleId, workspaceId },
+        select: { id: true, name: true },
+      });
+      if (workspaceRole) {
+        resolvedWorkspaceRoleId = workspaceRole.id;
+        workspaceRoleName = workspaceRole.name;
+      }
+    }
+
     // Generate a short, readable code (6 chars, uppercase alphanumeric)
     const code = this.generateShortCode(6);
     const normalizedRole = normalizeRole(payload.role);
@@ -555,6 +571,8 @@ export class TeamService {
         code,
         role: tenantRole,
         title: payload.title,
+        workspaceRoleId: resolvedWorkspaceRoleId,
+        workspaceRoleName,
         status: InviteCodeStatus.ACTIVE,
         createdByGlobalUserId: actor?.globalUserId ?? null,
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7), // 7 days
@@ -565,6 +583,8 @@ export class TeamService {
       code: inviteCode.code,
       role: inviteCode.role,
       title: inviteCode.title,
+      workspaceRoleId: inviteCode.workspaceRoleId,
+      workspaceRoleName: inviteCode.workspaceRoleName,
       expiresAt: inviteCode.expiresAt,
       companyName: company.name,
     };

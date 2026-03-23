@@ -242,6 +242,8 @@ model CompanyInviteCode {
   code                String           @unique
   role                TenantRole       @default(SELLER)
   title               String?
+  workspaceRoleId     String?
+  workspaceRoleName   String?
   status              InviteCodeStatus @default(ACTIVE)
   usedByGlobalUserId  String?
   createdByGlobalUserId String?
