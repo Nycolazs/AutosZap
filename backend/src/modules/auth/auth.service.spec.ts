@@ -220,4 +220,44 @@ describe('AuthService', () => {
       expect.any(Function),
     );
   });
+
+  it('habilita cadastro direto por padrao quando a flag nao esta definida', () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'ALLOW_PUBLIC_SIGNUP') {
+        return undefined;
+      }
+      if (key === 'DATABASE_URL') {
+        return sharedDatabaseUrl;
+      }
+      return undefined;
+    });
+
+    expect(
+      (
+        service as unknown as {
+          isPublicSignupEnabled: () => boolean;
+        }
+      ).isPublicSignupEnabled(),
+    ).toBe(true);
+  });
+
+  it('permite desligar cadastro direto explicitamente por ambiente', () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'ALLOW_PUBLIC_SIGNUP') {
+        return 'false';
+      }
+      if (key === 'DATABASE_URL') {
+        return sharedDatabaseUrl;
+      }
+      return undefined;
+    });
+
+    expect(
+      (
+        service as unknown as {
+          isPublicSignupEnabled: () => boolean;
+        }
+      ).isPublicSignupEnabled(),
+    ).toBe(false);
+  });
 });

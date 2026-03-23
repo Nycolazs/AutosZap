@@ -107,10 +107,7 @@ export class AuthService {
     }
 
     // ── Public signup (no invite): check if allowed ──
-    const allowPublicSignup =
-      (this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'false')
-        .trim()
-        .toLowerCase() === 'true';
+    const allowPublicSignup = this.isPublicSignupEnabled();
 
     if (!allowPublicSignup) {
       throw new BadRequestException(
@@ -497,10 +494,7 @@ export class AuthService {
       );
     }
 
-    const allowPublicSignup =
-      (this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'false')
-        .trim()
-        .toLowerCase() === 'true';
+    const allowPublicSignup = this.isPublicSignupEnabled();
 
     if (!allowPublicSignup) {
       throw new BadRequestException(
@@ -1649,6 +1643,16 @@ export class AuthService {
 
   private hasPlatformAccess(role: PlatformRole | null | undefined) {
     return role === PlatformRole.SUPER_ADMIN || role === PlatformRole.SUPPORT;
+  }
+
+  private isPublicSignupEnabled() {
+    const rawValue = (
+      this.configService.get<string>('ALLOW_PUBLIC_SIGNUP') ?? 'true'
+    )
+      .trim()
+      .toLowerCase();
+
+    return !['false', '0', 'no', 'off'].includes(rawValue);
   }
 
   private mapTenantRole(role: Role): TenantRole {
