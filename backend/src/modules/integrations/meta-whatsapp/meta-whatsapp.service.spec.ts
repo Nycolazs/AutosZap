@@ -53,6 +53,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       workspaceSettings as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return {
@@ -482,6 +483,7 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       provider as never,
       new ConfigService(),
       conversationWorkflowService as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
