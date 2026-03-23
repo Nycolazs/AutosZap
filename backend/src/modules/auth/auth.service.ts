@@ -410,13 +410,18 @@ export class AuthService {
   ) {
     const profile = await this.verifySocialToken(dto.provider, dto.token);
 
-    if (!profile.email) {
+    const email =
+      profile.email?.toLowerCase().trim() ??
+      (dto.provider === 'facebook' && profile.providerUserId
+        ? `facebook_${profile.providerUserId}@facebook.autoszap.local`
+        : null);
+
+    if (!email) {
       throw new BadRequestException(
-        'Nao foi possivel obter o email do provedor. Verifique as permissoes.',
+        'Nao foi possivel obter os dados necessarios do provedor social para autenticar.',
       );
     }
 
-    const email = profile.email.toLowerCase().trim();
     const name: string =
       dto.name || profile.name || email.split('@')[0] || 'Usuario';
     const avatarUrl = profile.picture || undefined;
@@ -750,7 +755,12 @@ export class AuthService {
   private async verifySocialToken(
     provider: 'google' | 'facebook',
     token: string,
-  ): Promise<{ email: string; name?: string; picture?: string }> {
+  ): Promise<{
+    email?: string;
+    name?: string;
+    picture?: string;
+    providerUserId?: string;
+  }> {
     switch (provider) {
       case 'google':
         return this.verifyGoogleToken(token);
@@ -763,7 +773,12 @@ export class AuthService {
 
   private async verifyGoogleToken(
     token: string,
-  ): Promise<{ email: string; name?: string; picture?: string }> {
+  ): Promise<{
+    email?: string;
+    name?: string;
+    picture?: string;
+    providerUserId?: string;
+  }> {
     const response = await fetch(
       `https://www.googleapis.com/oauth2/v3/userinfo`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -791,7 +806,12 @@ export class AuthService {
 
   private async verifyFacebookToken(
     token: string,
-  ): Promise<{ email: string; name?: string }> {
+  ): Promise<{
+    email?: string;
+    name?: string;
+    picture?: string;
+    providerUserId?: string;
+  }> {
     const response = await fetch(
       `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(token)}`,
     );
@@ -808,13 +828,13 @@ export class AuthService {
       name?: string;
     };
 
-    if (!data.email) {
+    if (!data.id) {
       throw new BadRequestException(
-        'Nao foi possivel obter o email da conta Facebook. Verifique se o email esta publico.',
+        'Nao foi possivel identificar a conta Facebook autenticada.',
       );
     }
 
-    return { email: data.email, name: data.name };
+    return { email: data.email, name: data.name, providerUserId: data.id };
   }
 
   async login(dto: LoginDto, userAgent?: string, ipAddress?: string) {

@@ -52,8 +52,6 @@ const FACEBOOK_APP_ID =
   process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '1904602866817490';
 const FACEBOOK_LOGIN_GRAPH_VERSION =
   process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_GRAPH_VERSION ?? 'v21.0';
-const FACEBOOK_LOGIN_SCOPE =
-  process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_SCOPE ?? 'public_profile,email';
 
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -217,7 +215,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
               reject(new Error('Login Facebook cancelado.'));
             }
           },
-          { scope: FACEBOOK_LOGIN_SCOPE },
+          {},
         );
       });
 
