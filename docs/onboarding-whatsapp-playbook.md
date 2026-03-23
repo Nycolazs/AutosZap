@@ -27,7 +27,7 @@ Oferecer duas trilhas:
 ### 3.1 Matriz de decisao
 
 - Escolher **Plano A** quando o cliente quer velocidade e menor risco.
-- Escolher **Plano B** quando o cliente precisa manter o mesmo numero por marca/operacao.
+- Escolher **Plano B** quando o cliente precisa manter o mesmo numero por marca/operação.
 - No **Plano B**, exigir janela de migracao e responsavel da empresa presente.
 
 ## 4) Script Comercial (Copy/Paste)
@@ -98,7 +98,7 @@ Oferecer duas trilhas:
 
 1. Ativar numero novo para API.
 2. Executar checklist tecnico completo.
-3. Treinar equipe do cliente e iniciar operacao.
+3. Treinar equipe do cliente e iniciar operação.
 
 ### 7.2 Plano B (migracao do numero atual)
 
@@ -119,7 +119,7 @@ Oferecer duas trilhas:
 
 ### 8.3 Confirmacao de go-live
 
-"Integracao concluida com sucesso. Webhook validado, envio e recebimento testados. Seu ambiente ja esta pronto para operacao."
+"Integracao concluida com sucesso. Webhook validado, envio e recebimento testados. Seu ambiente ja esta pronto para operação."
 
 ### 8.4 Follow-up 24h
 

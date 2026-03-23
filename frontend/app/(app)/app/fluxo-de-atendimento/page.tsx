@@ -207,7 +207,7 @@ export default function ConversationFlowPage() {
             disabled={!canSave || updateConversationSettingsMutation.isPending}
           >
             <Save className="h-4 w-4" />
-            Salvar horários
+            Salvar alterações
           </Button>
         }
       />
@@ -392,7 +392,7 @@ export default function ConversationFlowPage() {
                         outOfHoursAutoReply: event.target.value,
                       }))
                     }
-                    placeholder="Ex.: Estamos fora do horario agora, mas retornaremos assim que a operacao abrir."
+                    placeholder="Ex.: Estamos fora do horario agora, mas retornaremos assim que a operação abrir."
                     disabled={!canEditAutoMessages}
                     className="min-h-24"
                   />

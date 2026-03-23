@@ -21,7 +21,7 @@ describe('resolveExceptionResponse', () => {
     expect(resolveExceptionResponse(error)).toEqual({
       status: 400,
       message:
-        'Nao foi possivel concluir a operacao porque ja existe um registro com esses dados.',
+        'Nao foi possivel concluir a operação porque ja existe um registro com esses dados.',
     });
   });
 

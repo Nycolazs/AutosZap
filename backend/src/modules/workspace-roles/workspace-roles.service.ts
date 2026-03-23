@@ -361,7 +361,7 @@ export class WorkspaceRolesService {
         id: SYSTEM_SELLER_ROLE_ID,
         name: 'Vendedor',
         description:
-          'Papel padrao do sistema com os acessos basicos de operacao comercial e atendimento.',
+          'Papel padrao do sistema com os acessos basicos de operação comercial e atendimento.',
         createdAt: now,
         updatedAt: now,
         permissions: [...DEFAULT_SELLER_PERMISSIONS],

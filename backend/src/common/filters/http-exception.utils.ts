@@ -25,7 +25,7 @@ export function resolveExceptionResponse(exception: unknown): {
       return {
         status: HttpStatus.BAD_REQUEST,
         message:
-          'Nao foi possivel concluir a operacao porque ja existe um registro com esses dados.',
+          'Nao foi possivel concluir a operação porque ja existe um registro com esses dados.',
       };
     }
 
@@ -40,13 +40,13 @@ export function resolveExceptionResponse(exception: unknown): {
       return {
         status: HttpStatus.BAD_REQUEST,
         message:
-          'Nao foi possivel concluir a operacao por causa de relacionamentos vinculados.',
+          'Nao foi possivel concluir a operação por causa de relacionamentos vinculados.',
       };
     }
 
     return {
       status: HttpStatus.BAD_REQUEST,
-      message: 'Nao foi possivel concluir a operacao no banco de dados.',
+      message: 'Nao foi possivel concluir a operação no banco de dados.',
     };
   }
 

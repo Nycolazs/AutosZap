@@ -28,7 +28,7 @@ import {
   MenuNodeInput,
 } from './auto-response-menus.service';
 
-class MenuNodeDto implements MenuNodeInput {
+class MenuNodeDto {
   @IsOptional()
   @IsString()
   id?: string;
@@ -36,8 +36,13 @@ class MenuNodeDto implements MenuNodeInput {
   @IsString()
   label!: string;
 
+  @IsOptional()
   @IsString()
-  message!: string;
+  message?: string;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
 
   @IsInt()
   @Min(0)
@@ -52,6 +57,11 @@ class MenuNodeDto implements MenuNodeInput {
   @ValidateNested({ each: true })
   @Type(() => MenuNodeDto)
   children?: MenuNodeDto[];
+}
+
+class GlobalToggleDto {
+  @IsBoolean()
+  enabled!: boolean;
 }
 
 class CreateMenuDto {
@@ -137,6 +147,15 @@ export class AutoResponseMenusController {
   @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
   create(@CurrentUser() user: CurrentAuthUser, @Body() dto: CreateMenuDto) {
     return this.service.create(user.workspaceId, dto);
+  }
+
+  @Patch('global-toggle')
+  @Permissions(PermissionKey.CONFIGURE_AUTO_MESSAGES)
+  globalToggle(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: GlobalToggleDto,
+  ) {
+    return this.service.globalToggle(user.workspaceId, dto.enabled);
   }
 
   @Patch(':id')

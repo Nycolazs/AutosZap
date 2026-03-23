@@ -268,13 +268,14 @@ Preencha no backend:
 - `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - `META_APP_ID`
 - `META_APP_SECRET`
+- `META_EMBEDDED_SIGNUP_CONFIG_ID`
 - `META_GRAPH_API_VERSION`
 - `META_MODE=PRODUCTION`
 - `BACKEND_PUBLIC_URL=https://api.seudominio.com`
 
 Além disso:
 
-- Crie uma instância em `/app/instancias` com `mode=PRODUCTION`.
+- Use `Conectar via Meta` em `/app/instancias` para concluir o Embedded Signup oficial e criar ou reconectar a instancia sem token manual.
 - Configure o webhook Meta apontando para `GET/POST /api/webhooks/meta/whatsapp`.
 - Use o `webhook verify token` correspondente à instância.
 - O backend valida `X-Hub-Signature-256` quando houver `app secret` configurado.
@@ -390,5 +391,6 @@ npm run package
 - O frontend usa um BFF em rotas `app/api/*` com cookies HTTP-only para guardar access/refresh tokens e fazer proxy seguro ao backend.
 - A tela de login web agora inclui uma area de downloads dinamica baseada no manifesto de releases.
 - O app mobile foi pensado para vendedores com foco em inbox, conversa, lembretes e push.
-- O app desktop foi pensado para operacao continua com inbox em tela grande, conversa lateralizada e notificacoes do sistema.
+- O app desktop foi pensado para operação continua com inbox em tela grande, conversa lateralizada e notificacoes do sistema.
 - O visual replica a composição das referências em versão dark blue premium, sem reutilizar identidade original.
+

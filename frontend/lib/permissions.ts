@@ -76,7 +76,6 @@ const ROUTE_PERMISSION_RULES: Array<{
   { prefix: '/app/papeis', requirement: { permission: 'MANAGE_USER_ROLES' } },
   { prefix: '/app/equipe', requirement: { permission: 'TEAM_VIEW' } },
   { prefix: '/app/instancias', requirement: { permission: 'INTEGRATIONS_VIEW' } },
-  { prefix: '/app/ferramentas-ia', requirement: { permission: 'AI_TOOLS_VIEW' } },
   { prefix: '/app/bases-de-conhecimento', requirement: { permission: 'KNOWLEDGE_BASES_VIEW' } },
   { prefix: '/app/assistentes', requirement: { permission: 'ASSISTANTS_VIEW' } },
   { prefix: '/app/pipeline', requirement: { permission: 'PIPELINE_VIEW' } },
@@ -127,15 +126,35 @@ export function getRequiredPermissionForPath(pathname: string) {
 }
 
 export function getFirstAccessibleAppPath(permissionMap: PermissionMap | undefined) {
-  const preferredRoutes = ROUTE_PERMISSION_RULES.map((rule) => ({
-    requirement: rule.requirement,
-    href: rule.prefix,
+  const preferredRoutes = [
+    '/app',
+    '/app/inbox',
+    '/app/crm',
+    '/app/disparos',
+    '/app/contatos',
+    '/app/listas-de-contatos',
+    '/app/grupos',
+    '/app/pipeline',
+    '/app/tags',
+    '/app/assistentes',
+    '/app/bases-de-conhecimento',
+    '/app/instancias',
+    '/app/equipe',
+    '/app/papeis',
+    '/app/configuracoes',
+    '/app/horarios-de-funcionamento',
+    '/app/fluxo-de-atendimento',
+    '/app/desenvolvimento',
+  ].map((href) => ({
+    href,
+    requirement: ROUTE_PERMISSION_RULES.find((rule) => rule.prefix === href)
+      ?.requirement,
   }));
 
   const firstMatch = preferredRoutes.find((route) =>
     canAccessRequirement(permissionMap, route.requirement),
   );
-  return firstMatch?.href ?? '/app/inbox';
+  return firstMatch?.href ?? '/app/suporte';
 }
 
 export function getRoleLabel(role?: string) {

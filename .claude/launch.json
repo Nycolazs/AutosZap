@@ -3,11 +3,13 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=frontend", "--", "--webpack"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["../node_modules/next/dist/bin/next", "dev"],
       "port": 3000,
+      "cwd": "frontend",
       "env": {
-        "BACKEND_URL": "http://178.156.252.137:4000"
+        "BACKEND_URL": "https://api.autoszap.com",
+        "NEXT_TELEMETRY_DISABLED": "1"
       }
     },
     {

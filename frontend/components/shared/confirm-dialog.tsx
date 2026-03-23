@@ -11,19 +11,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 
 export function ConfirmDialog({
   trigger,
   title,
   description,
   actionLabel = 'Confirmar',
+  actionVariant = 'danger',
   onConfirm,
 }: {
   trigger: React.ReactNode;
   title: string;
   description: string;
   actionLabel?: string;
+  actionVariant?: ButtonProps['variant'];
   onConfirm: () => void;
 }) {
   return (
@@ -39,7 +41,7 @@ export function ConfirmDialog({
             <Button variant="secondary">Cancelar</Button>
           </AlertDialogCancel>
           <AlertDialogAction asChild>
-            <Button variant="danger" onClick={onConfirm}>
+            <Button variant={actionVariant} onClick={onConfirm}>
               {actionLabel}
             </Button>
           </AlertDialogAction>

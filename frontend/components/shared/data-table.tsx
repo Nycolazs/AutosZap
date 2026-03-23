@@ -123,7 +123,15 @@ export function DataTable<TData>({
                 onClick={() => onRowClick?.(row.original)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 align-middle text-foreground/90">
+                  <td
+                    key={cell.id}
+                    className="px-4 py-3 align-middle text-foreground/90"
+                    onClick={
+                      cell.column.id === 'actions'
+                        ? (event) => event.stopPropagation()
+                        : undefined
+                    }
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

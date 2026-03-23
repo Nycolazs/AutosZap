@@ -449,7 +449,7 @@ async function main() {
           senderUserId: ownerId,
           instanceId: conversation.instanceId,
           direction: MessageDirection.OUTBOUND,
-          content: index % 2 === 0 ? 'Consigo te mostrar inbox, CRM e automacoes em uma unica operacao.' : 'Posso te enviar um comparativo com o fluxo ideal do seu atendimento.',
+          content: index % 2 === 0 ? 'Consigo te mostrar inbox, CRM e automacoes em uma unica operação.' : 'Posso te enviar um comparativo com o fluxo ideal do seu atendimento.',
           status: MessageStatus.DELIVERED,
           sentAt: new Date(Date.now() - (index + 4) * 1000 * 60 * 45),
           deliveredAt: new Date(Date.now() - (index + 4) * 1000 * 60 * 44),
@@ -496,7 +496,7 @@ async function main() {
         description: 'Campanha para contatos com maior potencial',
         audienceType: CampaignAudienceType.TAG,
         targetConfig: { tagIds: [tags[0]!.id, tags[2]!.id] },
-        message: 'Temos uma condicao especial para retomar sua operacao com automacao e inbox colaborativa.',
+        message: 'Temos uma condicao especial para retomar sua operação com automacao e inbox colaborativa.',
         status: CampaignStatus.SCHEDULED,
       },
       {

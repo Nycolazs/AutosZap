@@ -678,19 +678,99 @@ function launchEmbeddedSignupViaBridge({
       resolve(result);
     };
 
+    let authCode: string | null = null;
+    let signupData: Omit<EmbeddedSignupResult, 'code'> | null = null;
+
+    const tryResolve = () => {
+      if (settled || !authCode || !signupData?.phoneNumberId || !signupData.wabaId) {
+        return;
+      }
+
+      settleWithSuccess({
+        code: authCode,
+        phoneNumberId: signupData.phoneNumberId,
+        wabaId: signupData.wabaId,
+        businessId: signupData.businessId,
+      });
+    };
+
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== targetOrigin || !isEmbeddedSignupBridgeMessage(event.data)) {
+      // Bridge-format message from autoszap.com (legacy)
+      if (event.origin === targetOrigin && isEmbeddedSignupBridgeMessage(event.data)) {
+        if (event.data.success) {
+          settleWithSuccess(event.data.result);
+          return;
+        }
+
+        settleWithError(
+          new Error(event.data.error || 'Nao foi possivel concluir o Embedded Signup.'),
+        );
         return;
       }
 
-      if (event.data.success) {
-        settleWithSuccess(event.data.result);
+      // OAuth callback message from the redirect page (auth code)
+      if (
+        event.origin === targetOrigin &&
+        event.data &&
+        typeof event.data === 'object' &&
+        event.data.type === OAUTH_CALLBACK_MESSAGE_TYPE
+      ) {
+        if (event.data.code) {
+          authCode = event.data.code as string;
+          tryResolve();
+
+          // If we only got the code but no signup data, resolve with code only
+          // The backend can look up phone_number_id and waba_id from the code
+          if (!settled) {
+            settleWithSuccess({
+              code: authCode,
+              phoneNumberId: (event.data.phoneNumberId as string) || '',
+              wabaId: (event.data.wabaId as string) || '',
+            });
+          }
+          return;
+        }
+
+        settleWithError(
+          new Error(
+            (event.data.error as string) || 'Autorizacao nao concluida na Meta.',
+          ),
+        );
         return;
       }
 
-      settleWithError(
-        new Error(event.data.error || 'Nao foi possivel concluir o Embedded Signup.'),
-      );
+      // WA_EMBEDDED_SIGNUP events from Facebook (phone_number_id, waba_id)
+      if (FACEBOOK_ORIGINS.has(event.origin)) {
+        const payload = parseEmbeddedSignupMessage(event.data);
+        if (!payload || payload.type !== 'WA_EMBEDDED_SIGNUP') {
+          return;
+        }
+
+        const eventName = payload.event?.toUpperCase();
+        if (
+          eventName === 'CANCEL' ||
+          eventName === 'ERROR' ||
+          eventName === 'FINISH_ONLY_WABA'
+        ) {
+          settleWithError(
+            new Error(getEmbeddedSignupEventMessage(payload)),
+          );
+          return;
+        }
+
+        if (
+          eventName === 'FINISH' ||
+          eventName === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
+        ) {
+          signupData = {
+            phoneNumberId: payload.data?.phone_number_id ?? '',
+            wabaId: payload.data?.waba_id ?? '',
+            businessId: payload.data?.business_id,
+          };
+
+          tryResolve();
+        }
+      }
     };
 
     window.addEventListener('message', onMessage);

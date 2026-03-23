@@ -6,6 +6,7 @@ export type MenuNodeInput = {
   id?: string;
   label: string;
   message: string;
+  type?: string;
   order: number;
   parentId?: string | null;
   children?: MenuNodeInput[];
@@ -159,6 +160,14 @@ export class AutoResponseMenusService {
     });
   }
 
+  async globalToggle(workspaceId: string, enabled: boolean) {
+    await this.prisma.autoResponseMenu.updateMany({
+      where: { workspaceId },
+      data: { isActive: enabled },
+    });
+    return { enabled };
+  }
+
   async remove(workspaceId: string, id: string) {
     const menu = await this.prisma.autoResponseMenu.findFirst({
       where: { id, workspaceId },
@@ -183,7 +192,8 @@ export class AutoResponseMenusService {
           menuId,
           parentId,
           label: node.label,
-          message: node.message,
+          message: node.message ?? '',
+          type: node.type ?? 'message',
           order: node.order,
         },
       });

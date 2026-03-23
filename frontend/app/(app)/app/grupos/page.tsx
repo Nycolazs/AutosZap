@@ -35,7 +35,7 @@ export default function GroupsPage() {
   return (
     <CrudPage
       title="Grupos"
-      description="Agrupe contatos por contexto comercial, evento ou operacao."
+      description="Agrupe contatos por contexto comercial, evento ou operação."
       endpoint="groups"
       queryKey="groups"
       columns={columns}

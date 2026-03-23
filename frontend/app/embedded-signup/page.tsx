@@ -4,9 +4,8 @@ import { useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, Lock, RefreshCw, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE,
-  launchEmbeddedSignupDirect,
-  type EmbeddedSignupResult,
+  AUTOSZAP_PUBLIC_APP_URL,
+  OAUTH_CALLBACK_PATH,
 } from '@/lib/facebook-sdk';
 
 type BridgeStatus = 'ready' | 'launching' | 'success' | 'error';
@@ -32,7 +31,6 @@ function getErrorMessage(error: unknown) {
 
 export default function EmbeddedSignupBridgePage() {
   const launchStartedRef = useRef(false);
-  const openerOrigin = useMemo(() => getSearchParam('origin'), []);
   const appId = useMemo(() => getSearchParam('appId'), []);
   const configurationId = useMemo(() => getSearchParam('configurationId'), []);
   const graphApiVersion = useMemo(
@@ -61,7 +59,7 @@ export default function EmbeddedSignupBridgePage() {
 
   const [bridgeState, setBridgeState] = useState<BridgeState>(initialState);
 
-  async function startEmbeddedSignup() {
+  function startEmbeddedSignup() {
     if (launchStartedRef.current) {
       return;
     }
@@ -69,67 +67,24 @@ export default function EmbeddedSignupBridgePage() {
     launchStartedRef.current = true;
     setBridgeState({
       status: 'launching',
-      message: 'Abrindo autenticacao segura da Meta...',
+      message: 'Redirecionando para a Meta...',
     });
 
-    try {
-      const result = await launchEmbeddedSignupDirect({
-        appId,
-        configurationId,
-        graphApiVersion,
-      });
+    const redirectUri = new URL(OAUTH_CALLBACK_PATH, AUTOSZAP_PUBLIC_APP_URL).toString();
 
-      notifyOpener({
-        type: EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE,
-        success: true,
-        result,
-      });
+    const url = new URL('https://business.facebook.com/messaging/whatsapp/onboard/');
+    url.searchParams.set('app_id', appId);
+    url.searchParams.set('config_id', configurationId);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('override_default_response_type', 'true');
+    url.searchParams.set(
+      'extras',
+      JSON.stringify({ sessionInfoVersion: '3', version: 'v3', setup: {} }),
+    );
 
-      setBridgeState({
-        status: 'success',
-        message: 'Conexao autorizada na Meta. Esta janela pode ser fechada.',
-      });
-
-      window.setTimeout(() => window.close(), 1200);
-    } catch (error) {
-      launchStartedRef.current = false;
-      const message = getErrorMessage(error);
-
-      notifyOpener({
-        type: EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE,
-        success: false,
-        error: message,
-      });
-
-      setBridgeState({
-        status: 'error',
-        message,
-      });
-    }
-  }
-
-  function notifyOpener(
-    payload:
-      | {
-          type: typeof EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE;
-          success: true;
-          result: EmbeddedSignupResult;
-        }
-      | {
-          type: typeof EMBEDDED_SIGNUP_BRIDGE_MESSAGE_TYPE;
-          success: false;
-          error: string;
-        },
-  ) {
-    if (!window.opener || !openerOrigin) {
-      return;
-    }
-
-    try {
-      window.opener.postMessage(payload, openerOrigin);
-    } catch {
-      // Ignore cross-window delivery errors and keep the bridge UI visible.
-    }
+    // Navigate in the same window — no nested popup needed
+    window.location.href = url.toString();
   }
 
   const isReady = bridgeState.status === 'ready';

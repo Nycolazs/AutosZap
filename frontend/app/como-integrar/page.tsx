@@ -42,7 +42,7 @@ const steps = [
 const optionCards = [
   {
     title: 'Opcao recomendada para iniciar rapido',
-    subtitle: 'Usar um numero novo exclusivo para a operacao no AutoZap.',
+    subtitle: 'Usar um numero novo exclusivo para a operação no AutoZap.',
     points: [
       'Evita impacto imediato em um numero que ja esta em uso.',
       'Processo tecnico costuma ser mais previsivel.',

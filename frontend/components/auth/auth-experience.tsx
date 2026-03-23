@@ -308,7 +308,9 @@ export function AuthExperience({
       }
 
       toast.success('Conta criada com sucesso! Bem-vindo ao AutosZap.');
-      router.push('/app');
+      const isInviteOnboarding =
+        'inviteCode' in values && values.inviteCode.trim().length > 0;
+      router.push(isInviteOnboarding ? '/app/boas-vindas' : '/app');
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Erro ao criar conta.',

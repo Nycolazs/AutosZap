@@ -3,7 +3,16 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { Check, ClipboardCopy, KeyRound, LockKeyhole, Loader2, Settings2, ShieldCheck, Trash2, UserCog, UsersRound } from 'lucide-react';
+import {
+  Check,
+  ClipboardCopy,
+  KeyRound,
+  Loader2,
+  ShieldCheck,
+  Trash2,
+  UserCog,
+  UsersRound,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -14,14 +23,17 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { apiRequest } from '@/lib/api-client';
 import { getRoleLabel } from '@/lib/permissions';
-import { PermissionCatalogEntry, TeamMember, WorkspaceRole } from '@/lib/types';
+import { TeamMember, WorkspaceRole } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
-
-/* ── Invite code types ── */
 
 interface InviteCode {
   id: string;
@@ -52,6 +64,19 @@ const inviteRoleLabelMap: Record<string, string> = {
 
 const ADMIN_ROLE_SELECTION = 'system-admin';
 const DEFAULT_SELLER_ROLE_SELECTION = 'system-seller';
+
+const teamMemberSchema = z.object({
+  title: z.string().optional(),
+  roleSelection: z.string().min(1, 'Selecione um papel.'),
+});
+
+type TeamMemberFormValues = z.infer<typeof teamMemberSchema>;
+
+const statusLabelMap: Record<string, string> = {
+  ACTIVE: 'Ativo',
+  PENDING: 'Pendente',
+  INACTIVE: 'Inativo',
+};
 
 function parseRoleSelection(roleSelection: string) {
   if (roleSelection === ADMIN_ROLE_SELECTION) {
@@ -90,84 +115,24 @@ function getMemberRoleSelection(member: TeamMember | null) {
   return DEFAULT_SELLER_ROLE_SELECTION;
 }
 
-const teamMemberSchema = z.object({
-  name: z.string().min(2, 'Informe ao menos 2 caracteres.'),
-  email: z.string().email('Informe um email valido.'),
-  title: z.string().optional(),
-  roleSelection: z.string().min(1, 'Selecione um papel.'),
-  status: z.enum(['PENDING', 'ACTIVE', 'INACTIVE']),
-  password: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal('')),
-  confirmPassword: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal('')),
-}).superRefine((values, ctx) => {
-  const hasPassword = Boolean(values.password && values.password.length > 0);
-  const hasConfirm = Boolean(values.confirmPassword && values.confirmPassword.length > 0);
-
-  if (!hasPassword && !hasConfirm) {
-    return;
-  }
-
-  if (!hasPassword || (values.password?.length ?? 0) < 6) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['password'],
-      message: 'A senha precisa ter ao menos 6 caracteres.',
-    });
-  }
-
-  if (!hasConfirm || (values.confirmPassword?.length ?? 0) < 6) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['confirmPassword'],
-      message: 'Confirme a senha com ao menos 6 caracteres.',
-    });
-  }
-
-  if (values.password !== values.confirmPassword) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['confirmPassword'],
-      message: 'As senhas nao conferem.',
-    });
-  }
-});
-
-type TeamMemberFormValues = z.infer<typeof teamMemberSchema>;
-
-const statusLabelMap: Record<string, string> = {
-  ACTIVE: 'Ativo',
-  PENDING: 'Pendente',
-  INACTIVE: 'Inativo',
-};
-
 export default function TeamPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
-  const [permissionsMember, setPermissionsMember] = useState<TeamMember | null>(null);
-  const [permissionDraft, setPermissionDraft] = useState<Record<string, boolean>>({});
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<string>('SELLER');
   const [inviteWorkspaceRoleId, setInviteWorkspaceRoleId] = useState<string>('');
   const [inviteTitle, setInviteTitle] = useState('');
-  const [generatedInvite, setGeneratedInvite] = useState<GeneratedInvite | null>(null);
+  const [generatedInvite, setGeneratedInvite] = useState<GeneratedInvite | null>(
+    null,
+  );
   const [copiedCode, setCopiedCode] = useState(false);
 
   const teamQuery = useQuery({
     queryKey: ['team'],
     queryFn: () => apiRequest<TeamMember[]>('team'),
   });
-  const permissionCatalogQuery = useQuery({
-    queryKey: ['team-permission-catalog'],
-    queryFn: () => apiRequest<PermissionCatalogEntry[]>('team/permissions/catalog'),
-  });
+
   const workspaceRolesQuery = useQuery({
     queryKey: ['workspace-roles'],
     queryFn: () => apiRequest<WorkspaceRole[]>('workspace-roles'),
@@ -179,15 +144,31 @@ export default function TeamPage() {
     queryFn: () => apiRequest<InviteCode[]>('team/invite-codes'),
   });
 
+  const workspaceRoleOptions = useMemo(
+    () => [
+      { label: 'Administrador', value: ADMIN_ROLE_SELECTION },
+      { label: 'Vendedor', value: DEFAULT_SELLER_ROLE_SELECTION },
+      ...(workspaceRolesQuery.data ?? []).map((role) => ({
+        label: role.name,
+        value: role.id,
+      })),
+    ],
+    [workspaceRolesQuery.data],
+  );
+
   const generateInviteMutation = useMutation({
-    mutationFn: (payload: { role: string; title?: string; workspaceRoleId?: string }) =>
+    mutationFn: (payload: {
+      role: string;
+      title?: string;
+      workspaceRoleId?: string;
+    }) =>
       apiRequest<GeneratedInvite>('team/invite-code', {
         method: 'POST',
         body: payload,
       }),
     onSuccess: (data) => {
       setGeneratedInvite(data);
-      queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
+      void queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -197,82 +178,30 @@ export default function TeamPage() {
       apiRequest(`team/invite-code/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       toast.success('Codigo revogado.');
-      queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
+      void queryClient.invalidateQueries({ queryKey: ['invite-codes'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const handleCopyCode = async (code: string) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    toast.success('Codigo copiado!');
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const groupedPermissions = useMemo(() => {
-    const catalog = permissionCatalogQuery.data ?? [];
-
-    return catalog.reduce<Record<string, PermissionCatalogEntry[]>>((groups, permission) => {
-      groups[permission.category] = [...(groups[permission.category] ?? []), permission];
-      return groups;
-    }, {});
-  }, [permissionCatalogQuery.data]);
-
-  const workspaceRoleOptions = useMemo(
-    () =>
-      (workspaceRolesQuery.data ?? []).map((role) => ({
-        label: role.name,
-        value: role.id,
-      })),
-    [workspaceRolesQuery.data],
-  );
-
   const saveMemberMutation = useMutation({
     mutationFn: (values: TeamMemberFormValues) => {
-      const { role, workspaceRoleId } = parseRoleSelection(values.roleSelection);
-      const normalizedPassword = values.password?.trim() ?? '';
-      const normalizedConfirmPassword = values.confirmPassword?.trim() ?? '';
-
-      if (selectedMember) {
-        return apiRequest(`team/${selectedMember.id}`, {
-          method: 'PATCH',
-          body: {
-            name: values.name,
-            email: values.email,
-            title: values.title,
-            role,
-            workspaceRoleId,
-            status: values.status,
-            ...(normalizedPassword
-              ? {
-                  password: normalizedPassword,
-                  confirmPassword: normalizedConfirmPassword,
-                }
-              : {}),
-          },
-        });
+      if (!selectedMember) {
+        throw new Error('Selecione um membro para editar.');
       }
 
-      return apiRequest('team', {
-        method: 'POST',
+      const { role, workspaceRoleId } = parseRoleSelection(values.roleSelection);
+
+      return apiRequest(`team/${selectedMember.id}`, {
+        method: 'PATCH',
         body: {
-          name: values.name,
-          email: values.email,
           title: values.title,
           role,
           workspaceRoleId,
-          status: values.status,
-          ...(normalizedPassword
-            ? {
-                password: normalizedPassword,
-                confirmPassword: normalizedConfirmPassword,
-              }
-            : {}),
         },
       });
     },
     onSuccess: async () => {
-      toast.success(selectedMember ? 'Membro atualizado.' : 'Membro criado.');
+      toast.success('Membro atualizado.');
       setDialogOpen(false);
       setSelectedMember(null);
       await Promise.all([
@@ -287,6 +216,8 @@ export default function TeamPage() {
     mutationFn: (id: string) => apiRequest(`team/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
       toast.success('Membro desativado.');
+      setDialogOpen(false);
+      setSelectedMember(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['team'] }),
         queryClient.invalidateQueries({ queryKey: ['auth-me'] }),
@@ -295,25 +226,13 @@ export default function TeamPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const savePermissionsMutation = useMutation({
-    mutationFn: async () => {
-      if (!permissionsMember || !permissionCatalogQuery.data) {
-        return null;
-      }
-
-      return apiRequest(`team/${permissionsMember.id}/permissions`, {
-        method: 'PATCH',
-        body: {
-          permissions: permissionCatalogQuery.data.map((permission) => ({
-            permission: permission.key,
-            allowed: Boolean(permissionDraft[permission.key]),
-          })),
-        },
-      });
-    },
+  const activateMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest(`team/${id}/activate`, { method: 'POST' }),
     onSuccess: async () => {
-      toast.success('Permissões salvas.');
-      setPermissionsMember(null);
+      toast.success('Membro ativado.');
+      setDialogOpen(false);
+      setSelectedMember(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['team'] }),
         queryClient.invalidateQueries({ queryKey: ['auth-me'] }),
@@ -321,6 +240,13 @@ export default function TeamPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const handleCopyCode = async (code: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    toast.success('Codigo copiado!');
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
 
   const columns = useMemo<ColumnDef<TeamMember>[]>(
     () => [
@@ -330,7 +256,9 @@ export default function TeamPage() {
         cell: ({ row }) => (
           <div>
             <p className="font-medium">{row.original.name}</p>
-            <p className="text-xs text-muted-foreground">{row.original.email}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.original.email}
+            </p>
           </div>
         ),
       },
@@ -340,7 +268,8 @@ export default function TeamPage() {
         cell: ({ row }) => (
           <div className="space-y-1">
             <Badge variant="secondary">
-              {row.original.workspaceRole?.name ?? getRoleLabel(row.original.normalizedRole)}
+              {row.original.workspaceRole?.name ??
+                getRoleLabel(row.original.normalizedRole)}
             </Badge>
             {row.original.workspaceRole ? (
               <p className="text-[11px] text-muted-foreground">
@@ -353,7 +282,9 @@ export default function TeamPage() {
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => <Badge>{statusLabelMap[row.original.status] ?? row.original.status}</Badge>,
+        cell: ({ row }) => (
+          <Badge>{statusLabelMap[row.original.status] ?? row.original.status}</Badge>
+        ),
       },
       {
         accessorKey: 'title',
@@ -361,99 +292,82 @@ export default function TeamPage() {
         cell: ({ row }) => row.original.title ?? 'Sem cargo',
       },
       {
-        accessorKey: 'grantedPermissions',
-        header: 'Permissões',
-        cell: ({ row }) => `${row.original.grantedPermissions.length} liberadas`,
-      },
-      {
         accessorKey: 'lastLoginAt',
-        header: 'Último acesso',
-        cell: ({ row }) => (row.original.lastLoginAt ? formatDate(row.original.lastLoginAt) : 'Sem acesso ainda'),
+        header: 'Ultimo acesso',
+        cell: ({ row }) =>
+          row.original.lastLoginAt
+            ? formatDate(row.original.lastLoginAt)
+            : 'Sem acesso ainda',
       },
       {
         id: 'actions',
-        header: 'Ações',
-        cell: ({ row }) => (
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                setSelectedMember(row.original);
-                setDialogOpen(true);
-              }}
-            >
-              Editar
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                setPermissionsMember(row.original);
-                setPermissionDraft(row.original.permissions);
-              }}
-              disabled={!row.original.userId}
-            >
-              <Settings2 className="h-4 w-4" />
-              Permissões
-            </Button>
-            <ConfirmDialog
-              trigger={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  Desativar
-                </Button>
-              }
-              title="Desativar membro"
-              description="O membro deixará de acessar a empresa até ser reativado."
-              actionLabel="Desativar"
-              onConfirm={() => deactivateMutation.mutate(row.original.id)}
-            />
-          </div>
-        ),
+        header: 'Acoes',
+        cell: ({ row }) => {
+          const isInactive = row.original.status === 'INACTIVE';
+
+          return (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedMember(row.original);
+                  setDialogOpen(true);
+                }}
+              >
+                Editar
+              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {isInactive ? 'Ativar' : 'Desativar'}
+                  </Button>
+                }
+                title={isInactive ? 'Ativar membro' : 'Desativar membro'}
+                description={
+                  isInactive
+                    ? 'O membro voltara a acessar a empresa com o mesmo papel atual.'
+                    : 'O membro deixara de acessar a empresa ate ser reativado.'
+                }
+                actionLabel={isInactive ? 'Ativar' : 'Desativar'}
+                actionVariant={isInactive ? 'default' : 'danger'}
+                onConfirm={() =>
+                  isInactive
+                    ? activateMutation.mutate(row.original.id)
+                    : deactivateMutation.mutate(row.original.id)
+                }
+              />
+            </div>
+          );
+        },
       },
     ],
-    [deactivateMutation],
+    [activateMutation, deactivateMutation],
   );
 
   const members = teamQuery.data ?? [];
   const selectedMemberDefaultValues: TeamMemberFormValues = selectedMember
     ? {
-        name: selectedMember.name,
-        email: selectedMember.email,
         title: selectedMember.title ?? '',
         roleSelection: getMemberRoleSelection(selectedMember),
-        status:
-          selectedMember.status === 'ACTIVE' || selectedMember.status === 'INACTIVE'
-            ? selectedMember.status
-            : 'PENDING',
-          password: '',
-          confirmPassword: '',
       }
     : {
-        name: '',
-        email: '',
         title: '',
         roleSelection: DEFAULT_SELLER_ROLE_SELECTION,
-        status: 'PENDING',
-          password: '',
-          confirmPassword: '',
       };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Equipe"
-        description="Gerencie papel, status e permissões granulares de cada usuário da empresa."
+        description="Gerencie apenas o cargo e o papel de cada membro. Novas pessoas entram na empresa somente por codigo de convite."
         action={
-          <div className="flex flex-wrap gap-2">
           <Button
-            variant="secondary"
             onClick={() => {
               setInviteDialogOpen(true);
               setGeneratedInvite(null);
@@ -465,60 +379,32 @@ export default function TeamPage() {
             <KeyRound className="h-4 w-4" />
             Gerar convite
           </Button>
-          <EntityFormDialog
-            open={dialogOpen}
-            onOpenChange={(open) => {
-              setDialogOpen(open);
-              if (!open) {
-                setSelectedMember(null);
-              }
-            }}
-            title={selectedMember ? 'Editar membro' : 'Adicionar membro'}
-            description="Convites pendentes ficam sem permissões até a conta ser ativada."
-            schema={teamMemberSchema}
-            defaultValues={selectedMemberDefaultValues}
-            submitLabel={selectedMember ? 'Salvar alterações' : 'Criar membro'}
-            onSubmit={async (values) => saveMemberMutation.mutateAsync(values)}
-            fields={[
-              { name: 'name', label: 'Nome' },
-              { name: 'email' as const, label: 'Email', type: 'email' as const },
-              { name: 'title', label: 'Cargo' },
-              {
-                name: 'roleSelection',
-                label: 'Papel',
-                type: 'select',
-                options: workspaceRoleOptions,
-              },
-              {
-                name: 'status',
-                label: 'Status',
-                type: 'select',
-                options: [
-                  { label: 'Pendente', value: 'PENDING' },
-                  { label: 'Ativo', value: 'ACTIVE' },
-                  { label: 'Inativo', value: 'INACTIVE' },
-                ],
-              },
-              {
-                name: 'password' as const,
-                label: selectedMember ? 'Nova senha (opcional)' : 'Senha (opcional)',
-                type: 'password' as const,
-              },
-              {
-                name: 'confirmPassword' as const,
-                label: 'Confirmar senha',
-                type: 'password' as const,
-              },
-            ]}
-            trigger={
-              <Button onClick={() => setSelectedMember(null)}>
-                <UsersRound className="h-4 w-4" />
-                Novo membro
-              </Button>
-            }
-          />
-          </div>
         }
+      />
+
+      <EntityFormDialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setSelectedMember(null);
+          }
+        }}
+        title="Editar membro"
+        description="Nome, email e senha sao definidos pelo proprio usuario quando ele entra com convite. Aqui voce ajusta apenas cargo e papel."
+        schema={teamMemberSchema}
+        defaultValues={selectedMemberDefaultValues}
+        submitLabel="Salvar alteracoes"
+        onSubmit={async (values) => saveMemberMutation.mutateAsync(values)}
+        fields={[
+          { name: 'title', label: 'Cargo' },
+          {
+            name: 'roleSelection',
+            label: 'Papel',
+            type: 'select',
+            options: workspaceRoleOptions,
+          },
+        ]}
       />
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -537,7 +423,7 @@ export default function TeamPage() {
               <EmptyState
                 icon={UsersRound}
                 title="Nenhum membro cadastrado"
-                description="Crie vendedores e administradores para distribuir o atendimento da empresa."
+                description="Use Gerar convite para adicionar pessoas na empresa com o papel correto desde o primeiro acesso."
               />
             )}
           </CardContent>
@@ -550,16 +436,31 @@ export default function TeamPage() {
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Total</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{members.length}</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
+                  Total
+                </p>
+                <p className="mt-1 text-lg font-semibold text-foreground">
+                  {members.length}
+                </p>
               </div>
               <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Admins</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{members.filter((member) => member.normalizedRole === 'ADMIN').length}</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
+                  Admins
+                </p>
+                <p className="mt-1 text-lg font-semibold text-foreground">
+                  {
+                    members.filter((member) => member.normalizedRole === 'ADMIN')
+                      .length
+                  }
+                </p>
               </div>
               <div className="rounded-[18px] border border-border bg-white/[0.03] px-3 py-3">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">Ativos</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{members.filter((member) => member.status === 'ACTIVE').length}</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
+                  Ativos
+                </p>
+                <p className="mt-1 text-lg font-semibold text-foreground">
+                  {members.filter((member) => member.status === 'ACTIVE').length}
+                </p>
               </div>
             </div>
             <div className="rounded-[22px] border border-border bg-white/[0.03] p-4">
@@ -567,28 +468,37 @@ export default function TeamPage() {
                 <ShieldCheck className="h-4 w-4 text-primary" />
                 Administradores
               </div>
-              <p>Vêem todas as conversas da empresa, podem gerenciar usuários, permissões e configurações.</p>
+              <p>
+                Veem todas as conversas da empresa e podem gerenciar papeis,
+                equipe e configuracoes.
+              </p>
             </div>
             <div className="rounded-[22px] border border-border bg-white/[0.03] p-4">
               <div className="mb-2 flex items-center gap-2 text-foreground">
                 <UserCog className="h-4 w-4 text-primary" />
                 Vendedores
               </div>
-              <p>Visualizam apenas as telas liberadas e só acessam conversas próprias ou disponíveis em novo/aguardando.</p>
+              <p>
+                Visualizam apenas as telas liberadas e so acessam conversas
+                proprias ou disponiveis em novo/aguardando.
+              </p>
             </div>
             <div className="rounded-[22px] border border-border bg-white/[0.03] p-4">
               <div className="mb-2 flex items-center gap-2 text-foreground">
-                <LockKeyhole className="h-4 w-4 text-primary" />
-                Permissões granulares
+                <KeyRound className="h-4 w-4 text-primary" />
+                Convites
               </div>
-              <p>Use a ação de permissões para liberar módulos e ações específicas por usuário de forma independente.</p>
+              <p>
+                Todo novo membro entra apenas por convite, ja vinculado a
+                empresa e ao papel definido por voce.
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ── Active invite codes ── */}
-      {(inviteCodesQuery.data ?? []).filter((c) => c.status === 'ACTIVE').length > 0 ? (
+      {(inviteCodesQuery.data ?? []).filter((code) => code.status === 'ACTIVE')
+        .length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -599,7 +509,7 @@ export default function TeamPage() {
           <CardContent>
             <div className="space-y-2">
               {(inviteCodesQuery.data ?? [])
-                .filter((c) => c.status === 'ACTIVE')
+                .filter((code) => code.status === 'ACTIVE')
                 .map((invite) => (
                   <div
                     key={invite.id}
@@ -613,7 +523,9 @@ export default function TeamPage() {
                         {inviteRoleLabelMap[invite.role] ?? invite.role}
                       </Badge>
                       {invite.title ? (
-                        <span className="text-xs text-muted-foreground">{invite.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {invite.title}
+                        </span>
                       ) : null}
                     </div>
                     {invite.expiresAt ? (
@@ -646,7 +558,6 @@ export default function TeamPage() {
         </Card>
       ) : null}
 
-      {/* ── Invite code generation dialog ── */}
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -668,7 +579,9 @@ export default function TeamPage() {
                 </code>
                 <div className="flex flex-wrap justify-center gap-2">
                   <Badge variant="secondary">
-                    {generatedInvite.workspaceRoleName ?? inviteRoleLabelMap[generatedInvite.role] ?? generatedInvite.role}
+                    {generatedInvite.workspaceRoleName ??
+                      inviteRoleLabelMap[generatedInvite.role] ??
+                      generatedInvite.role}
                   </Badge>
                   {generatedInvite.title ? (
                     <Badge variant="secondary">{generatedInvite.title}</Badge>
@@ -703,41 +616,32 @@ export default function TeamPage() {
             <div className="space-y-4">
               {(workspaceRolesQuery.data ?? []).length > 0 ? (
                 <div className="space-y-2">
-                  <label className="text-[12px] font-medium" htmlFor="invite-workspace-role">
+                  <label
+                    className="text-[12px] font-medium"
+                    htmlFor="invite-workspace-role"
+                  >
                     Papel personalizado
                   </label>
                   <select
                     id="invite-workspace-role"
                     value={inviteWorkspaceRoleId}
-                    onChange={(e) => {
-                      setInviteWorkspaceRoleId(e.target.value);
-                      if (e.target.value) setInviteRole('SELLER');
+                    onChange={(event) => {
+                      setInviteWorkspaceRoleId(event.target.value);
+                      setInviteRole('SELLER');
                     }}
                     className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
                   >
-                    <option value="">Nenhum (usar papel padrao)</option>
+                    <option value="">Nenhum</option>
                     {(workspaceRolesQuery.data ?? []).map((role) => (
                       <option key={role.id} value={role.id}>
                         {role.name}
                       </option>
                     ))}
                   </select>
-                  {!inviteWorkspaceRoleId && (
-                    <div className="space-y-2 pt-1">
-                      <label className="text-[12px] font-medium" htmlFor="invite-role">
-                        Papel base
-                      </label>
-                      <select
-                        id="invite-role"
-                        value={inviteRole}
-                        onChange={(e) => setInviteRole(e.target.value)}
-                        className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
-                      >
-                        <option value="ADMIN">Administrador</option>
-                        <option value="SELLER">Vendedor</option>
-                      </select>
-                    </div>
-                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Se nenhum papel personalizado for escolhido, o convite sera
+                    gerado como vendedor.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -747,17 +651,19 @@ export default function TeamPage() {
                   <select
                     id="invite-role"
                     value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
+                    onChange={(event) => setInviteRole(event.target.value)}
                     className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="ADMIN">Administrador</option>
                     <option value="SELLER">Vendedor</option>
                   </select>
                   <p className="text-[11px] text-muted-foreground">
-                    Crie papeis personalizados na pagina de Papeis para mais opcoes.
+                    Crie papeis personalizados na pagina de Papeis para mais
+                    opcoes.
                   </p>
                 </div>
               )}
+
               <div className="space-y-2">
                 <label className="text-[12px] font-medium" htmlFor="invite-title">
                   Cargo (opcional)
@@ -767,10 +673,11 @@ export default function TeamPage() {
                   type="text"
                   placeholder="Ex: Gerente Comercial"
                   value={inviteTitle}
-                  onChange={(e) => setInviteTitle(e.target.value)}
+                  onChange={(event) => setInviteTitle(event.target.value)}
                   className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
+
               <Button
                 className="w-full"
                 onClick={() =>
@@ -791,73 +698,6 @@ export default function TeamPage() {
               </Button>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(permissionsMember)} onOpenChange={(open) => !open && setPermissionsMember(null)}>
-        <DialogContent className="max-w-3xl sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
-          <DialogHeader className="shrink-0 pr-10">
-            <DialogTitle>Permissões do usuário</DialogTitle>
-            <DialogDescription>
-              {permissionsMember?.name
-                ? `Defina quais telas e ações ${permissionsMember.name} pode acessar.`
-                : 'Gerencie permissões granulares.'}
-            </DialogDescription>
-          </DialogHeader>
-          {permissionsMember ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-5">
-              {permissionsMember.normalizedRole === 'ADMIN' ? (
-                <div className="rounded-[22px] border border-primary/20 bg-primary/10 p-4 text-sm text-foreground">
-                  Administradores recebem acesso completo automaticamente. As permissões abaixo ficam travadas enquanto o usuário for admin.
-                </div>
-              ) : null}
-
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
-                {Object.entries(groupedPermissions).map(([category, permissions]) => (
-                  <Card key={category} className="p-0">
-                    <CardHeader className="p-5 pb-3">
-                      <CardTitle className="text-base">{category}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-3 p-5 pt-0 md:grid-cols-2">
-                      {permissions.map((permission) => (
-                        <label
-                          key={permission.key}
-                          className="flex items-start gap-3 rounded-2xl border border-border bg-white/[0.03] p-3"
-                        >
-                          <Checkbox
-                            checked={Boolean(permissionDraft[permission.key])}
-                            disabled={permissionsMember.normalizedRole === 'ADMIN'}
-                            onCheckedChange={(checked) =>
-                              setPermissionDraft((current) => ({
-                                ...current,
-                                [permission.key]: Boolean(checked),
-                              }))
-                            }
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{permission.label}</p>
-                            <p className="text-xs text-muted-foreground">{permission.description}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <div className="flex flex-col-reverse gap-2.5 border-t border-border pt-4 sm:flex-row sm:justify-end sm:gap-3">
-                <Button variant="secondary" onClick={() => setPermissionsMember(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={() => savePermissionsMutation.mutate()}
-                  disabled={savePermissionsMutation.isPending || permissionsMember.normalizedRole === 'ADMIN'}
-                >
-                  Salvar permissões
-                </Button>
-              </div>
-            </div>
-          ) : null}
         </DialogContent>
       </Dialog>
     </div>

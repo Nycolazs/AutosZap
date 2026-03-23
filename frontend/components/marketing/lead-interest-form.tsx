@@ -72,7 +72,7 @@ export function LeadInterestForm() {
           Fale com o time comercial do AutoZap
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Envie seus dados e retornamos com orientacao sobre integracao, prazos e melhor plano para sua operacao.
+          Envie seus dados e retornamos com orientacao sobre integracao, prazos e melhor plano para sua operação.
         </p>
       </CardHeader>
 

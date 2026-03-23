@@ -112,7 +112,12 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           ? 'Conta criada com sucesso!'
           : 'Sessao iniciada com sucesso.',
       );
-      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
+      const nextHref = data.user?.isPlatformAdmin
+        ? '/platform'
+        : mode === 'register' && inviteCode
+          ? '/app/boas-vindas'
+          : '/app';
+      router.push(nextHref);
     },
     [companyName, inviteCode, mode, router],
   );
