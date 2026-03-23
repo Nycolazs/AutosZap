@@ -21,6 +21,21 @@ import {
 } from './platform.dto';
 import { PlatformService } from './platform.service';
 
+class CreateSupportTicketDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(120)
+  title!: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(5000)
+  body!: string;
+
+  @IsIn(['IMPROVEMENT', 'BUG', 'QUESTION'])
+  category!: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
+}
+
 @Controller('platform')
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
@@ -81,19 +96,4 @@ export class PlatformController {
   listMyTickets(@CurrentUser() user: CurrentAuthUser) {
     return this.platformService.listMyTickets(user);
   }
-}
-
-class CreateSupportTicketDto {
-  @IsString()
-  @MinLength(5)
-  @MaxLength(120)
-  title!: string;
-
-  @IsString()
-  @MinLength(10)
-  @MaxLength(5000)
-  body!: string;
-
-  @IsIn(['IMPROVEMENT', 'BUG', 'QUESTION'])
-  category!: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
 }
