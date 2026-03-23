@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileText, KeyRound, Smartphone, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { PageFade } from '@/components/marketing/page-fade';
 
 export const metadata: Metadata = {
   title: 'Como integrar seu numero ao AutosZap',
@@ -75,6 +76,7 @@ const bestPractices = [
 
 export default function HowToIntegratePage() {
   return (
+    <PageFade>
     <main className="h-dvh overflow-y-auto">
       <div className="mx-auto w-full max-w-[980px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
@@ -187,5 +189,6 @@ export default function HowToIntegratePage() {
         </section>
       </div>
     </main>
+    </PageFade>
   );
 }
