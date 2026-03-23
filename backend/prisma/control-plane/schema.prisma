@@ -97,6 +97,7 @@ model GlobalUser {
   passwordResetTokens      GlobalPasswordResetToken[]
   auditLogs                PlatformAuditLog[]         @relation("PlatformAuditActor")
   requestedProvisioningJobs TenantProvisioningJob[]   @relation("ProvisioningRequestedBy")
+  supportTickets           SupportTicket[]
 }
 
 model Company {
@@ -116,6 +117,7 @@ model Company {
   provisioningJobs TenantProvisioningJob[]
   refreshTokens    GlobalRefreshToken[]
   inviteCodes      CompanyInviteCode[]
+  supportTickets   SupportTicket[]
 }
 
 model CompanyMembership {
@@ -254,4 +256,39 @@ model CompanyInviteCode {
 
   @@index([companyId, status])
   @@index([code])
+}
+
+enum SupportTicketCategory {
+  IMPROVEMENT
+  BUG
+  QUESTION
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id              String                 @id @default(cuid())
+  companyId       String
+  globalUserId    String
+  title           String
+  body            String
+  category        SupportTicketCategory
+  status          SupportTicketStatus    @default(OPEN)
+  companyName     String
+  authorName      String
+  authorEmail     String
+  resolvedAt      DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  company         Company                @relation(fields: [companyId], references: [id])
+  author          GlobalUser             @relation(fields: [globalUserId], references: [id])
+
+  @@index([companyId, status])
+  @@index([globalUserId])
+  @@index([status, createdAt])
 }

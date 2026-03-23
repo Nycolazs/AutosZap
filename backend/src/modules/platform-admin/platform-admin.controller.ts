@@ -151,4 +151,21 @@ export class PlatformAdminController {
       dto,
     );
   }
+
+  @Get('support-tickets')
+  listSupportTickets(@Query() query: { status?: string; page?: string; limit?: string }) {
+    return this.platformAdminService.listSupportTickets({
+      status: query.status,
+      page: query.page ? Number(query.page) : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  @Patch('support-tickets/:ticketId/status')
+  updateSupportTicketStatus(
+    @Param('ticketId') ticketId: string,
+    @Body() dto: { status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' },
+  ) {
+    return this.platformAdminService.updateSupportTicketStatus(ticketId, dto.status);
+  }
 }

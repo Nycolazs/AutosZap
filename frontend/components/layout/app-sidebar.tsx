@@ -10,6 +10,8 @@ import {
   Code2,
   ContactRound,
   LayoutDashboard,
+  LifeBuoy,
+  ListTree,
   Megaphone,
   MessageSquareText,
   RadioTower,
@@ -18,7 +20,6 @@ import {
   Tags,
   Users,
   Workflow,
-  ListTree,
 } from 'lucide-react';
 import { isLocalDevelopment } from '@/lib/environment';
 import { PermissionMap, PermissionRequirement, canAccessRequirement } from '@/lib/permissions';
@@ -164,6 +165,11 @@ export const APP_NAV_SECTIONS: Array<{
         label: 'Configurações',
         icon: Settings,
         requirement: { permission: 'SETTINGS_VIEW' },
+      },
+      {
+        href: '/app/suporte',
+        label: 'Suporte',
+        icon: LifeBuoy,
       },
     ],
   },

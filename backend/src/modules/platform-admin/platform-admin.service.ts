@@ -806,6 +806,41 @@ export class PlatformAdminService {
     return Role.SELLER;
   }
 
+  async listSupportTickets(query: { status?: string; page?: number; limit?: number }) {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 30));
+    const skip = (page - 1) * limit;
+    const where = query.status ? { status: query.status as any } : {};
+
+    const [tickets, total] = await Promise.all([
+      this.controlPlanePrisma.supportTicket.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.controlPlanePrisma.supportTicket.count({ where }),
+    ]);
+
+    return {
+      data: tickets,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async updateSupportTicketStatus(
+    ticketId: string,
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED',
+  ) {
+    return this.controlPlanePrisma.supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        status,
+        resolvedAt: status === 'RESOLVED' || status === 'CLOSED' ? new Date() : null,
+      },
+    });
+  }
+
   private async generateUniqueCompanySlug(
     rawValue: string,
     ignoredCompanyId?: string,

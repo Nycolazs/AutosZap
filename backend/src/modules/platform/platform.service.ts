@@ -335,4 +335,55 @@ export class PlatformService {
       };
     }
   }
+
+  async createSupportTicket(
+    user: CurrentAuthUser,
+    payload: {
+      title: string;
+      body: string;
+      category: 'IMPROVEMENT' | 'BUG' | 'QUESTION';
+    },
+  ) {
+    const company = await this.controlPlanePrisma.company.findFirst({
+      where: { workspaceId: user.workspaceId },
+      select: { id: true, name: true },
+    });
+
+    const globalUser = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { globalUserId: true, name: true, email: true },
+    });
+
+    if (!company || !globalUser?.globalUserId) {
+      throw new NotFoundException('Empresa ou usuario nao encontrado.');
+    }
+
+    return this.controlPlanePrisma.supportTicket.create({
+      data: {
+        companyId: company.id,
+        globalUserId: globalUser.globalUserId,
+        title: payload.title.trim(),
+        body: payload.body.trim(),
+        category: payload.category,
+        companyName: company.name,
+        authorName: globalUser.name,
+        authorEmail: globalUser.email,
+      },
+    });
+  }
+
+  async listMyTickets(user: CurrentAuthUser) {
+    const globalUser = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { globalUserId: true },
+    });
+
+    if (!globalUser?.globalUserId) return [];
+
+    return this.controlPlanePrisma.supportTicket.findMany({
+      where: { globalUserId: globalUser.globalUserId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
 }
