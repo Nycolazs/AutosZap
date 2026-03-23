@@ -7,6 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { IsIn } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { PlatformAdmin } from '../../common/decorators/platform-admin.decorator';
@@ -24,6 +25,11 @@ import {
   UpsertMembershipDto,
 } from './platform-admin.dto';
 import { PlatformAdminService } from './platform-admin.service';
+
+class UpdateSupportTicketStatusDto {
+  @IsIn(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'])
+  status!: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+}
 
 @PlatformAdmin()
 @RateLimit({ limit: 120, windowSeconds: 60 })
@@ -149,6 +155,33 @@ export class PlatformAdminController {
       this.getActorGlobalUserId(user),
       leadInterestId,
       dto,
+    );
+  }
+
+  @Get('support-tickets/counts')
+  getSupportTicketCounts() {
+    return this.platformAdminService.getSupportTicketCounts();
+  }
+
+  @Get('support-tickets')
+  listSupportTickets(
+    @Query() query: { status?: string; page?: string; limit?: string },
+  ) {
+    return this.platformAdminService.listSupportTickets({
+      status: query.status,
+      page: query.page ? Number(query.page) : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  @Patch('support-tickets/:ticketId/status')
+  updateSupportTicketStatus(
+    @Param('ticketId') ticketId: string,
+    @Body() dto: UpdateSupportTicketStatusDto,
+  ) {
+    return this.platformAdminService.updateSupportTicketStatus(
+      ticketId,
+      dto.status,
     );
   }
 }

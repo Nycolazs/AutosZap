@@ -21,6 +21,7 @@ import { TenantContextMiddleware } from './common/tenancy/tenant-context.middlew
 import { TenancyModule } from './common/tenancy/tenancy.module';
 import { AccessControlModule } from './modules/access-control/access-control.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AutoResponseMenusModule } from './modules/auto-response-menus/auto-response-menus.module';
 import { AssistantsModule } from './modules/assistants/assistants.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -73,6 +74,7 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     CrmModule,
     CampaignsModule,
     AssistantsModule,
+    AutoResponseMenusModule,
     DashboardModule,
   ],
   controllers: [AppController],

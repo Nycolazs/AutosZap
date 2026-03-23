@@ -37,6 +37,8 @@ interface GeneratedInvite {
   code: string;
   role: string;
   title: string | null;
+  workspaceRoleId: string | null;
+  workspaceRoleName: string | null;
   expiresAt: string | null;
   companyName: string;
 }
@@ -153,6 +155,7 @@ export default function TeamPage() {
   const [permissionDraft, setPermissionDraft] = useState<Record<string, boolean>>({});
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<string>('SELLER');
+  const [inviteWorkspaceRoleId, setInviteWorkspaceRoleId] = useState<string>('');
   const [inviteTitle, setInviteTitle] = useState('');
   const [generatedInvite, setGeneratedInvite] = useState<GeneratedInvite | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -177,7 +180,7 @@ export default function TeamPage() {
   });
 
   const generateInviteMutation = useMutation({
-    mutationFn: (payload: { role: string; title?: string }) =>
+    mutationFn: (payload: { role: string; title?: string; workspaceRoleId?: string }) =>
       apiRequest<GeneratedInvite>('team/invite-code', {
         method: 'POST',
         body: payload,
@@ -455,6 +458,7 @@ export default function TeamPage() {
               setInviteDialogOpen(true);
               setGeneratedInvite(null);
               setInviteRole('SELLER');
+              setInviteWorkspaceRoleId('');
               setInviteTitle('');
             }}
           >
@@ -662,9 +666,9 @@ export default function TeamPage() {
                 <code className="rounded-xl bg-primary/10 px-6 py-3 font-mono text-[28px] font-bold tracking-[0.3em] text-primary">
                   {generatedInvite.code}
                 </code>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-center gap-2">
                   <Badge variant="secondary">
-                    {inviteRoleLabelMap[generatedInvite.role] ?? generatedInvite.role}
+                    {generatedInvite.workspaceRoleName ?? inviteRoleLabelMap[generatedInvite.role] ?? generatedInvite.role}
                   </Badge>
                   {generatedInvite.title ? (
                     <Badge variant="secondary">{generatedInvite.title}</Badge>
@@ -697,20 +701,63 @@ export default function TeamPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[12px] font-medium" htmlFor="invite-role">
-                  Papel
-                </label>
-                <select
-                  id="invite-role"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  <option value="ADMIN">Administrador</option>
-                  <option value="SELLER">Vendedor</option>
-                </select>
-              </div>
+              {(workspaceRolesQuery.data ?? []).length > 0 ? (
+                <div className="space-y-2">
+                  <label className="text-[12px] font-medium" htmlFor="invite-workspace-role">
+                    Papel personalizado
+                  </label>
+                  <select
+                    id="invite-workspace-role"
+                    value={inviteWorkspaceRoleId}
+                    onChange={(e) => {
+                      setInviteWorkspaceRoleId(e.target.value);
+                      if (e.target.value) setInviteRole('SELLER');
+                    }}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">Nenhum (usar papel padrao)</option>
+                    {(workspaceRolesQuery.data ?? []).map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!inviteWorkspaceRoleId && (
+                    <div className="space-y-2 pt-1">
+                      <label className="text-[12px] font-medium" htmlFor="invite-role">
+                        Papel base
+                      </label>
+                      <select
+                        id="invite-role"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value)}
+                        className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                      >
+                        <option value="ADMIN">Administrador</option>
+                        <option value="SELLER">Vendedor</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-[12px] font-medium" htmlFor="invite-role">
+                    Papel
+                  </label>
+                  <select
+                    id="invite-role"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="ADMIN">Administrador</option>
+                    <option value="SELLER">Vendedor</option>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Crie papeis personalizados na pagina de Papeis para mais opcoes.
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-[12px] font-medium" htmlFor="invite-title">
                   Cargo (opcional)
@@ -730,6 +777,7 @@ export default function TeamPage() {
                   generateInviteMutation.mutate({
                     role: inviteRole,
                     title: inviteTitle || undefined,
+                    workspaceRoleId: inviteWorkspaceRoleId || undefined,
                   })
                 }
                 disabled={generateInviteMutation.isPending}

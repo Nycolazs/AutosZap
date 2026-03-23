@@ -354,6 +354,7 @@ export class AuthService {
       });
 
       if (!existingTenantUser) {
+        const inviteWorkspaceRoleId = invite.workspaceRoleId ?? null;
         const tenantUser = await this.prisma.user.create({
           data: {
             workspaceId,
@@ -364,6 +365,7 @@ export class AuthService {
             role: prismaRole,
             status: UserStatus.ACTIVE,
             title: invite.title,
+            workspaceRoleId: inviteWorkspaceRoleId,
           },
         });
 
@@ -378,6 +380,7 @@ export class AuthService {
             role: prismaRole,
             status: UserStatus.ACTIVE,
             inviteToken: null,
+            workspaceRoleId: inviteWorkspaceRoleId,
           },
         });
       }
@@ -695,6 +698,7 @@ export class AuthService {
       });
 
       if (!existingTenantUser) {
+        const inviteWorkspaceRoleId = invite.workspaceRoleId ?? null;
         const tenantUser = await this.prisma.user.create({
           data: {
             workspaceId,
@@ -705,6 +709,7 @@ export class AuthService {
             role: prismaRole,
             status: UserStatus.ACTIVE,
             title: invite.title,
+            workspaceRoleId: inviteWorkspaceRoleId,
           },
         });
 
@@ -718,6 +723,7 @@ export class AuthService {
             role: prismaRole,
             status: UserStatus.ACTIVE,
             inviteToken: null,
+            workspaceRoleId: inviteWorkspaceRoleId,
           },
         });
       }

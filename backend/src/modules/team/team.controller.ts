@@ -36,6 +36,10 @@ class GenerateInviteCodeDto {
   @IsOptional()
   @IsString()
   title?: string;
+
+  @IsOptional()
+  @IsString()
+  workspaceRoleId?: string;
 }
 
 class CreateTeamMemberDto {
