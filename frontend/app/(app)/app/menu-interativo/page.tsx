@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
   GitBranch,
-  Headset,
   Loader2,
   Plus,
   Power,
@@ -14,23 +13,31 @@ import {
   Search,
   Trash2,
   Undo2,
-  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { apiRequest } from '@/lib/api-client';
-import { cn, formatDate } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { FlowCanvas } from './_components/flow-canvas';
 import { EditPanel } from './_components/edit-panel';
 import {
   type AutoResponseMenu,
   type MenuDraft,
   type MenuNodeDraft,
-  type NodeType,
   emptyMenuDraft,
   emptyNodeDraft,
   menuToEditDraft,
@@ -39,9 +46,12 @@ import {
   addChildToNode,
   updateNodeInTree,
   removeNodeFromTree,
-  findNodeInTree,
-  countAllNodes,
 } from './_lib/types';
+
+type PendingDraftAction =
+  | { type: 'create' }
+  | { type: 'select'; menuId: string }
+  | null;
 
 export default function MenuInterativoPage() {
   const queryClient = useQueryClient();
@@ -52,7 +62,7 @@ export default function MenuInterativoPage() {
     queryFn: () => apiRequest<AutoResponseMenu[]>('auto-response-menus'),
   });
 
-  const menus = menusQuery.data ?? [];
+  const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
 
   // --- Local state ---
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null);
@@ -61,6 +71,8 @@ export default function MenuInterativoPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingDraftAction, setPendingDraftAction] =
+    useState<PendingDraftAction>(null);
   const nodePositionsRef = useRef(new Map<string, { x: number; y: number }>());
 
   // --- Computed ---
@@ -108,6 +120,9 @@ export default function MenuInterativoPage() {
       if (menu) {
         setSelectedMenuId(menu.id);
         setDraft(menuToEditDraft(menu));
+        setSelectedNodeId(
+          isCreating ? (menu.nodes[0]?.id ?? '__start__') : selectedNodeId,
+        );
       }
       await queryClient.invalidateQueries({ queryKey: ['auto-response-menus'] });
     },
@@ -168,6 +183,7 @@ export default function MenuInterativoPage() {
       if (menu) {
         setSelectedMenuId(menu.id);
         setDraft(menuToEditDraft(menu));
+        setSelectedNodeId(menu.nodes[0]?.id ?? '__start__');
         setIsCreating(false);
         setIsDirty(false);
       }
@@ -177,34 +193,79 @@ export default function MenuInterativoPage() {
   });
 
   // --- Actions ---
+  const createInitialMenuDraft = useCallback(() => {
+    const initialNode = emptyNodeDraft('message');
+
+    return {
+      draft: {
+        ...emptyMenuDraft(),
+        nodes: [{ ...initialNode, order: 0 }],
+      },
+      initialNodeId: initialNode._tempId,
+    };
+  }, []);
+
+  const applySelectedMenu = useCallback((menu: AutoResponseMenu) => {
+    setSelectedMenuId(menu.id);
+    setDraft(menuToEditDraft(menu));
+    setSelectedNodeId(null);
+    setIsDirty(false);
+    setIsCreating(false);
+    setPendingDraftAction(null);
+    nodePositionsRef.current = new Map();
+  }, []);
+
+  const startNewMenu = useCallback(() => {
+    const { draft: nextDraft, initialNodeId } = createInitialMenuDraft();
+
+    setSelectedMenuId(null);
+    setDraft(nextDraft);
+    setSelectedNodeId(initialNodeId);
+    setIsDirty(true);
+    setIsCreating(true);
+    setPendingDraftAction(null);
+    nodePositionsRef.current = new Map();
+  }, [createInitialMenuDraft]);
+
+  const confirmPendingDraftAction = useCallback(() => {
+    if (!pendingDraftAction) {
+      return;
+    }
+
+    if (pendingDraftAction.type === 'create') {
+      startNewMenu();
+      return;
+    }
+
+    const nextMenu = menus.find((menu) => menu.id === pendingDraftAction.menuId);
+
+    if (nextMenu) {
+      applySelectedMenu(nextMenu);
+    } else {
+      setPendingDraftAction(null);
+    }
+  }, [applySelectedMenu, menus, pendingDraftAction, startNewMenu]);
+
   const handleSelectMenu = useCallback(
     (menu: AutoResponseMenu) => {
       if (isDirty) {
-        const confirm = window.confirm('Você tem alterações não salvas. Deseja descartar?');
-        if (!confirm) return;
+        setPendingDraftAction({ type: 'select', menuId: menu.id });
+        return;
       }
-      setSelectedMenuId(menu.id);
-      setDraft(menuToEditDraft(menu));
-      setSelectedNodeId(null);
-      setIsDirty(false);
-      setIsCreating(false);
-      nodePositionsRef.current = new Map();
+
+      applySelectedMenu(menu);
     },
-    [isDirty],
+    [applySelectedMenu, isDirty],
   );
 
   const handleCreateMenu = useCallback(() => {
     if (isDirty) {
-      const confirm = window.confirm('Você tem alterações não salvas. Deseja descartar?');
-      if (!confirm) return;
+      setPendingDraftAction({ type: 'create' });
+      return;
     }
-    setSelectedMenuId(null);
-    setDraft(emptyMenuDraft());
-    setSelectedNodeId('__start__');
-    setIsDirty(true);
-    setIsCreating(true);
-    nodePositionsRef.current = new Map();
-  }, [isDirty]);
+
+    startNewMenu();
+  }, [isDirty, startNewMenu]);
 
   const handleCancel = useCallback(() => {
     if (isCreating) {
@@ -253,19 +314,7 @@ export default function MenuInterativoPage() {
       const newNode = emptyNodeDraft('message');
       setDraft({ ...draft, nodes: addChildToNode(draft.nodes, parentId, newNode) });
       setIsDirty(true);
-      setSelectedNodeId(newNode._tempId);
-    },
-    [draft],
-  );
-
-  const addAgentNode = useCallback(
-    (parentId: string | null) => {
-      if (!draft) return;
-      const agentNode = emptyNodeDraft('talk_to_agent');
-      agentNode.label = 'Falar com atendente';
-      setDraft({ ...draft, nodes: addChildToNode(draft.nodes, parentId, agentNode) });
-      setIsDirty(true);
-      setSelectedNodeId(agentNode._tempId);
+      setSelectedNodeId(parentId ?? newNode._tempId);
     },
     [draft],
   );
@@ -445,28 +494,11 @@ export default function MenuInterativoPage() {
           </div>
 
           {/* Bottom actions */}
-          <div className="border-t border-border p-3 space-y-2">
+          <div className="border-t border-border p-3">
             <Button size="sm" className="w-full" onClick={handleCreateMenu}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Novo menu
             </Button>
-            {draft && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="w-full text-amber-400 border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-400"
-                onClick={() =>
-                  addAgentNode(
-                    selectedNodeId && selectedNodeId !== '__start__'
-                      ? selectedNodeId
-                      : null,
-                  )
-                }
-              >
-                <Headset className="mr-1.5 h-3.5 w-3.5" />
-                Falar com atendente
-              </Button>
-            )}
           </div>
         </div>
 
@@ -561,6 +593,35 @@ export default function MenuInterativoPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog
+        open={pendingDraftAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDraftAction(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar alteracoes nao salvas?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Existem mudancas em andamento neste menu. Se continuar, elas serao
+              descartadas para abrir o proximo fluxo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="secondary">Continuar editando</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button onClick={confirmPendingDraftAction}>
+                Descartar e continuar
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

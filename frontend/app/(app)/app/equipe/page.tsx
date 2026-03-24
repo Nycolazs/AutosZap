@@ -144,17 +144,38 @@ export default function TeamPage() {
     queryFn: () => apiRequest<InviteCode[]>('team/invite-codes'),
   });
 
+  const customWorkspaceRoles = useMemo(
+    () => (workspaceRolesQuery.data ?? []).filter((role) => !role.isSystem),
+    [workspaceRolesQuery.data],
+  );
+
   const workspaceRoleOptions = useMemo(
     () => [
       { label: 'Administrador', value: ADMIN_ROLE_SELECTION },
       { label: 'Vendedor', value: DEFAULT_SELLER_ROLE_SELECTION },
-      ...(workspaceRolesQuery.data ?? []).map((role) => ({
+      ...customWorkspaceRoles.map((role) => ({
         label: role.name,
         value: role.id,
       })),
     ],
-    [workspaceRolesQuery.data],
+    [customWorkspaceRoles],
   );
+
+  const inviteRoleSelection = useMemo(() => {
+    if (inviteWorkspaceRoleId) {
+      return inviteWorkspaceRoleId;
+    }
+
+    return inviteRole === 'ADMIN'
+      ? ADMIN_ROLE_SELECTION
+      : DEFAULT_SELLER_ROLE_SELECTION;
+  }, [inviteRole, inviteWorkspaceRoleId]);
+
+  const handleInviteRoleSelectionChange = (roleSelection: string) => {
+    const parsedSelection = parseRoleSelection(roleSelection);
+    setInviteRole(parsedSelection.role);
+    setInviteWorkspaceRoleId(parsedSelection.workspaceRoleId ?? '');
+  };
 
   const generateInviteMutation = useMutation({
     mutationFn: (payload: {
@@ -614,55 +635,30 @@ export default function TeamPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {(workspaceRolesQuery.data ?? []).length > 0 ? (
-                <div className="space-y-2">
-                  <label
-                    className="text-[12px] font-medium"
-                    htmlFor="invite-workspace-role"
-                  >
-                    Papel personalizado
-                  </label>
-                  <select
-                    id="invite-workspace-role"
-                    value={inviteWorkspaceRoleId}
-                    onChange={(event) => {
-                      setInviteWorkspaceRoleId(event.target.value);
-                      setInviteRole('SELLER');
-                    }}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
-                  >
-                    <option value="">Nenhum</option>
-                    {(workspaceRolesQuery.data ?? []).map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-muted-foreground">
-                    Se nenhum papel personalizado for escolhido, o convite sera
-                    gerado como vendedor.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="text-[12px] font-medium" htmlFor="invite-role">
-                    Papel
-                  </label>
-                  <select
-                    id="invite-role"
-                    value={inviteRole}
-                    onChange={(event) => setInviteRole(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
-                  >
-                    <option value="ADMIN">Administrador</option>
-                    <option value="SELLER">Vendedor</option>
-                  </select>
-                  <p className="text-[11px] text-muted-foreground">
-                    Crie papeis personalizados na pagina de Papeis para mais
-                    opcoes.
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium" htmlFor="invite-role">
+                  Papel
+                </label>
+                <select
+                  id="invite-role"
+                  value={inviteRoleSelection}
+                  onChange={(event) =>
+                    handleInviteRoleSelectionChange(event.target.value)
+                  }
+                  className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {workspaceRoleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  {customWorkspaceRoles.length > 0
+                    ? 'Administradores, vendedores e papeis personalizados ficam disponiveis no mesmo fluxo.'
+                    : 'Crie papeis personalizados na pagina de Papeis para liberar mais combinacoes de acesso.'}
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-[12px] font-medium" htmlFor="invite-title">

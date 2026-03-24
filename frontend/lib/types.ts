@@ -39,6 +39,15 @@ export interface NotificationItem {
   createdAt: string;
 }
 
+export interface NotificationRealtimeEvent {
+  workspaceId: string;
+  userId: string;
+  type: 'notification.created' | 'notification.read' | 'notification.read-all';
+  notificationId?: string;
+  unreadCount?: number;
+  payload?: Record<string, unknown> | null;
+}
+
 export interface PermissionCatalogEntry {
   key: string;
   label: string;
@@ -249,6 +258,8 @@ export interface Instance {
   accessTokenMasked?: string | null;
   webhookVerifyTokenMasked?: string | null;
   appSecretMasked?: string | null;
+  profilePictureUrl?: string | null;
+  profilePictureUpdatedAt?: string | null;
   lastSyncAt?: string | null;
 }
 
@@ -412,6 +423,12 @@ export interface NotificationsResponse {
   unreadCount: number;
 }
 
+export interface ConversationMessagesPage {
+  items: ConversationMessage[];
+  hasMore: boolean;
+  nextCursor?: string | null;
+}
+
 export interface DashboardPerformance {
   period: {
     from: string;
@@ -488,6 +505,7 @@ export interface AuthMeResponse {
     name: string;
     slug: string;
     companyName: string;
+    instanceProfilePictureUrl?: string | null;
   };
   companies?: Array<{
     id: string;

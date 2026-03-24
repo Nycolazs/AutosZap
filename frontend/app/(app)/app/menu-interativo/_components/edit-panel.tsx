@@ -7,7 +7,6 @@ import {
   Trash2,
   Plus,
   X,
-  GripVertical,
   ChevronUp,
   ChevronDown,
 } from 'lucide-react';
@@ -19,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { KeywordsInput } from './keywords-input';
 import type { MenuDraft, MenuNodeDraft, NodeType } from '../_lib/types';
-import { emptyNodeDraft, findNodeInTree } from '../_lib/types';
+import { findNodeInTree } from '../_lib/types';
 
 // ----- Node type selector -----
 
@@ -134,14 +133,12 @@ function MenuSettingsPanel({
 
 function NodeEditorPanel({
   node,
-  draft,
   onUpdateNode,
   onDeleteNode,
   onAddChild,
   onMoveNode,
 }: {
   node: MenuNodeDraft;
-  draft: MenuDraft;
   onUpdateNode: (id: string, updates: Partial<MenuNodeDraft>) => void;
   onDeleteNode: (id: string) => void;
   onAddChild: (parentId: string) => void;
@@ -237,11 +234,15 @@ function NodeEditorPanel({
         <div className="space-y-1.5">
           <Label className="text-xs">Mensagem de resposta</Label>
           <Textarea
-            placeholder="Mensagem enviada ao cliente ao selecionar esta opção..."
+            placeholder="Mensagem enviada ao cliente ao selecionar esta op??o..."
             value={node.message}
             onChange={(e) => onUpdateNode(node._tempId, { message: e.target.value })}
             className="min-h-[96px] resize-none text-sm"
           />
+          <p className="text-[10px] text-muted-foreground">
+            O texto e salvo exatamente como digitado, incluindo `*`, `**`, `_`
+            e `__`.
+          </p>
         </div>
       )}
 
@@ -369,7 +370,6 @@ export function EditPanel({
         ) : selectedNode ? (
           <NodeEditorPanel
             node={selectedNode}
-            draft={draft}
             onUpdateNode={onUpdateNode}
             onDeleteNode={(id) => {
               onDeleteNode(id);

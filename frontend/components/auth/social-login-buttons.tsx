@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
 
 /* ── SVG Icons ── */
 
@@ -112,7 +113,10 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           ? 'Conta criada com sucesso!'
           : 'Sessao iniciada com sucesso.',
       );
-      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
+      const nextPath = data.user?.isPlatformAdmin
+        ? '/platform'
+        : await resolvePostAuthRedirect();
+      router.push(nextPath);
     },
     [companyName, inviteCode, mode, router],
   );

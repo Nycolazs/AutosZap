@@ -1,16 +1,24 @@
 'use client';
 
 import type { CSSProperties, KeyboardEvent, MutableRefObject } from 'react';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   Check,
   CheckCheck,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileImage,
   Expand,
   Inbox,
+  Loader2,
   MessageSquareText,
   Mic,
   Pause,
@@ -25,6 +33,9 @@ import {
   Volume2,
   VolumeX,
   X,
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -54,6 +65,7 @@ import {
   AuthMeResponse,
   Conversation,
   ConversationMessage,
+  ConversationMessagesPage,
   ConversationReminder,
   ConversationStatusSummary,
   PaginatedResponse,
@@ -68,6 +80,7 @@ const AUDIO_WAVEFORM_BARS = [8, 12, 18, 14, 24, 16, 20, 28, 18, 24, 14, 20, 30, 
 const INBOX_CONVERSATIONS_PANEL_WIDTH = 296;
 const INBOX_DETAILS_PANEL_WIDTH = 320;
 const INBOX_COLLAPSED_PANEL_WIDTH = 72;
+const MESSAGE_HISTORY_LOAD_THRESHOLD = 96;
 const HIDDEN_MEDIA_LABELS = new Set([
   'Imagem',
   'Audio',
@@ -164,6 +177,11 @@ function InboxPageContent() {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const lastAutoScrolledConversationRef = useRef<string | null>(null);
+  const pendingHistoryAnchorRef = useRef<{
+    conversationId: string;
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
@@ -249,12 +267,30 @@ function InboxPageContent() {
   }, [conversations, isDesktopLayout, selectedConversationId]);
 
   const selectedConversationQuery = useQuery({
-    queryKey: ['conversation', activeConversationId, 'messages'],
+    queryKey: ['conversation', activeConversationId, 'base'],
     enabled: Boolean(activeConversationId),
     queryFn: () =>
       apiRequest<Conversation>(
-        `conversations/${activeConversationId}?include=messages`,
+        `conversations/${activeConversationId}?include=contactTags`,
       ),
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+  });
+
+  const conversationMessagesQuery = useInfiniteQuery({
+    queryKey: ['conversation', activeConversationId, 'messages'],
+    enabled: Boolean(activeConversationId),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiRequest<ConversationMessagesPage>(
+        `messages?conversationId=${activeConversationId}${
+          pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''
+        }`,
+      ),
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
     refetchInterval: false,
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
@@ -293,9 +329,8 @@ function InboxPageContent() {
     message: ConversationMessage,
     preview: string,
   ) => {
-    queryClient.setQueriesData<Conversation | undefined>(
-      { queryKey: ['conversation', conversationId] },
-      (current) => {
+    const updateConversationSnapshot = (queryKey: readonly unknown[]) => {
+      queryClient.setQueryData<Conversation | undefined>(queryKey, (current) => {
         if (!current) {
           return current;
         }
@@ -304,7 +339,38 @@ function InboxPageContent() {
           ...current,
           lastMessageAt: getConversationMessageTimestamp(message),
           lastMessagePreview: preview,
-          messages: [...(current.messages ?? []), message],
+        };
+      });
+    };
+
+    updateConversationSnapshot(['conversation', conversationId, 'base']);
+    updateConversationSnapshot(['conversation', conversationId, 'details']);
+
+    queryClient.setQueryData<InfiniteData<ConversationMessagesPage> | undefined>(
+      ['conversation', conversationId, 'messages'],
+      (current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (!current.pages.length) {
+          return {
+            ...current,
+            pages: [{ items: [message], hasMore: false, nextCursor: null }],
+          };
+        }
+
+        const [latestPage, ...olderPages] = current.pages;
+
+        return {
+          ...current,
+          pages: [
+            {
+              ...latestPage,
+              items: [...latestPage.items, message],
+            },
+            ...olderPages,
+          ],
         };
       },
     );
@@ -345,6 +411,23 @@ function InboxPageContent() {
     );
   };
 
+  const getCachedConversationMessages = useCallback(
+    (conversationId: string): ConversationMessage[] => {
+      const cachedPages = queryClient.getQueryData<
+        InfiniteData<ConversationMessagesPage> | undefined
+      >(['conversation', conversationId, 'messages']);
+
+      if (!cachedPages?.pages.length) {
+        return [];
+      }
+
+      return [...cachedPages.pages]
+        .reverse()
+        .flatMap((page) => page.items);
+    },
+    [queryClient],
+  );
+
   const sendMutation = useMutation({
     mutationFn: () =>
       apiRequest<ConversationMessage>('messages', {
@@ -367,10 +450,10 @@ function InboxPageContent() {
         meQuery.data?.name ?? 'Equipe',
         messageDraft,
       );
+      const cachedMessages = getCachedConversationMessages(activeConversationId);
       const optimisticQuotedMessage = effectiveQuotedMessageId
-        ? queryClient
-            .getQueryData<Conversation>(['conversation', activeConversationId, 'messages'])
-            ?.messages?.find((message) => message.id === effectiveQuotedMessageId) ?? null
+        ? cachedMessages.find((message) => message.id === effectiveQuotedMessageId) ??
+          null
         : null;
       const optimisticMessage: ConversationMessage = {
         id: `optimistic-${Date.now()}`,
@@ -651,41 +734,60 @@ function InboxPageContent() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const conversationMessages = useMemo(
+    () =>
+      [...(conversationMessagesQuery.data?.pages ?? [])]
+        .reverse()
+        .flatMap((page) => page.items),
+    [conversationMessagesQuery.data?.pages],
+  );
   const selectedConversation = useMemo(() => {
     const baseConversation = selectedConversationQuery.data;
     const detailsConversation = selectedConversationDetailsQuery.data;
 
     if (!baseConversation) {
-      return detailsConversation;
+      return detailsConversation
+        ? {
+            ...detailsConversation,
+            messages: conversationMessages,
+          }
+        : undefined;
     }
 
     if (!detailsConversation) {
-      return baseConversation;
-    }
-
       return {
         ...baseConversation,
-        ...detailsConversation,
-        contact: {
-          ...baseConversation.contact,
-          ...detailsConversation.contact,
-        },
-        assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
-        tags: detailsConversation.tags ?? baseConversation.tags,
-        messages: [...(baseConversation.messages ?? detailsConversation.messages ?? [])].sort(
-          (left, right) =>
-            new Date(getConversationMessageTimestamp(left)).getTime() -
-            new Date(getConversationMessageTimestamp(right)).getTime(),
-        ),
-        notes: detailsConversation.notes ?? baseConversation.notes,
-        reminders: detailsConversation.reminders ?? baseConversation.reminders,
-      } satisfies Conversation;
-  }, [selectedConversationDetailsQuery.data, selectedConversationQuery.data]);
+        messages: conversationMessages,
+      };
+    }
+
+    return {
+      ...baseConversation,
+      ...detailsConversation,
+      contact: {
+        ...baseConversation.contact,
+        ...detailsConversation.contact,
+      },
+      assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
+      tags: detailsConversation.tags ?? baseConversation.tags,
+      messages: conversationMessages,
+      notes: detailsConversation.notes ?? baseConversation.notes,
+      reminders: detailsConversation.reminders ?? baseConversation.reminders,
+    } satisfies Conversation;
+  }, [
+    conversationMessages,
+    selectedConversationDetailsQuery.data,
+    selectedConversationQuery.data,
+  ]);
 
   const isConversationLoading =
     Boolean(activeConversationId) &&
     !selectedConversation &&
-    (selectedConversationQuery.isLoading || selectedConversationDetailsQuery.isLoading);
+    (
+      selectedConversationQuery.isLoading ||
+      selectedConversationDetailsQuery.isLoading ||
+      conversationMessagesQuery.isLoading
+    );
   const isConversationsPanelMinimized = isDesktopLayout && conversationsPanelCollapsed;
   const isDetailsPanelMinimized = isDesktopLayout && detailsPanelCollapsed;
   const desktopInboxGridStyle = useMemo<CSSProperties | undefined>(() => {
@@ -715,6 +817,9 @@ function InboxPageContent() {
       ? selectedConversation.messages[selectedConversation.messages.length - 1]
           ?.id
       : null;
+  const selectedConversationMessages = selectedConversation?.messages ?? [];
+  const hasMoreHistory = Boolean(conversationMessagesQuery.hasNextPage);
+  const isFetchingHistory = conversationMessagesQuery.isFetchingNextPage;
 
   const isNearBottom = (container: HTMLDivElement) => {
     const threshold = 80;
@@ -767,6 +872,7 @@ function InboxPageContent() {
       setDetailsOpen(false);
       setQuickMessagesOpen(false);
       setQuotedMessageId(null);
+      pendingHistoryAnchorRef.current = null;
     }, 0);
 
     return () => window.clearTimeout(resetPanels);
@@ -793,6 +899,19 @@ function InboxPageContent() {
     return () => window.cancelAnimationFrame(frame);
   }, [selectedConversation?.id]);
 
+  useLayoutEffect(() => {
+    const anchor = pendingHistoryAnchorRef.current;
+    const container = messagesScrollRef.current;
+
+    if (!anchor || !container || anchor.conversationId !== selectedConversation?.id) {
+      return;
+    }
+
+    container.scrollTop =
+      container.scrollHeight - anchor.scrollHeight + anchor.scrollTop;
+    pendingHistoryAnchorRef.current = null;
+  }, [selectedConversation?.id, selectedConversation?.messages?.length]);
+
   useEffect(() => {
     const container = messagesScrollRef.current;
 
@@ -804,11 +923,34 @@ function InboxPageContent() {
       shouldStickToBottomRef.current = isNearBottom(container);
     };
 
-    updateStickiness();
-    container.addEventListener('scroll', updateStickiness, { passive: true });
+    const handleScroll = () => {
+      updateStickiness();
 
-    return () => container.removeEventListener('scroll', updateStickiness);
-  }, [selectedConversation?.id]);
+      if (
+        container.scrollTop <= MESSAGE_HISTORY_LOAD_THRESHOLD &&
+        hasMoreHistory &&
+        !isFetchingHistory &&
+        selectedConversation?.id
+      ) {
+        pendingHistoryAnchorRef.current = {
+          conversationId: selectedConversation.id,
+          scrollHeight: container.scrollHeight,
+          scrollTop: container.scrollTop,
+        };
+        void conversationMessagesQuery.fetchNextPage();
+      }
+    };
+
+    updateStickiness();
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [
+    conversationMessagesQuery,
+    hasMoreHistory,
+    isFetchingHistory,
+    selectedConversation?.id,
+  ]);
 
   useEffect(() => {
     if (!selectedConversation?.id) {
@@ -1323,9 +1465,68 @@ function InboxPageContent() {
               </div>
 
               <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(10,30,60,0.3),transparent_70%)] px-3 py-3 sm:px-4">
-                {selectedConversation.messages?.map((message, index) => (
+                <ConversationTimelineEvent
+                  label="Conversa aberta"
+                  timestamp={selectedConversation.createdAt}
+                />
+
+                {hasMoreHistory && !isFetchingHistory ? (
+                  <div className="flex items-center justify-center pb-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-full border border-border/70 bg-[#102033]/70 px-3 text-[11px] text-muted-foreground hover:bg-[#152741] hover:text-foreground"
+                      onClick={() => {
+                        const container = messagesScrollRef.current;
+
+                        if (!container || !selectedConversation.id) {
+                          return;
+                        }
+
+                        pendingHistoryAnchorRef.current = {
+                          conversationId: selectedConversation.id,
+                          scrollHeight: container.scrollHeight,
+                          scrollTop: container.scrollTop,
+                        };
+                        void conversationMessagesQuery.fetchNextPage();
+                      }}
+                    >
+                      Carregar mensagens anteriores
+                    </Button>
+                  </div>
+                ) : null}
+
+                {isFetchingHistory ? (
+                  <div className="flex items-center justify-center py-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-[#102033]/80 px-3 py-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Carregando mensagens anteriores...
+                    </span>
+                  </div>
+                ) : null}
+
+                {conversationMessagesQuery.isLoading && selectedConversationMessages.length === 0 ? (
+                  <div className="space-y-3 py-4">
+                    <MessageBubbleSkeleton align="start" />
+                    <MessageBubbleSkeleton align="end" />
+                    <MessageBubbleSkeleton align="start" />
+                  </div>
+                ) : null}
+
+                {!conversationMessagesQuery.isLoading && selectedConversationMessages.length === 0 ? (
+                  <div className="py-8">
+                    <EmptyState
+                      icon={MessageSquareText}
+                      title="Nenhuma mensagem nesta conversa"
+                      description="Quando o historico for iniciado, as mensagens aparecerao aqui."
+                    />
+                  </div>
+                ) : null}
+
+                {selectedConversationMessages.map((message, index) => (
                   <div key={message.id}>
-                    {shouldShowDateSeparator(selectedConversation.messages!, index) && (
+                    {shouldShowDateSeparator(selectedConversationMessages, index) && (
                       <div className="my-3 flex items-center justify-center first:mt-0">
                         <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
                           {getDateLabel(getConversationMessageTimestamp(message))}
@@ -1392,6 +1593,18 @@ function InboxPageContent() {
                     </div>
                   </div>
                 ))}
+
+                {selectedConversation.closedAt ? (
+                  <ConversationTimelineEvent
+                    label="Conversa encerrada"
+                    timestamp={selectedConversation.closedAt}
+                    tone={
+                      selectedConversation.closeReason === 'UNANSWERED'
+                        ? 'warning'
+                        : 'danger'
+                    }
+                  />
+                ) : null}
               </div>
 
               <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-2.5 py-1.5 sm:px-3 sm:py-2">
@@ -2270,6 +2483,51 @@ function StatusBadge({
   );
 }
 
+function ConversationTimelineEvent({
+  label,
+  timestamp,
+  tone = 'info',
+}: {
+  label: string;
+  timestamp: string;
+  tone?: 'info' | 'warning' | 'danger';
+}) {
+  const toneClassName =
+    tone === 'danger'
+      ? 'border-rose-500/20 bg-rose-500/10 text-rose-200'
+      : tone === 'warning'
+        ? 'border-amber-500/20 bg-amber-500/10 text-amber-200'
+        : 'border-primary/20 bg-primary/10 text-primary/90';
+
+  return (
+    <div className="my-3 flex items-center justify-center first:mt-0">
+      <div
+        className={cn(
+          'inline-flex max-w-full flex-col items-center gap-1 rounded-2xl border px-4 py-2 text-center shadow-sm backdrop-blur-sm',
+          toneClassName,
+        )}
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">
+          {label}
+        </span>
+        <span className="text-[11px] opacity-80">{formatDate(timestamp)}</span>
+      </div>
+    </div>
+  );
+}
+
+function MessageBubbleSkeleton({ align }: { align: 'start' | 'end' }) {
+  return (
+    <div className={cn('flex', align === 'end' ? 'justify-end' : 'justify-start')}>
+      <div className="w-full max-w-[min(65%,32rem)] space-y-2 rounded-2xl bg-[#1a2a3d]/50 px-3 py-2 shadow-sm">
+        <Skeleton className="h-4 w-24 bg-white/10" />
+        <Skeleton className="h-4 w-40 bg-white/10" />
+        <Skeleton className="ml-auto h-3 w-12 bg-white/10" />
+      </div>
+    </div>
+  );
+}
+
 function MediaLoadingSkeleton({ width, height, rounded = 'rounded-md' }: { width: string; height: string; rounded?: string }) {
   return (
     <div className={cn('relative flex items-center justify-center bg-white/[0.06]', rounded, width, height)}>
@@ -2285,6 +2543,49 @@ function MediaLoadingSkeleton({ width, height, rounded = 'rounded-md' }: { width
   );
 }
 
+function useDeferredMediaLoad(rootMargin = '240px') {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof IntersectionObserver === 'undefined',
+  );
+
+  useEffect(() => {
+    if (shouldLoad) {
+      return;
+    }
+
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin,
+      },
+    );
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [rootMargin, shouldLoad]);
+
+  return {
+    containerRef,
+    shouldLoad,
+    forceLoad: () => setShouldLoad(true),
+  };
+}
+
 function ImageMessagePreview({
   src,
   alt,
@@ -2297,58 +2598,162 @@ function ImageMessagePreview({
   const [open, setOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const { containerRef, shouldLoad, forceLoad } = useDeferredMediaLoad(
+    isSticker ? '120px' : '260px',
+  );
+  const shouldRenderImage = shouldLoad || open;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      forceLoad();
+    } else {
+      setZoom(1);
+    }
+
+    setOpen(nextOpen);
+  };
+
+  const adjustZoom = (delta: number) => {
+    setZoom((current) => Math.min(4, Math.max(1, Number((current + delta).toFixed(2)))));
+  };
 
   if (isSticker) {
     return (
-      <div className="relative min-h-[80px] min-w-[80px]">
+      <div ref={containerRef} className="relative h-24 w-24 overflow-hidden rounded-xl">
         {!isLoaded && !hasError && (
           <MediaLoadingSkeleton width="w-24" height="h-24" rounded="rounded-xl" />
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={alt}
-          className={cn(
-            'max-h-32 max-w-[132px] object-contain transition-opacity duration-300',
-            isLoaded ? 'opacity-100' : 'absolute inset-0 opacity-0',
-          )}
-          onLoad={() => setIsLoaded(true)}
-          onError={() => { setHasError(true); setIsLoaded(true); }}
-        />
+        {shouldRenderImage ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            className={cn(
+              'absolute inset-0 h-full w-full object-contain transition-opacity duration-300',
+              isLoaded ? 'opacity-100' : 'opacity-0',
+            )}
+            onLoad={() => setIsLoaded(true)}
+            onError={() => {
+              setHasError(true);
+              setIsLoaded(true);
+            }}
+          />
+        ) : null}
       </div>
     );
   }
 
   return (
     <>
-      <button
-        type="button"
-        className="block overflow-hidden rounded-md"
-        onClick={() => setOpen(true)}
-      >
-        {!isLoaded && !hasError && (
-          <MediaLoadingSkeleton width="w-[240px]" height="h-[160px]" />
-        )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={alt}
-          className={cn(
-            'max-h-[280px] w-full max-w-[300px] object-cover transition-opacity duration-300',
-            isLoaded ? 'opacity-100' : 'hidden',
+      <div ref={containerRef} className="w-[240px] max-w-full sm:w-[300px]">
+        <button
+          type="button"
+          className="relative block aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/20"
+          onClick={() => handleOpenChange(true)}
+        >
+          {!isLoaded && !hasError && (
+            <MediaLoadingSkeleton width="w-full" height="h-full" rounded="rounded-xl" />
           )}
-          onLoad={() => setIsLoaded(true)}
-          onError={() => { setHasError(true); setIsLoaded(true); }}
-        />
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="inset-x-auto bottom-auto left-1/2 top-1/2 min-h-0 w-auto max-h-[calc(100dvh-1.5rem)] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-[20px] border border-white/10 bg-black/90 p-2 sm:left-1/2 sm:top-1/2 sm:w-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-[calc(100vw-2rem)] sm:p-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            className="block h-auto max-h-[calc(100dvh-4rem)] w-auto max-w-[calc(100vw-4rem)] rounded-[14px] object-contain"
-          />
+          {shouldRenderImage ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={src}
+              alt={alt}
+              loading="lazy"
+              decoding="async"
+              className={cn(
+                'absolute inset-0 h-full w-full object-cover transition-opacity duration-300',
+                isLoaded ? 'opacity-100' : 'opacity-0',
+              )}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => {
+                setHasError(true);
+                setIsLoaded(true);
+              }}
+            />
+          ) : null}
+          {hasError ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/60 px-4 text-center text-xs text-white/70">
+              Nao foi possivel carregar a imagem.
+            </span>
+          ) : null}
+        </button>
+      </div>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-white/10 bg-black/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+            <div>
+              <p className="text-sm font-semibold">Visualizacao da imagem</p>
+              <p className="text-xs text-white/60">Use zoom e baixe a midia quando precisar.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                onClick={() => adjustZoom(-0.25)}
+                disabled={zoom <= 1}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                onClick={() => setZoom(1)}
+                disabled={zoom === 1}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                onClick={() => adjustZoom(0.25)}
+                disabled={zoom >= 4}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button asChild variant="secondary" className="rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15">
+                <a href={src} download target="_blank" rel="noreferrer">
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar
+                </a>
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className="min-h-0 flex-1 overflow-auto p-4"
+            onWheel={(event) => {
+              if (!event.ctrlKey) {
+                return;
+              }
+
+              event.preventDefault();
+              adjustZoom(event.deltaY > 0 ? -0.2 : 0.2);
+            }}
+          >
+            <div className="flex min-h-full min-w-full items-center justify-center">
+              {shouldRenderImage ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={src}
+                  alt={alt}
+                  className="max-h-[calc(100dvh-11rem)] max-w-[min(100%,900px)] origin-center rounded-[18px] object-contain shadow-[0_20px_60px_rgba(0,0,0,0.45)] transition-transform duration-200"
+                  style={{ transform: 'scale(' + zoom + ')' }}
+                />
+              ) : (
+                <MediaLoadingSkeleton width="w-[320px]" height="h-[240px]" rounded="rounded-[18px]" />
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
@@ -2358,6 +2763,8 @@ function ImageMessagePreview({
 function VideoMessagePlayer({ src }: { src: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const { containerRef: visibilityRef, shouldLoad, forceLoad } =
+    useDeferredMediaLoad('260px');
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2370,6 +2777,10 @@ function VideoMessagePlayer({ src }: { src: string }) {
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!shouldLoad) {
+      return;
+    }
+
     const video = videoRef.current;
     if (!video) return;
 
@@ -2415,7 +2826,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
         controlsTimeoutRef.current = null;
       }
     };
-  }, [src]);
+  }, [shouldLoad, src]);
 
   const showControlsTemporarily = () => {
     setShowControls(true);
@@ -2424,6 +2835,11 @@ function VideoMessagePlayer({ src }: { src: string }) {
   };
 
   const togglePlayback = async () => {
+    if (!shouldLoad) {
+      forceLoad();
+      return;
+    }
+
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
@@ -2470,71 +2886,77 @@ function VideoMessagePlayer({ src }: { src: string }) {
 
   return (
     <div
-      ref={containerRef}
-      className={cn(
-        'group relative overflow-hidden rounded-xl bg-black',
-        isFullscreen ? 'w-full h-full' : 'max-h-[280px] w-full max-w-[300px]',
-      )}
-      onMouseMove={showControlsTemporarily}
-      onTouchStart={showControlsTemporarily}
-      onClick={togglePlayback}
+      ref={visibilityRef}
+      className={cn(isFullscreen ? 'h-full w-full' : 'w-full max-w-[300px]')}
     >
-      <video
-        ref={videoRef}
-        src={src}
-        playsInline
-        preload="metadata"
+      <div
+        ref={containerRef}
         className={cn(
-          'h-full w-full object-contain',
-          isFullscreen ? 'max-h-screen' : 'max-h-[280px]',
-          isLoading ? 'opacity-0' : 'opacity-100',
+          'group relative aspect-video overflow-hidden rounded-xl bg-black',
+          isFullscreen ? 'h-full w-full' : 'w-full',
         )}
-      />
+        onMouseMove={showControlsTemporarily}
+        onTouchStart={showControlsTemporarily}
+        onClick={() => {
+          forceLoad();
+          void togglePlayback();
+        }}
+      >
+        <video
+          ref={videoRef}
+          src={shouldLoad ? src : undefined}
+          playsInline
+          preload={shouldLoad ? 'metadata' : 'none'}
+          className={cn(
+            'h-full w-full object-contain',
+            isLoading || !shouldLoad ? 'opacity-0' : 'opacity-100',
+          )}
+        />
 
-      {/* Loading state */}
-      {isLoading && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-          <MediaLoadingSkeleton width="w-full" height="h-full" rounded="rounded-xl" />
-        </div>
-      )}
+        {/* Loading state */}
+        {(isLoading || !shouldLoad) && !hasError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <MediaLoadingSkeleton width="w-full" height="h-full" rounded="rounded-xl" />
+          </div>
+        )}
 
-      {/* Error state */}
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
-          <span className="text-[12px] text-white/60">Erro ao carregar video</span>
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[12px] text-primary underline"
+        {/* Error state */}
+        {hasError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
+            <span className="text-[12px] text-white/60">Erro ao carregar video</span>
+            <a
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[12px] text-primary underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Abrir no navegador
+            </a>
+          </div>
+        )}
+
+        {/* Play button overlay (centered, shown when paused or no controls) */}
+        {!isLoading && !hasError && shouldLoad && !isPlaying && (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            onClick={(e) => { e.stopPropagation(); void togglePlayback(); }}
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70 sm:h-14 sm:w-14">
+              <Play className="ml-1 h-5 w-5 fill-current sm:h-6 sm:w-6" />
+            </div>
+          </div>
+        )}
+
+        {/* Controls overlay */}
+        {!isLoading && !hasError && shouldLoad && (
+          <div
+            className={cn(
+              'absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/80 to-transparent p-2 transition-opacity duration-200',
+              showControls || !isPlaying ? 'opacity-100' : 'opacity-0',
+            )}
             onClick={(e) => e.stopPropagation()}
           >
-            Abrir no navegador
-          </a>
-        </div>
-      )}
-
-      {/* Play button overlay (centered, shown when paused or no controls) */}
-      {!isLoading && !hasError && !isPlaying && (
-        <div
-          className="absolute inset-0 flex items-center justify-center"
-          onClick={(e) => { e.stopPropagation(); void togglePlayback(); }}
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70 sm:h-14 sm:w-14">
-            <Play className="ml-1 h-5 w-5 fill-current sm:h-6 sm:w-6" />
-          </div>
-        </div>
-      )}
-
-      {/* Controls overlay */}
-      {!isLoading && !hasError && (
-        <div
-          className={cn(
-            'absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/80 to-transparent p-2 transition-opacity duration-200',
-            showControls || !isPlaying ? 'opacity-100' : 'opacity-0',
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
           {/* Seekbar */}
           <div className="relative h-1.5 w-full">
             <div className="absolute inset-0 rounded-full bg-white/20" />
@@ -2583,8 +3005,9 @@ function VideoMessagePlayer({ src }: { src: string }) {
               <Expand className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

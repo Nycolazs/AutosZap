@@ -24,7 +24,10 @@ import {
   canAccessRequirement,
   getRoleLabel,
 } from '@/lib/permissions';
-import { NotificationsResponse } from '@/lib/types';
+import {
+  NotificationRealtimeEvent,
+  NotificationsResponse,
+} from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
 
 function isRouteActive(pathname: string, href: string) {
@@ -39,11 +42,15 @@ export function Topbar({
   userName,
   userRole,
   userAvatarUrl,
+  companyName,
+  companyAvatarUrl,
   permissionMap,
 }: {
   userName?: string;
   userRole?: string;
   userAvatarUrl?: string | null;
+  companyName?: string;
+  companyAvatarUrl?: string | null;
   permissionMap?: PermissionMap;
 }) {
   const router = useRouter();
@@ -86,10 +93,156 @@ export function Topbar({
 
   const markAllReadMutation = useMutation({
     mutationFn: () => apiRequest('notifications/read-all', { method: 'POST' }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications'] });
+      const previous =
+        queryClient.getQueryData<NotificationsResponse>(['notifications']);
+
+      if (previous) {
+        const readAt = new Date().toISOString();
+
+        queryClient.setQueryData<NotificationsResponse>(['notifications'], {
+          unreadCount: 0,
+          items: previous.items.map((notification) => ({
+            ...notification,
+            readAt: notification.readAt ?? readAt,
+          })),
+        });
+      }
+
+      return { previous };
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['notifications'], context.previous);
+      }
+    },
   });
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/proxy/notifications/stream');
+
+    const handleNotificationEvent = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as NotificationRealtimeEvent;
+
+        queryClient.setQueryData<NotificationsResponse>(
+          ['notifications'],
+          (current) => {
+            if (!current) {
+              return current;
+            }
+
+            const readAt = new Date().toISOString();
+            const nextUnreadCount = payload.unreadCount ?? current.unreadCount;
+
+            if (payload.type === 'notification.read-all') {
+              return {
+                unreadCount: nextUnreadCount,
+                items: current.items.map((notification) => ({
+                  ...notification,
+                  readAt: notification.readAt ?? readAt,
+                })),
+              };
+            }
+
+            if (
+              payload.type === 'notification.read' &&
+              payload.notificationId
+            ) {
+              return {
+                unreadCount: nextUnreadCount,
+                items: current.items.map((notification) =>
+                  notification.id === payload.notificationId
+                    ? {
+                        ...notification,
+                        readAt: notification.readAt ?? readAt,
+                      }
+                    : notification,
+                ),
+              };
+            }
+
+            if (
+              payload.type === 'notification.created' &&
+              payload.notificationId &&
+              payload.payload
+            ) {
+              const item = {
+                id: payload.notificationId,
+                title:
+                  typeof payload.payload.title === 'string'
+                    ? payload.payload.title
+                    : 'Nova notificacao',
+                body:
+                  typeof payload.payload.body === 'string'
+                    ? payload.payload.body
+                    : '',
+                type:
+                  typeof payload.payload.type === 'string'
+                    ? payload.payload.type
+                    : 'INFO',
+                entityType:
+                  typeof payload.payload.entityType === 'string'
+                    ? payload.payload.entityType
+                    : null,
+                entityId:
+                  typeof payload.payload.entityId === 'string'
+                    ? payload.payload.entityId
+                    : null,
+                linkHref:
+                  typeof payload.payload.linkHref === 'string'
+                    ? payload.payload.linkHref
+                    : null,
+                metadata:
+                  payload.payload.metadata &&
+                  typeof payload.payload.metadata === 'object' &&
+                  !Array.isArray(payload.payload.metadata)
+                    ? (payload.payload.metadata as Record<string, unknown>)
+                    : null,
+                createdAt:
+                  typeof payload.payload.createdAt === 'string'
+                    ? payload.payload.createdAt
+                    : new Date().toISOString(),
+                readAt: null,
+              };
+
+              const items = current.items.some(
+                (notification) => notification.id === item.id,
+              )
+                ? current.items
+                : [item, ...current.items].slice(0, 12);
+
+              return {
+                unreadCount: nextUnreadCount,
+                items,
+              };
+            }
+
+            return current;
+          },
+        );
+      } catch {
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      }
+    };
+
+    eventSource.addEventListener(
+      'notification-event',
+      handleNotificationEvent as EventListener,
+    );
+
+    return () => {
+      eventSource.removeEventListener(
+        'notification-event',
+        handleNotificationEvent as EventListener,
+      );
+      eventSource.close();
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     const unreadNotifications = notificationsQuery.data?.items.filter(
@@ -123,6 +276,34 @@ export function Topbar({
       await apiRequest(`notifications/${notificationId}/read`, {
         method: 'POST',
       });
+      queryClient.setQueryData<NotificationsResponse>(
+        ['notifications'],
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const readAt = new Date().toISOString();
+          const wasUnread = current.items.some(
+            (notification) =>
+              notification.id === notificationId && !notification.readAt,
+          );
+
+          return {
+            unreadCount: wasUnread
+              ? Math.max(0, current.unreadCount - 1)
+              : current.unreadCount,
+            items: current.items.map((notification) =>
+              notification.id === notificationId
+                ? {
+                    ...notification,
+                    readAt: notification.readAt ?? readAt,
+                  }
+                : notification,
+            ),
+          };
+        },
+      );
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
 
       if (linkHref) {
@@ -164,9 +345,19 @@ export function Topbar({
           </Button>
           <div className="min-w-0 lg:hidden">
             <p className="truncate text-[15px] font-semibold">{currentLabel}</p>
-            <p className="text-[11px] text-muted-foreground">
-              {userName ?? 'AutosZap'}
-            </p>
+            <div className="flex min-w-0 items-center gap-2">
+              {companyAvatarUrl ? (
+                <Avatar className="h-5 w-5">
+                  <AvatarImage src={companyAvatarUrl} alt={companyName ?? 'Empresa'} />
+                  <AvatarFallback className="text-[9px]">
+                    {companyName?.slice(0, 2).toUpperCase() ?? 'EM'}
+                  </AvatarFallback>
+                </Avatar>
+              ) : null}
+              <p className="truncate text-[11px] text-muted-foreground">
+                {companyName ?? userName ?? 'AutosZap'}
+              </p>
+            </div>
           </div>
           <div className="relative hidden flex-1 md:block">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -206,6 +397,25 @@ export function Topbar({
               </span>
             ) : null}
           </Button>
+
+          <div className="hidden min-w-0 items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-1.5 sm:flex md:px-3 md:py-2">
+            {companyAvatarUrl ? (
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={companyAvatarUrl} alt={companyName ?? 'Empresa'} />
+                <AvatarFallback>
+                  {companyName?.slice(0, 2).toUpperCase() ?? 'EM'}
+                </AvatarFallback>
+              </Avatar>
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+                Empresa
+              </p>
+              <p className="truncate text-sm font-medium">
+                {companyName ?? 'AutosZap'}
+              </p>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-1.5 md:gap-3 md:px-3 md:py-2">
             <Avatar>

@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
 import { cn } from '@/lib/utils';
 
 /* ── Segments ── */
@@ -308,7 +309,8 @@ export default function RegisterPage() {
       }
 
       toast.success('Conta criada com sucesso! Bem-vindo ao AutosZap.');
-      router.push('/app');
+      const nextPath = await resolvePostAuthRedirect();
+      router.push(nextPath);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Erro ao criar conta.',
