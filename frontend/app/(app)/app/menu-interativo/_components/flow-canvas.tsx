@@ -64,7 +64,6 @@ function computeLayout(draft: MenuDraft) {
       target: node._tempId,
       type: 'smoothstep',
       style: { stroke: edgeColor, strokeWidth: 2, opacity: 0.6 },
-      pathOptions: { borderRadius: 16 },
     });
     node.children.forEach((child) => registerItem(child, node._tempId));
   }
