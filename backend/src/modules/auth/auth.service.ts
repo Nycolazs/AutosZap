@@ -1249,7 +1249,30 @@ export class AuthService {
         ],
       },
       include: {
-        workspace: true,
+        workspace: {
+          include: {
+            instances: {
+              where: {
+                deletedAt: null,
+              },
+              select: {
+                id: true,
+                status: true,
+                profilePictureUrl: true,
+                lastSyncAt: true,
+                updatedAt: true,
+              },
+              orderBy: [
+                {
+                  lastSyncAt: 'desc',
+                },
+                {
+                  updatedAt: 'desc',
+                },
+              ],
+            },
+          },
+        },
         workspaceRole: {
           select: {
             id: true,
@@ -1282,6 +1305,12 @@ export class AuthService {
         tenantUser.id,
         tenantUser.workspaceId,
       );
+    const headerInstance =
+      tenantUser.workspace.instances.find(
+        (instance) => instance.status === 'CONNECTED' && instance.profilePictureUrl,
+      ) ??
+      tenantUser.workspace.instances.find((instance) => instance.profilePictureUrl) ??
+      null;
 
     return {
       id: tenantUser.id,
@@ -1303,6 +1332,7 @@ export class AuthService {
         name: tenantUser.workspace.name,
         slug: tenantUser.workspace.slug,
         companyName: tenantUser.workspace.companyName,
+        instanceProfilePictureUrl: headerInstance?.profilePictureUrl ?? null,
       },
       companies: memberships.map((membership) => ({
         id: membership.company.id,

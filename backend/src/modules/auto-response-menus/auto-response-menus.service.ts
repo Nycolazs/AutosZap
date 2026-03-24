@@ -179,7 +179,17 @@ export class AutoResponseMenusService {
       throw new NotFoundException('Menu nao encontrado.');
     }
 
-    await this.prisma.autoResponseMenu.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.autoResponseMenuNode.deleteMany({
+        where: {
+          menuId: id,
+        },
+      });
+
+      await tx.autoResponseMenu.delete({
+        where: { id },
+      });
+    });
   }
 
   private async upsertNodes(

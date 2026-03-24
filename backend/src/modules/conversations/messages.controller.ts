@@ -14,7 +14,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PermissionKey } from '@prisma/client';
-import { IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
@@ -31,6 +32,16 @@ type UploadedMediaFile = {
 class MessagesQueryDto {
   @IsString()
   conversationId!: string;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
 }
 
 class SendMessageDto {
@@ -115,7 +126,10 @@ export class MessagesController {
 
   @Get()
   list(@CurrentUser() user: CurrentAuthUser, @Query() query: MessagesQueryDto) {
-    return this.conversationsService.listMessages(query.conversationId, user);
+    return this.conversationsService.listMessages(query.conversationId, user, {
+      cursor: query.cursor,
+      limit: query.limit,
+    });
   }
 
   @Post()

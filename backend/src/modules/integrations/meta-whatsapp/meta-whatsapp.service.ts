@@ -34,6 +34,7 @@ import {
   InteractiveMessagePayload,
   MessagingInstanceConfig,
   ProviderInstanceDiagnostics,
+  ProviderProfileUpdateResult,
   ProviderTemplateSummary,
   TemplateParameter,
 } from './messaging-provider.interface';
@@ -110,6 +111,27 @@ export class MetaWhatsAppService {
     ]);
   }
 
+  private async persistBusinessProfileSnapshot(
+    instanceId: string,
+    payload?: Pick<ProviderProfileUpdateResult, 'phoneNumber' | 'businessProfile'> | null,
+  ) {
+    const profilePictureUrl = payload?.businessProfile?.profilePictureUrl ?? null;
+    const displayPhoneNumber = payload?.phoneNumber?.displayPhoneNumber ?? null;
+
+    await this.prisma.instance.update({
+      where: { id: instanceId },
+      data: {
+        ...(displayPhoneNumber
+          ? {
+              phoneNumber: displayPhoneNumber,
+            }
+          : {}),
+        profilePictureUrl,
+        profilePictureUpdatedAt: profilePictureUrl ? new Date() : null,
+      },
+    });
+  }
+
   async testConnection(workspaceId: string, instanceId: string) {
     const cacheKey = this.cacheKey('diagnostics', instanceId);
     const cached =
@@ -154,6 +176,11 @@ export class MetaWhatsAppService {
       data: {
         phoneNumber:
           diagnostics.phoneNumber?.displayPhoneNumber ?? config.phoneNumber,
+        profilePictureUrl:
+          diagnostics.businessProfile?.profilePictureUrl ?? null,
+        profilePictureUpdatedAt: diagnostics.businessProfile?.profilePictureUrl
+          ? new Date()
+          : null,
         status: diagnostics.healthy
           ? InstanceStatus.CONNECTED
           : InstanceStatus.SYNCING,
@@ -260,6 +287,8 @@ export class MetaWhatsAppService {
     try {
       const result = await this.provider.getBusinessProfile(config);
 
+      await this.persistBusinessProfileSnapshot(instanceId, result);
+
       await this.redis.setJson(
         cacheKey,
         {
@@ -319,6 +348,7 @@ export class MetaWhatsAppService {
         sanitizedPayload,
       );
 
+      await this.persistBusinessProfileSnapshot(instanceId, result);
       await this.prisma.instance.update({
         where: { id: instanceId },
         data: {
@@ -364,6 +394,7 @@ export class MetaWhatsAppService {
         payload,
       );
 
+      await this.persistBusinessProfileSnapshot(instanceId, result);
       await this.prisma.instance.update({
         where: { id: instanceId },
         data: {
@@ -1393,12 +1424,13 @@ export class MetaWhatsAppService {
       return false;
     }
 
-    const selectedMessage = selectedNode.message?.trim();
+    const selectedMessage = selectedNode.message ?? '';
     const defaultAgentMessage =
       selectedNode.type === 'talk_to_agent'
         ? 'Perfeito. Vou te encaminhar para um atendente agora mesmo.'
         : null;
-    const outgoingMessage = selectedMessage || defaultAgentMessage;
+    const outgoingMessage =
+      selectedMessage.length > 0 ? selectedMessage : defaultAgentMessage;
 
     if (outgoingMessage) {
       await this.sendConversationMessage(

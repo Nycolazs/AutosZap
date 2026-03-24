@@ -30,6 +30,8 @@ import { resolveConversationPlaceholders } from './conversation-placeholders.uti
 import { normalizeConversationStatus } from './conversation-workflow.utils';
 
 const INBOX_MESSAGES_PRELOAD_LIMIT = 120;
+const MESSAGE_PAGE_DEFAULT_LIMIT = 40;
+const MESSAGE_PAGE_MAX_LIMIT = 80;
 
 type ConversationIncludeToken =
   | 'messages'
@@ -606,24 +608,69 @@ export class ConversationsService {
     return this.findOne(conversationId, user);
   }
 
-  async listMessages(conversationId: string, user: CurrentAuthUser) {
+  async listMessages(
+    conversationId: string,
+    user: CurrentAuthUser,
+    query?: {
+      cursor?: string;
+      limit?: number;
+    },
+  ) {
     await this.conversationWorkflowService.assertConversationAccess(
       conversationId,
       user,
       'visualizar as mensagens desta conversa',
     );
 
+    const limit = Math.min(
+      Math.max(query?.limit ?? MESSAGE_PAGE_DEFAULT_LIMIT, 1),
+      MESSAGE_PAGE_MAX_LIMIT,
+    );
+    const cursor = this.parseMessageCursor(query?.cursor);
     const messages = await this.prisma.conversationMessage.findMany({
       where: {
         workspaceId: user.workspaceId,
         conversationId,
+        ...(cursor
+          ? {
+              OR: [
+                {
+                  createdAt: {
+                    lt: cursor.createdAt,
+                  },
+                },
+                {
+                  AND: [
+                    {
+                      createdAt: cursor.createdAt,
+                    },
+                    {
+                      id: {
+                        lt: cursor.id,
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     });
 
-    return this.sortConversationMessages(messages);
+    const hasMore = messages.length > limit;
+    const items = hasMore ? messages.slice(0, limit) : messages;
+    const oldestMessage = items[items.length - 1];
+
+    return {
+      items: this.sortConversationMessages(items),
+      hasMore,
+      nextCursor:
+        hasMore && oldestMessage
+          ? this.buildMessageCursor(oldestMessage)
+          : null,
+    };
   }
 
   private sortConversationMessages<
@@ -644,6 +691,28 @@ export class ConversationsService {
     createdAt: Date;
   }) {
     return message.sentAt ?? message.createdAt;
+  }
+
+  private buildMessageCursor(message: { id: string; createdAt: Date }) {
+    return `${message.createdAt.toISOString()}::${message.id}`;
+  }
+
+  private parseMessageCursor(cursor?: string | null) {
+    if (!cursor?.trim()) {
+      return null;
+    }
+
+    const [createdAtValue, id] = cursor.split('::');
+    const createdAt = createdAtValue ? new Date(createdAtValue) : null;
+
+    if (!id || !createdAt || Number.isNaN(createdAt.getTime())) {
+      return null;
+    }
+
+    return {
+      id,
+      createdAt,
+    };
   }
 
   async sendMessage(

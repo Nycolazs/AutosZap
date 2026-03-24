@@ -7,7 +7,6 @@ import { PermissionKey, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   ALL_PERMISSION_KEYS,
-  DEFAULT_SELLER_PERMISSIONS,
 } from '../access-control/permissions.constants';
 
 type WorkspaceRolePayload = {
@@ -30,7 +29,6 @@ type WorkspaceRoleListItem = {
 };
 
 const SYSTEM_ADMIN_ROLE_ID = 'system-admin';
-const SYSTEM_SELLER_ROLE_ID = 'system-seller';
 const SYSTEM_ROLE_NAMES = ['Administrador', 'Vendedor'];
 
 @Injectable()
@@ -42,8 +40,6 @@ export class WorkspaceRolesService {
       roles,
       systemAdminAssignedMembersCount,
       systemAdminActiveMembersCount,
-      systemSellerAssignedMembersCount,
-      systemSellerActiveMembersCount,
     ] = await Promise.all([
       this.prisma.workspaceRole.findMany({
         where: {
@@ -80,21 +76,6 @@ export class WorkspaceRolesService {
           status: UserStatus.ACTIVE,
         },
       }),
-      this.prisma.teamMember.count({
-        where: {
-          workspaceId,
-          role: 'SELLER',
-          workspaceRoleId: null,
-        },
-      }),
-      this.prisma.teamMember.count({
-        where: {
-          workspaceId,
-          role: 'SELLER',
-          workspaceRoleId: null,
-          status: UserStatus.ACTIVE,
-        },
-      }),
     ]);
 
     const customRoles = roles.map((role) => ({
@@ -116,8 +97,6 @@ export class WorkspaceRolesService {
       ...this.buildSystemRoles({
         systemAdminAssignedMembersCount,
         systemAdminActiveMembersCount,
-        systemSellerAssignedMembersCount,
-        systemSellerActiveMembersCount,
       }),
       ...customRoles,
     ];
@@ -338,8 +317,6 @@ export class WorkspaceRolesService {
   private buildSystemRoles(counts: {
     systemAdminAssignedMembersCount: number;
     systemAdminActiveMembersCount: number;
-    systemSellerAssignedMembersCount: number;
-    systemSellerActiveMembersCount: number;
   }): WorkspaceRoleListItem[] {
     const now = new Date();
 
@@ -355,19 +332,6 @@ export class WorkspaceRolesService {
         permissionCount: ALL_PERMISSION_KEYS.length,
         assignedMembersCount: counts.systemAdminAssignedMembersCount,
         activeMembersCount: counts.systemAdminActiveMembersCount,
-        isSystem: true,
-      },
-      {
-        id: SYSTEM_SELLER_ROLE_ID,
-        name: 'Vendedor',
-        description:
-          'Papel padrao do sistema com os acessos basicos de operação comercial e atendimento.',
-        createdAt: now,
-        updatedAt: now,
-        permissions: [...DEFAULT_SELLER_PERMISSIONS],
-        permissionCount: DEFAULT_SELLER_PERMISSIONS.size,
-        assignedMembersCount: counts.systemSellerAssignedMembersCount,
-        activeMembersCount: counts.systemSellerActiveMembersCount,
         isSystem: true,
       },
     ];
