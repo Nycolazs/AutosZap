@@ -50,8 +50,6 @@ const GOOGLE_CLIENT_ID =
   '121260038469-oqt0ujgfinc815bmolr61md8egkkokni.apps.googleusercontent.com';
 const FACEBOOK_APP_ID =
   process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '1904602866817490';
-const FACEBOOK_LOGIN_GRAPH_VERSION =
-  process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_GRAPH_VERSION ?? 'v21.0';
 
 function loadScript(src: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -114,12 +112,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           ? 'Conta criada com sucesso!'
           : 'Sessao iniciada com sucesso.',
       );
-      const nextHref = data.user?.isPlatformAdmin
-        ? '/platform'
-        : mode === 'register' && inviteCode
-          ? '/app/boas-vindas'
-          : '/app';
-      router.push(nextHref);
+      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
     },
     [companyName, inviteCode, mode, router],
   );
@@ -203,7 +196,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
         appId,
         cookie: true,
         xfbml: false,
-        version: FACEBOOK_LOGIN_GRAPH_VERSION,
+        version: 'v22.0',
       });
 
       const accessToken = await new Promise<string>((resolve, reject) => {
@@ -215,9 +208,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
               reject(new Error('Login Facebook cancelado.'));
             }
           },
-          {
-            scope: 'public_profile,email',
-          },
+          { scope: 'email' },
         );
       });
 
@@ -238,10 +229,10 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
   if (!hasAny) return null;
 
   return (
-    <div className="mx-auto w-full max-w-[410px] space-y-2.5">
-      <div className="relative flex items-center gap-3 py-1">
+    <div className="mx-auto w-full max-w-[400px] space-y-2">
+      <div className="relative flex items-center gap-3 py-0.5">
         <div className="h-px flex-1 bg-border" />
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground">
           {mode === 'login' ? 'ou entre com' : 'ou cadastre-se com'}
         </span>
         <div className="h-px flex-1 bg-border" />
@@ -252,7 +243,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           <Button
             type="button"
             variant="ghost"
-            className="h-11 w-full rounded-xl border border-border/70 bg-white/[0.03] text-[13px] font-medium hover:bg-white/[0.06]"
+            className="h-10 w-full rounded-xl border border-border/70 bg-white/[0.03] text-[12px] font-medium hover:bg-white/[0.06]"
             disabled={loading !== null}
             onClick={handleGoogle}
           >
@@ -269,7 +260,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           <Button
             type="button"
             variant="ghost"
-            className="h-11 w-full rounded-xl border border-border/70 bg-white/[0.03] text-[13px] font-medium hover:bg-white/[0.06]"
+            className="h-10 w-full rounded-xl border border-border/70 bg-white/[0.03] text-[12px] font-medium hover:bg-white/[0.06]"
             disabled={loading !== null}
             onClick={handleFacebook}
           >
