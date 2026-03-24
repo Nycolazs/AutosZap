@@ -243,7 +243,6 @@ export class ConversationsService {
         },
         messages: includes.has('messages')
           ? {
-              where: this.buildVisibleConversationMessageWhere(user),
               orderBy: {
                 createdAt: 'desc',
               },
@@ -301,7 +300,9 @@ export class ConversationsService {
     return {
       ...conversation,
       messages: conversation.messages
-        ? this.sortConversationMessages(conversation.messages)
+        ? this.sortConversationMessages(
+            this.filterConversationMessagesForUser(conversation.messages, user),
+          )
         : undefined,
       tags: conversation.tags.map((item) => item.tag),
       contact: {
@@ -679,47 +680,74 @@ export class ConversationsService {
       Math.max(query?.limit ?? MESSAGE_PAGE_DEFAULT_LIMIT, 1),
       MESSAGE_PAGE_MAX_LIMIT,
     );
-    const cursor = this.parseMessageCursor(query?.cursor);
-    const visibilityWhere = this.buildVisibleConversationMessageWhere(user);
-    const messages = await this.prisma.conversationMessage.findMany({
-      where: {
-        workspaceId: user.workspaceId,
-        conversationId,
-        AND: [
-          visibilityWhere,
-          ...(cursor
-            ? [
-                {
-                  OR: [
-                    {
-                      createdAt: {
-                        lt: cursor.createdAt,
-                      },
-                    },
-                    {
-                      AND: [
-                        {
-                          createdAt: cursor.createdAt,
-                        },
-                        {
-                          id: {
-                            lt: cursor.id,
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                } satisfies Prisma.ConversationMessageWhereInput,
-              ]
-            : []),
-        ],
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-    });
+    const pageSize = limit + 1;
+    const batchSize = Math.max(pageSize, Math.min(limit * 3, 200));
+    let cursor = this.parseMessageCursor(query?.cursor);
+    const visibleMessages: Awaited<
+      ReturnType<typeof this.prisma.conversationMessage.findMany>
+    > = [];
 
-    const hasMore = messages.length > limit;
-    const items = hasMore ? messages.slice(0, limit) : messages;
+    while (visibleMessages.length < pageSize) {
+      const batch = await this.prisma.conversationMessage.findMany({
+        where: {
+          workspaceId: user.workspaceId,
+          conversationId,
+          ...(cursor
+            ? {
+                OR: [
+                  {
+                    createdAt: {
+                      lt: cursor.createdAt,
+                    },
+                  },
+                  {
+                    AND: [
+                      {
+                        createdAt: cursor.createdAt,
+                      },
+                      {
+                        id: {
+                          lt: cursor.id,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: batchSize,
+      });
+
+      if (!batch.length) {
+        break;
+      }
+
+      visibleMessages.push(
+        ...this.filterConversationMessagesForUser(batch, user),
+      );
+
+      if (batch.length < batchSize) {
+        break;
+      }
+
+      const oldestBatchMessage = batch[batch.length - 1];
+
+      if (!oldestBatchMessage) {
+        break;
+      }
+
+      cursor = {
+        id: oldestBatchMessage.id,
+        createdAt: oldestBatchMessage.createdAt,
+      };
+    }
+
+    const hasMore = visibleMessages.length > limit;
+    const items = hasMore
+      ? visibleMessages.slice(0, limit)
+      : visibleMessages.slice(0, limit);
     const oldestMessage = items[items.length - 1];
 
     return {
@@ -774,27 +802,54 @@ export class ConversationsService {
     };
   }
 
-  private buildVisibleConversationMessageWhere(
+  private filterConversationMessagesForUser<
+    T extends {
+      metadata?: Prisma.JsonValue | null;
+    },
+  >(messages: T[], user: CurrentAuthUser) {
+    return messages.filter((message) =>
+      this.isConversationMessageVisibleToUser(message, user),
+    );
+  }
+
+  private isConversationMessageVisibleToUser(
+    message: {
+      metadata?: Prisma.JsonValue | null;
+    },
     user: CurrentAuthUser,
-  ): Prisma.ConversationMessageWhereInput {
-    return {
-      OR: [
-        {
-          NOT: {
-            metadata: {
-              path: ['internalMessage', 'scope'],
-              equals: 'SELF',
-            },
-          },
-        },
-        {
-          metadata: {
-            path: ['internalMessage', 'authorUserId'],
-            equals: user.sub,
-          },
-        },
-      ],
-    };
+  ) {
+    const metadata =
+      message.metadata &&
+      typeof message.metadata === 'object' &&
+      !Array.isArray(message.metadata)
+        ? (message.metadata as Record<string, unknown>)
+        : null;
+    const internalMessage =
+      metadata?.internalMessage &&
+      typeof metadata.internalMessage === 'object' &&
+      !Array.isArray(metadata.internalMessage)
+        ? (metadata.internalMessage as Record<string, unknown>)
+        : null;
+
+    if (!internalMessage) {
+      return true;
+    }
+
+    const scope =
+      typeof internalMessage.scope === 'string'
+        ? internalMessage.scope.trim()
+        : null;
+
+    if (scope !== 'SELF') {
+      return true;
+    }
+
+    const authorUserId =
+      typeof internalMessage.authorUserId === 'string'
+        ? internalMessage.authorUserId.trim()
+        : null;
+
+    return authorUserId === user.sub;
   }
 
   async sendMessage(
