@@ -56,6 +56,14 @@ class SendMessageDto {
   quotedMessageId?: string;
 }
 
+class SendInternalMessageDto {
+  @IsString()
+  conversationId!: string;
+
+  @IsString()
+  content!: string;
+}
+
 class SendMediaDto {
   @IsString()
   conversationId!: string;
@@ -139,6 +147,18 @@ export class MessagesController {
       user,
       dto.content,
       dto.quotedMessageId,
+    );
+  }
+
+  @Post('internal')
+  sendInternal(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: SendInternalMessageDto,
+  ) {
+    return this.conversationsService.sendInternalMessage(
+      dto.conversationId,
+      user,
+      dto.content,
     );
   }
 

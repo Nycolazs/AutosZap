@@ -1,6 +1,11 @@
 'use client';
 
-import type { CSSProperties, KeyboardEvent, MutableRefObject } from 'react';
+import type {
+  CSSProperties,
+  KeyboardEvent,
+  MutableRefObject,
+  PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   InfiniteData,
@@ -176,7 +181,7 @@ function InboxPageContent() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
-  const lastAutoScrolledConversationRef = useRef<string | null>(null);
+  const pendingInitialScrollConversationRef = useRef<string | null>(null);
   const pendingHistoryAnchorRef = useRef<{
     conversationId: string;
     scrollHeight: number;
@@ -327,24 +332,29 @@ function InboxPageContent() {
   const applyOptimisticConversationMessage = (
     conversationId: string,
     message: ConversationMessage,
-    preview: string,
+    options?: {
+      preview?: string;
+      updateConversationPreview?: boolean;
+    },
   ) => {
-    const updateConversationSnapshot = (queryKey: readonly unknown[]) => {
-      queryClient.setQueryData<Conversation | undefined>(queryKey, (current) => {
-        if (!current) {
-          return current;
-        }
+    if (options?.updateConversationPreview) {
+      const updateConversationSnapshot = (queryKey: readonly unknown[]) => {
+        queryClient.setQueryData<Conversation | undefined>(queryKey, (current) => {
+          if (!current) {
+            return current;
+          }
 
-        return {
-          ...current,
-          lastMessageAt: getConversationMessageTimestamp(message),
-          lastMessagePreview: preview,
-        };
-      });
-    };
+          return {
+            ...current,
+            lastMessageAt: getConversationMessageTimestamp(message),
+            lastMessagePreview: options.preview,
+          };
+        });
+      };
 
-    updateConversationSnapshot(['conversation', conversationId, 'base']);
-    updateConversationSnapshot(['conversation', conversationId, 'details']);
+      updateConversationSnapshot(['conversation', conversationId, 'base']);
+      updateConversationSnapshot(['conversation', conversationId, 'details']);
+    }
 
     queryClient.setQueryData<InfiniteData<ConversationMessagesPage> | undefined>(
       ['conversation', conversationId, 'messages'],
@@ -375,40 +385,42 @@ function InboxPageContent() {
       },
     );
 
-    queryClient.setQueryData<PaginatedResponse<Conversation>>(
-      ['conversations', search, statusFilter],
-      (current) => {
-        if (!current) {
-          return current;
-        }
+    if (options?.updateConversationPreview) {
+      queryClient.setQueryData<PaginatedResponse<Conversation>>(
+        ['conversations', search, statusFilter],
+        (current) => {
+          if (!current) {
+            return current;
+          }
 
-        const updatedConversations = current.data.map((conversation) =>
-          conversation.id === conversationId
-            ? {
-                ...conversation,
-                lastMessageAt: getConversationMessageTimestamp(message),
-                lastMessagePreview: preview,
-              }
-            : conversation,
-        );
+          const updatedConversations = current.data.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  lastMessageAt: getConversationMessageTimestamp(message),
+                  lastMessagePreview: options.preview,
+                }
+              : conversation,
+          );
 
-        updatedConversations.sort((left, right) => {
-          const leftTimestamp = left.lastMessageAt
-            ? new Date(left.lastMessageAt).getTime()
-            : 0;
-          const rightTimestamp = right.lastMessageAt
-            ? new Date(right.lastMessageAt).getTime()
-            : 0;
+          updatedConversations.sort((left, right) => {
+            const leftTimestamp = left.lastMessageAt
+              ? new Date(left.lastMessageAt).getTime()
+              : 0;
+            const rightTimestamp = right.lastMessageAt
+              ? new Date(right.lastMessageAt).getTime()
+              : 0;
 
-          return rightTimestamp - leftTimestamp;
-        });
+            return rightTimestamp - leftTimestamp;
+          });
 
-        return {
-          ...current,
-          data: updatedConversations,
-        };
-      },
-    );
+          return {
+            ...current,
+            data: updatedConversations,
+          };
+        },
+      );
+    }
   };
 
   const getCachedConversationMessages = useCallback(
@@ -480,7 +492,10 @@ function InboxPageContent() {
       applyOptimisticConversationMessage(
         activeConversationId,
         optimisticMessage,
-        formattedContent,
+        {
+          preview: formattedContent,
+          updateConversationPreview: true,
+        },
       );
 
       return {
@@ -586,6 +601,76 @@ function InboxPageContent() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const sendInternalMessageMutation = useMutation({
+    mutationFn: (content: string) =>
+      apiRequest<ConversationMessage>('messages/internal', {
+        method: 'POST',
+        body: {
+          conversationId: activeConversationId,
+          content,
+        },
+      }),
+    onMutate: async (content) => {
+      if (!activeConversationId) {
+        return null;
+      }
+
+      const trimmedContent = content.trim();
+      const now = new Date().toISOString();
+      const optimisticMessage: ConversationMessage = {
+        id: `optimistic-internal-${Date.now()}`,
+        direction: 'SYSTEM',
+        messageType: 'internal_note',
+        content: trimmedContent,
+        metadata: {
+          internalMessage: {
+            scope: 'SELF',
+            authorUserId: meQuery.data?.id ?? null,
+            authorName: meQuery.data?.name ?? null,
+            label: 'Mensagem interna',
+          },
+        },
+        status: 'SENT',
+        sentAt: now,
+        createdAt: now,
+      };
+      const conversationSnapshots = queryClient.getQueriesData<
+        Conversation | undefined
+      >({
+        queryKey: ['conversation', activeConversationId],
+      });
+
+      await queryClient.cancelQueries({
+        queryKey: ['conversation', activeConversationId],
+      });
+
+      applyOptimisticConversationMessage(activeConversationId, optimisticMessage);
+
+      return {
+        activeConversationId,
+        conversationSnapshots,
+      };
+    },
+    onSuccess: async () => {
+      setMessageDraft('');
+      setQuotedMessageId(null);
+      shouldStickToBottomRef.current = true;
+      await queryClient.invalidateQueries({
+        queryKey: ['conversation', activeConversationId],
+      });
+      toast.success('Mensagem interna registrada no chat.');
+    },
+    onError: (error: Error, _variables, context) => {
+      if (context?.activeConversationId) {
+        for (const [queryKey, value] of context.conversationSnapshots) {
+          queryClient.setQueryData(queryKey, value);
+        }
+      }
+
+      toast.error(error.message);
+    },
+  });
+
   const saveReminderMutation = useMutation({
     mutationFn: async () => {
       if (!activeConversationId) {
@@ -646,7 +731,7 @@ function InboxPageContent() {
         }),
         queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       ]);
-      toast.success('Lembrete concluído.');
+      toast.success('Lembrete concluÃ­do.');
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -878,26 +963,55 @@ function InboxPageContent() {
     return () => window.clearTimeout(resetPanels);
   }, [activeConversationId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    pendingInitialScrollConversationRef.current = activeConversationId;
+    shouldStickToBottomRef.current = true;
+    pendingHistoryAnchorRef.current = null;
+  }, [activeConversationId]);
+
+  useLayoutEffect(() => {
     if (!selectedConversation?.id) {
       return;
     }
 
-    if (lastAutoScrolledConversationRef.current === selectedConversation.id) {
+    if (pendingInitialScrollConversationRef.current !== selectedConversation.id) {
       return;
     }
 
-    lastAutoScrolledConversationRef.current = selectedConversation.id;
+    if (
+      conversationMessagesQuery.isLoading &&
+      selectedConversationMessages.length === 0
+    ) {
+      return;
+    }
+
     shouldStickToBottomRef.current = true;
 
-    // Wait one frame so the messages list is fully painted before measuring height.
+    let immediateTimeout = 0;
+    let settleTimeout = 0;
+    let finalizeTimeout = 0;
     const frame = window.requestAnimationFrame(() => {
       scrollMessagesToBottom();
-      window.setTimeout(scrollMessagesToBottom, 0);
+
+      immediateTimeout = window.setTimeout(scrollMessagesToBottom, 0);
+      settleTimeout = window.setTimeout(scrollMessagesToBottom, 120);
+      finalizeTimeout = window.setTimeout(() => {
+        scrollMessagesToBottom();
+        pendingInitialScrollConversationRef.current = null;
+      }, 320);
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [selectedConversation?.id]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(immediateTimeout);
+      window.clearTimeout(settleTimeout);
+      window.clearTimeout(finalizeTimeout);
+    };
+  }, [
+    conversationMessagesQuery.isLoading,
+    selectedConversation?.id,
+    selectedConversationMessages.length,
+  ]);
 
   useLayoutEffect(() => {
     const anchor = pendingHistoryAnchorRef.current;
@@ -1043,9 +1157,16 @@ function InboxPageContent() {
   );
 
   const submitComposer = () => {
-    if (!activeConversationId || sendMutation.isPending || sendMediaMutation.isPending) {
+    if (
+      !activeConversationId ||
+      sendMutation.isPending ||
+      sendMediaMutation.isPending ||
+      isConversationClosed
+    ) {
       return;
     }
+
+    shouldStickToBottomRef.current = true;
 
     if (selectedFile) {
       sendMediaMutation.mutate(undefined);
@@ -1057,6 +1178,19 @@ function InboxPageContent() {
     }
 
     sendMutation.mutate();
+  };
+
+  const submitInternalMessage = () => {
+    if (
+      !activeConversationId ||
+      sendInternalMessageMutation.isPending ||
+      !messageDraft.trim()
+    ) {
+      return;
+    }
+
+    shouldStickToBottomRef.current = true;
+    sendInternalMessageMutation.mutate(messageDraft);
   };
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1347,8 +1481,8 @@ function InboxPageContent() {
                         {conversation.assignedUser ? (
                           <span className="text-[11px] text-muted-foreground">
                             {conversation.status === 'WAITING'
-                              ? `Último responsável: ${conversation.assignedUser.name}`
-                              : `Responsável: ${conversation.assignedUser.name}`}
+                              ? `Ãšltimo responsÃ¡vel: ${conversation.assignedUser.name}`
+                              : `ResponsÃ¡vel: ${conversation.assignedUser.name}`}
                           </span>
                         ) : null}
                         {conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}
@@ -1395,12 +1529,12 @@ function InboxPageContent() {
                       </p>
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         {selectedConversation.assignedUser
-                          ? `Responsável atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
+                          ? `ResponsÃ¡vel atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
                               selectedConversation.assignedUser.normalizedRole ?? selectedConversation.assignedUser.role,
                             )})`
                           : selectedConversation.status === 'WAITING'
-                            ? 'Disponível para retomada por qualquer vendedor liberado.'
-                            : 'Ainda sem responsável definido.'}
+                            ? 'DisponÃ­vel para retomada por qualquer vendedor liberado.'
+                            : 'Ainda sem responsÃ¡vel definido.'}
                       </p>
                     </div>
                   </div>
@@ -1524,75 +1658,88 @@ function InboxPageContent() {
                   </div>
                 ) : null}
 
-                {selectedConversationMessages.map((message, index) => (
-                  <div key={message.id}>
-                    {shouldShowDateSeparator(selectedConversationMessages, index) && (
-                      <div className="my-3 flex items-center justify-center first:mt-0">
-                        <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                          {getDateLabel(getConversationMessageTimestamp(message))}
-                        </span>
-                      </div>
-                    )}
-                    <div
-                      className={cn(
-                        'group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]',
-                        message.direction === 'OUTBOUND'
-                          ? 'ml-auto'
-                          : message.direction === 'SYSTEM'
-                            ? 'mx-auto'
-                            : '',
+                {selectedConversationMessages.map((message, index) => {
+                  const internalMessage = resolveInternalMessageMetadata(
+                    message.metadata,
+                  );
+
+                  return (
+                    <div key={message.id}>
+                      {shouldShowDateSeparator(selectedConversationMessages, index) && (
+                        <div className="my-3 flex items-center justify-center first:mt-0">
+                          <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                            {getDateLabel(getConversationMessageTimestamp(message))}
+                          </span>
+                        </div>
                       )}
-                    >
                       <div
                         className={cn(
-                          'relative rounded-lg px-2.5 py-1.5 shadow-sm',
+                          'group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]',
                           message.direction === 'OUTBOUND'
-                            ? 'rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]'
+                            ? 'ml-auto'
                             : message.direction === 'SYSTEM'
-                              ? 'rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground'
-                              : 'rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]',
+                              ? internalMessage
+                                ? 'mx-auto max-w-[min(92%,36rem)] sm:max-w-[min(72%,36rem)]'
+                                : 'mx-auto'
+                              : '',
                         )}
-                        onDoubleClick={() => {
-                          if (canQuoteMessage(message)) {
-                            setQuotedMessageId(message.id);
-                            composerTextareaRef.current?.focus();
-                          }
-                        }}
                       >
-                        {canQuoteMessage(message) ? (
-                          <button
-                            type="button"
-                            className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
-                            onClick={() => {
+                        <div
+                          className={cn(
+                            'relative rounded-lg px-2.5 py-1.5 shadow-sm',
+                            message.direction === 'OUTBOUND'
+                              ? 'rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]'
+                              : message.direction === 'SYSTEM'
+                                ? internalMessage
+                                  ? 'rounded-2xl border border-violet-400/20 bg-violet-500/10 text-left text-violet-50'
+                                  : 'rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground'
+                                : 'rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]',
+                          )}
+                          onDoubleClick={() => {
+                            if (canQuoteMessage(message)) {
                               setQuotedMessageId(message.id);
                               composerTextareaRef.current?.focus();
-                            }}
-                            title="Responder"
-                            aria-label="Responder"
-                          >
-                            <Reply className="h-3.5 w-3.5" />
-                          </button>
-                        ) : null}
-                        <MessageBubbleContent message={message} />
-                        <span
-                          className={cn(
-                            'mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none',
-                            message.direction === 'OUTBOUND'
-                              ? 'text-[#ffffff99]'
-                              : message.direction === 'SYSTEM'
-                                ? 'text-muted-foreground/60'
-                                : 'text-[#ffffff66]',
-                          )}
+                            }
+                          }}
                         >
-                          {formatMessageTime(getConversationMessageTimestamp(message))}
-                          {message.direction === 'OUTBOUND' && message.status !== 'QUEUED' && (
-                            <MessageStatusIcon status={message.status} />
-                          )}
-                        </span>
+                          {canQuoteMessage(message) ? (
+                            <button
+                              type="button"
+                              className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
+                              onClick={() => {
+                                setQuotedMessageId(message.id);
+                                composerTextareaRef.current?.focus();
+                              }}
+                              title="Responder"
+                              aria-label="Responder"
+                            >
+                              <Reply className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                          <MessageBubbleContent message={message} />
+                          <span
+                            className={cn(
+                              'mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none',
+                              message.direction === 'OUTBOUND'
+                                ? 'text-[#ffffff99]'
+                                : message.direction === 'SYSTEM'
+                                  ? internalMessage
+                                    ? 'text-violet-100/70'
+                                    : 'text-muted-foreground/60'
+                                  : 'text-[#ffffff66]',
+                            )}
+                          >
+                            {formatMessageTime(getConversationMessageTimestamp(message))}
+                            {message.direction === 'OUTBOUND' &&
+                            message.status !== 'QUEUED' ? (
+                              <MessageStatusIcon status={message.status} />
+                            ) : null}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {selectedConversation.closedAt ? (
                   <ConversationTimelineEvent
@@ -1725,17 +1872,16 @@ function InboxPageContent() {
                         onKeyDown={handleComposerKeyDown}
                         placeholder={
                           isConversationClosed
-                            ? 'Reabra a conversa para voltar a responder.'
+                            ? 'Conversa encerrada para o cliente. Voce ainda pode registrar uma mensagem interna aqui.'
                             : selectedFile
                               ? selectedFile.type.startsWith('audio/')
                                 ? 'Adicione uma legenda opcional para a mensagem de voz...'
-                                : 'Adicione uma legenda opcional para a mídia...'
+                                : 'Adicione uma legenda opcional para a mÃ­dia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
                         className="min-h-[34px] max-h-28 resize-none border-none bg-transparent px-0.5 py-0.5 text-[13px] leading-5 placeholder:text-muted-foreground/50"
-                        disabled={isConversationClosed}
                       />
-                      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[max-content_max-content_max-content_1fr_max-content] sm:items-center">
+                      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[max-content_max-content_max-content_max-content_1fr_max-content] sm:items-center">
                         <div className="flex flex-wrap items-center gap-1.5 sm:contents">
                           <Button
                             type="button"
@@ -1770,10 +1916,26 @@ function InboxPageContent() {
                             title="Gravar audio"
                           >
                             <Mic className="h-3.5 w-3.5" />
-                            Gravar áudio
+                            Gravar Ã¡udio
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={submitInternalMessage}
+                            disabled={
+                              !activeConversationId ||
+                              Boolean(selectedFile) ||
+                              !messageDraft.trim() ||
+                              sendInternalMessageMutation.isPending
+                            }
+                            className="h-8 rounded-[11px] border-violet-400/20 bg-violet-500/10 px-2.5 text-[11px] font-medium text-violet-100 hover:bg-violet-500/20 hover:text-violet-50 sm:px-3 sm:text-xs"
+                            title="Registrar mensagem interna no chat"
+                          >
+                            <StickyNote className="h-3.5 w-3.5" />
+                            Interna
                           </Button>
                         </div>
-                        <div className="sm:col-start-5 sm:justify-self-end">
+                        <div className="sm:col-start-6 sm:justify-self-end">
                           <Button
                             onClick={submitComposer}
                             disabled={
@@ -1786,7 +1948,7 @@ function InboxPageContent() {
                             className="h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs"
                           >
                             <SendHorizontal className="h-3.5 w-3.5" />
-                            {selectedFile ? 'Enviar mídia' : 'Enviar'}
+                            {selectedFile ? 'Enviar mÃ­dia' : 'Enviar'}
                           </Button>
                         </div>
                       </div>
@@ -2015,7 +2177,7 @@ function ChatConversationLoadingState() {
           <div className="min-w-0">
             <p className="font-heading text-[18px] font-semibold">Carregando conversa...</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Buscando histórico e informações do contato.
+              Buscando histÃ³rico e informaÃ§Ãµes do contato.
             </p>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
@@ -2131,14 +2293,14 @@ function ConversationSidebar({
         </div>
 
         <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-          <p className="font-medium">Atribuição e status</p>
+          <p className="font-medium">AtribuiÃ§Ã£o e status</p>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
               status={selectedConversation.status}
               closeReason={selectedConversation.closeReason}
             />
             {selectedConversation.status === 'WAITING' ? (
-              <Badge variant="secondary">Disponível para retomada</Badge>
+              <Badge variant="secondary">DisponÃ­vel para retomada</Badge>
             ) : null}
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -2174,7 +2336,7 @@ function ConversationSidebar({
             }
             disabled={!canTransferConversation || isConversationClosed}
           >
-            <option value="">Sem responsável</option>
+            <option value="">Sem responsÃ¡vel</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
@@ -2183,7 +2345,7 @@ function ConversationSidebar({
           </NativeSelect>
           {!canTransferConversation ? (
             <p className="text-xs text-muted-foreground">
-              Transferência de conversa não liberada para seu usuário.
+              TransferÃªncia de conversa nÃ£o liberada para seu usuÃ¡rio.
             </p>
           ) : null}
         </div>
@@ -2264,7 +2426,7 @@ function ConversationSidebar({
               >
                 <p className="text-sm">{note.content}</p>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  {note.author.name} • {formatDate(note.createdAt)}
+                  {note.author.name} â€¢ {formatDate(note.createdAt)}
                 </p>
               </div>
             ))}
@@ -2284,6 +2446,7 @@ function MessageBubbleContent({
   const messageCaption = getMessageCaption(message);
   const normalizedMessageType = normalizeConversationMessageType(message.messageType);
   const mediaMetadata = resolveMessageMediaMetadata(message.metadata);
+  const internalMessage = resolveInternalMessageMetadata(message.metadata);
   const tone =
     message.direction === 'OUTBOUND'
       ? 'outgoing'
@@ -2292,6 +2455,7 @@ function MessageBubbleContent({
         : 'incoming';
   const quote = message.metadata?.quote;
   const quoteBlock = quote ? <QuotedMessageBlock quote={quote} tone={tone} /> : null;
+  const isPdfDocument = isPdfConversationMedia(mediaMetadata);
   const hasUnknownMedia =
     Boolean(mediaMetadata.mediaId) &&
     !['image', 'sticker', 'audio', 'video', 'document', 'template', 'text'].includes(
@@ -2307,6 +2471,15 @@ function MessageBubbleContent({
     if (mime.startsWith('audio/')) return 'audio';
     return normalizedMessageType;
   })();
+
+  if (internalMessage) {
+    return (
+      <InternalConversationMessageContent
+        content={message.content}
+        internalMessage={internalMessage}
+      />
+    );
+  }
 
   if (effectiveType === 'image' || effectiveType === 'sticker') {
     return (
@@ -2351,15 +2524,13 @@ function MessageBubbleContent({
     return (
       <div className="space-y-2">
         {quoteBlock}
-        <a
-          href={mediaUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-2 text-xs underline-offset-4 hover:bg-white/[0.1]"
-        >
-          <Paperclip className="h-3.5 w-3.5" />
-          {mediaMetadata.fileName ?? (hasUnknownMedia ? 'Abrir midia' : 'Abrir documento')}
-        </a>
+        <DocumentMessagePreview
+          src={mediaUrl}
+          fileName={
+            mediaMetadata.fileName ?? (hasUnknownMedia ? 'Midia anexada' : 'Documento')
+          }
+          isPdf={isPdfDocument}
+        />
         {messageCaption ? <FormattedMessageText content={messageCaption} tone={tone} /> : null}
       </div>
     );
@@ -2383,6 +2554,148 @@ function MessageBubbleContent({
     <div className="space-y-2">
       {quoteBlock}
       <FormattedMessageText content={message.content} tone={tone} />
+    </div>
+  );
+}
+
+function InternalConversationMessageContent({
+  content,
+  internalMessage,
+}: {
+  content?: string | null;
+  internalMessage: NonNullable<
+    NonNullable<ConversationMessage['metadata']>['internalMessage']
+  >;
+}) {
+  const label = internalMessage.label?.trim() || 'Mensagem interna';
+  const visibilityLabel =
+    internalMessage.scope === 'SELF' ? 'So voce' : 'Uso interno';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-violet-400/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-100/90">
+          {label}
+        </span>
+        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-violet-100/55">
+          {visibilityLabel}
+        </span>
+      </div>
+      {internalMessage.authorName ? (
+        <p className="text-[11px] text-violet-100/65">
+          Registrada por {internalMessage.authorName}
+        </p>
+      ) : null}
+      <FormattedMessageText content={content} tone="system" />
+    </div>
+  );
+}
+
+function DocumentMessagePreview({
+  src,
+  fileName,
+  isPdf,
+}: {
+  src: string;
+  fileName: string;
+  isPdf: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (isPdf) {
+    return (
+      <>
+        <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/72">
+              PDF
+            </p>
+            <p className="truncate text-sm text-white/92">{fileName}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+              onClick={() => setOpen(true)}
+            >
+              <Expand className="mr-1.5 h-3.5 w-3.5" />
+              Visualizar
+            </Button>
+            <Button
+              asChild
+              variant="secondary"
+              className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+            >
+              <a href={src} download>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Baixar
+              </a>
+            </Button>
+          </div>
+        </div>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-white/10 bg-black/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Visualizacao do PDF</p>
+                <p className="truncate text-xs text-white/60">{fileName}</p>
+              </div>
+              <Button
+                asChild
+                variant="secondary"
+                className="rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+              >
+                <a href={src} download>
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar
+                </a>
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 bg-[#0b1117] p-3">
+              <iframe
+                src={src}
+                title={fileName}
+                className="h-full w-full rounded-[18px] border border-white/10 bg-white"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
+  return (
+    <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/72">
+          Documento
+        </p>
+        <p className="truncate text-sm text-white/92">{fileName}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          asChild
+          variant="secondary"
+          className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+        >
+          <a href={src} target="_blank" rel="noreferrer">
+            <Expand className="mr-1.5 h-3.5 w-3.5" />
+            Abrir
+          </a>
+        </Button>
+        <Button
+          asChild
+          variant="secondary"
+          className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+        >
+          <a href={src} download>
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Baixar
+          </a>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -2599,23 +2912,126 @@ function ImageMessagePreview({
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [baseImageSize, setBaseImageSize] = useState({ width: 0, height: 0 });
+  const dialogViewportRef = useRef<HTMLDivElement | null>(null);
+  const dialogImageRef = useRef<HTMLImageElement | null>(null);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const { containerRef, shouldLoad, forceLoad } = useDeferredMediaLoad(
     isSticker ? '120px' : '260px',
   );
   const shouldRenderImage = shouldLoad || open;
+
+  const clampPan = useCallback(
+    (nextPan: { x: number; y: number }, nextZoom = zoom) => {
+      const viewport = dialogViewportRef.current;
+      const baseWidth = dialogImageRef.current?.clientWidth || baseImageSize.width;
+      const baseHeight =
+        dialogImageRef.current?.clientHeight || baseImageSize.height;
+
+      if (!viewport || !baseWidth || !baseHeight || nextZoom <= 1) {
+        return { x: 0, y: 0 };
+      }
+
+      const overflowX = Math.max(0, baseWidth * nextZoom - viewport.clientWidth);
+      const overflowY = Math.max(0, baseHeight * nextZoom - viewport.clientHeight);
+
+      return {
+        x: Math.min(overflowX / 2, Math.max(-overflowX / 2, nextPan.x)),
+        y: Math.min(overflowY / 2, Math.max(-overflowY / 2, nextPan.y)),
+      };
+    },
+    [baseImageSize.height, baseImageSize.width, zoom],
+  );
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       forceLoad();
     } else {
       setZoom(1);
+      setPan({ x: 0, y: 0 });
+      setIsDragging(false);
+      dragStateRef.current = null;
     }
 
     setOpen(nextOpen);
   };
 
   const adjustZoom = (delta: number) => {
-    setZoom((current) => Math.min(4, Math.max(1, Number((current + delta).toFixed(2)))));
+    setZoom((current) => {
+      const nextZoom = Math.min(4, Math.max(1, Number((current + delta).toFixed(2))));
+      setPan((currentPan) => clampPan(currentPan, nextZoom));
+      return nextZoom;
+    });
+  };
+
+  const handleDialogImageLoad = () => {
+    const image = dialogImageRef.current;
+
+    if (!image) {
+      return;
+    }
+
+    setBaseImageSize({
+      width: image.clientWidth,
+      height: image.clientHeight,
+    });
+    setPan((currentPan) => clampPan(currentPan, zoom));
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (zoom <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: pan.x,
+      originY: pan.y,
+    };
+    setIsDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+
+    setPan(
+      clampPan({
+        x: dragState.originX + deltaX,
+        y: dragState.originY + deltaY,
+      }),
+    );
+  };
+
+  const finishPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragStateRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragStateRef.current = null;
+    setIsDragging(false);
   };
 
   if (isSticker) {
@@ -2687,7 +3103,9 @@ function ImageMessagePreview({
           <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
             <div>
               <p className="text-sm font-semibold">Visualizacao da imagem</p>
-              <p className="text-xs text-white/60">Use zoom e baixe a midia quando precisar.</p>
+              <p className="text-xs text-white/60">
+                Use zoom, arraste a imagem ampliada e baixe a midia quando precisar.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -2705,7 +3123,12 @@ function ImageMessagePreview({
                 variant="secondary"
                 size="icon"
                 className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
-                onClick={() => setZoom(1)}
+                onClick={() => {
+                  setZoom(1);
+                  setPan({ x: 0, y: 0 });
+                  setIsDragging(false);
+                  dragStateRef.current = null;
+                }}
                 disabled={zoom === 1}
               >
                 <RotateCcw className="h-4 w-4" />
@@ -2721,7 +3144,7 @@ function ImageMessagePreview({
                 <ZoomIn className="h-4 w-4" />
               </Button>
               <Button asChild variant="secondary" className="rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15">
-                <a href={src} download target="_blank" rel="noreferrer">
+                <a href={src} download>
                   <Download className="mr-2 h-4 w-4" />
                   Baixar
                 </a>
@@ -2730,7 +3153,11 @@ function ImageMessagePreview({
           </div>
 
           <div
-            className="min-h-0 flex-1 overflow-auto p-4"
+            ref={dialogViewportRef}
+            className={cn(
+              'min-h-0 flex-1 overflow-hidden p-4',
+              zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+            )}
             onWheel={(event) => {
               if (!event.ctrlKey) {
                 return;
@@ -2739,15 +3166,35 @@ function ImageMessagePreview({
               event.preventDefault();
               adjustZoom(event.deltaY > 0 ? -0.2 : 0.2);
             }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={finishPointerDrag}
+            onPointerCancel={finishPointerDrag}
+            onPointerLeave={(event) => {
+              if (!dragStateRef.current) {
+                return;
+              }
+
+              finishPointerDrag(event);
+            }}
+            style={{
+              touchAction: zoom > 1 ? 'none' : 'auto',
+            }}
           >
             <div className="flex min-h-full min-w-full items-center justify-center">
               {shouldRenderImage ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
+                  ref={dialogImageRef}
                   src={src}
                   alt={alt}
-                  className="max-h-[calc(100dvh-11rem)] max-w-[min(100%,900px)] origin-center rounded-[18px] object-contain shadow-[0_20px_60px_rgba(0,0,0,0.45)] transition-transform duration-200"
-                  style={{ transform: 'scale(' + zoom + ')' }}
+                  onLoad={handleDialogImageLoad}
+                  className="max-h-[calc(100dvh-11rem)] max-w-[min(100%,900px)] select-none rounded-[18px] object-contain shadow-[0_20px_60px_rgba(0,0,0,0.45)] transition-transform duration-200"
+                  draggable={false}
+                  style={{
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                  }}
                 />
               ) : (
                 <MediaLoadingSkeleton width="w-[320px]" height="h-[240px]" rounded="rounded-[18px]" />
@@ -3201,6 +3648,18 @@ function canQuoteMessage(message: ConversationMessage) {
   return message.direction !== 'SYSTEM' && message.status !== 'QUEUED';
 }
 
+function resolveInternalMessageMetadata(
+  messageMetadata: ConversationMessage['metadata'],
+) {
+  const internalMessage = messageMetadata?.internalMessage;
+
+  if (!internalMessage || typeof internalMessage !== 'object') {
+    return null;
+  }
+
+  return internalMessage;
+}
+
 function resolveMessageMediaMetadata(messageMetadata: ConversationMessage['metadata']) {
   const metadataAsRecord =
     messageMetadata &&
@@ -3251,6 +3710,15 @@ function resolveMessageMediaMetadata(messageMetadata: ConversationMessage['metad
       mediaAsRecord?.mimetype,
     ),
   };
+}
+
+function isPdfConversationMedia(
+  mediaMetadata: ReturnType<typeof resolveMessageMediaMetadata>,
+) {
+  const mimeType = mediaMetadata.mimeType?.toLowerCase() ?? '';
+  const fileName = mediaMetadata.fileName?.toLowerCase() ?? '';
+
+  return mimeType.includes('pdf') || fileName.endsWith('.pdf');
 }
 
 function buildMessageQuotePreview(message: ConversationMessage) {
@@ -3370,3 +3838,4 @@ function stopRecordingStream(streamRef: MutableRefObject<MediaStream | null>) {
   streamRef.current?.getTracks().forEach((track) => track.stop());
   streamRef.current = null;
 }
+

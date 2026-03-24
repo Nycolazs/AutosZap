@@ -7,6 +7,8 @@ import {
   Param,
   Patch,
   Post,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -28,6 +30,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
 import { InstancesService } from './instances.service';
+import type { Response } from 'express';
 
 class EmbeddedSignupDto {
   @IsString()
@@ -133,6 +136,32 @@ export class InstancesController {
   @Get('embedded-signup-config')
   getEmbeddedSignupConfig() {
     return this.instancesService.getEmbeddedSignupConfig();
+  }
+
+  @Permissions()
+  @Get(':id/profile-picture')
+  async getProfilePicture(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const profilePicture = await this.metaWhatsAppService.getInstanceProfilePicture(
+      user.workspaceId,
+      id,
+    );
+
+    response.setHeader(
+      'Content-Type',
+      profilePicture.mimeType ?? 'image/jpeg',
+    );
+    response.setHeader('Cache-Control', 'private, max-age=300');
+    response.setHeader('Content-Length', String(profilePicture.buffer.length));
+    response.setHeader(
+      'Content-Disposition',
+      'inline; filename="instance-profile-picture"',
+    );
+
+    return new StreamableFile(profilePicture.buffer);
   }
 
   @Roles(Role.ADMIN)

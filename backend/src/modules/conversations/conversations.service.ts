@@ -9,6 +9,7 @@ import {
   AutoMessageType,
   ConversationStatus,
   MessageDirection,
+  MessageStatus,
   Prisma,
 } from '@prisma/client';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
@@ -242,6 +243,7 @@ export class ConversationsService {
         },
         messages: includes.has('messages')
           ? {
+              where: this.buildVisibleConversationMessageWhere(user),
               orderBy: {
                 createdAt: 'desc',
               },
@@ -608,6 +610,57 @@ export class ConversationsService {
     return this.findOne(conversationId, user);
   }
 
+  async sendInternalMessage(
+    conversationId: string,
+    user: CurrentAuthUser,
+    content: string,
+  ) {
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent) {
+      throw new BadRequestException(
+        'Digite uma mensagem interna para registrar.',
+      );
+    }
+
+    await this.conversationWorkflowService.assertConversationAccess(
+      conversationId,
+      user,
+      'registrar uma mensagem interna nesta conversa',
+    );
+
+    const now = new Date();
+
+    const message = await this.prisma.conversationMessage.create({
+      data: {
+        workspaceId: user.workspaceId,
+        conversationId,
+        senderUserId: user.sub,
+        direction: MessageDirection.SYSTEM,
+        messageType: 'internal_note',
+        content: trimmedContent,
+        status: MessageStatus.SENT,
+        sentAt: now,
+        metadata: {
+          internalMessage: {
+            scope: 'SELF',
+            authorUserId: user.sub,
+            authorName: user.name,
+            label: 'Mensagem interna',
+          },
+        },
+      },
+    });
+
+    await this.conversationWorkflowService.emitConversationRealtimeEvent(
+      user.workspaceId,
+      conversationId,
+      'conversation.updated',
+    );
+
+    return message;
+  }
+
   async listMessages(
     conversationId: string,
     user: CurrentAuthUser,
@@ -627,33 +680,39 @@ export class ConversationsService {
       MESSAGE_PAGE_MAX_LIMIT,
     );
     const cursor = this.parseMessageCursor(query?.cursor);
+    const visibilityWhere = this.buildVisibleConversationMessageWhere(user);
     const messages = await this.prisma.conversationMessage.findMany({
       where: {
         workspaceId: user.workspaceId,
         conversationId,
-        ...(cursor
-          ? {
-              OR: [
+        AND: [
+          visibilityWhere,
+          ...(cursor
+            ? [
                 {
-                  createdAt: {
-                    lt: cursor.createdAt,
-                  },
-                },
-                {
-                  AND: [
+                  OR: [
                     {
-                      createdAt: cursor.createdAt,
-                    },
-                    {
-                      id: {
-                        lt: cursor.id,
+                      createdAt: {
+                        lt: cursor.createdAt,
                       },
                     },
+                    {
+                      AND: [
+                        {
+                          createdAt: cursor.createdAt,
+                        },
+                        {
+                          id: {
+                            lt: cursor.id,
+                          },
+                        },
+                      ],
+                    },
                   ],
-                },
-              ],
-            }
-          : {}),
+                } satisfies Prisma.ConversationMessageWhereInput,
+              ]
+            : []),
+        ],
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
@@ -712,6 +771,29 @@ export class ConversationsService {
     return {
       id,
       createdAt,
+    };
+  }
+
+  private buildVisibleConversationMessageWhere(
+    user: CurrentAuthUser,
+  ): Prisma.ConversationMessageWhereInput {
+    return {
+      OR: [
+        {
+          NOT: {
+            metadata: {
+              path: ['internalMessage', 'scope'],
+              equals: 'SELF',
+            },
+          },
+        },
+        {
+          metadata: {
+            path: ['internalMessage', 'authorUserId'],
+            equals: user.sub,
+          },
+        },
+      ],
     };
   }
 

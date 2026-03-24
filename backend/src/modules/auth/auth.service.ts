@@ -1332,7 +1332,9 @@ export class AuthService {
         name: tenantUser.workspace.name,
         slug: tenantUser.workspace.slug,
         companyName: tenantUser.workspace.companyName,
-        instanceProfilePictureUrl: headerInstance?.profilePictureUrl ?? null,
+        instanceProfilePictureUrl: headerInstance
+          ? `/api/proxy/instances/${headerInstance.id}/profile-picture`
+          : null,
       },
       companies: memberships.map((membership) => ({
         id: membership.company.id,

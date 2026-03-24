@@ -114,6 +114,12 @@ export interface ConversationMessage {
     caption?: string | null;
     animated?: boolean;
     voice?: boolean;
+    internalMessage?: {
+      scope?: string | null;
+      authorUserId?: string | null;
+      authorName?: string | null;
+      label?: string | null;
+    } | null;
     quotedExternalMessageId?: string | null;
     quote?: {
       messageId?: string | null;

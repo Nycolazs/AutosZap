@@ -414,6 +414,68 @@ export class MetaWhatsAppService {
     }
   }
 
+  async getInstanceProfilePicture(
+    workspaceId: string,
+    instanceId: string,
+  ): Promise<{
+    buffer: Buffer;
+    mimeType?: string | null;
+  }> {
+    const instance = await this.prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        profilePictureUrl: true,
+      },
+    });
+
+    if (!instance) {
+      throw new NotFoundException('Instancia nao encontrada.');
+    }
+
+    if (instance.profilePictureUrl) {
+      try {
+        return await this.downloadRemoteProfilePicture(
+          instance.profilePictureUrl,
+        );
+      } catch (error) {
+        const detail =
+          error instanceof Error ? error.message : 'Erro inesperado.';
+
+        this.logger.warn(
+          `Falha ao carregar a foto em cache da instancia ${instanceId}. Tentando atualizar o perfil. ${detail}`,
+        );
+      }
+    }
+
+    const refreshedProfile = await this.refreshBusinessProfileSnapshot(
+      workspaceId,
+      instanceId,
+    );
+    const refreshedProfilePictureUrl = this.readBusinessProfilePictureUrl(
+      refreshedProfile.businessProfile,
+    );
+
+    if (!refreshedProfilePictureUrl) {
+      throw new NotFoundException(
+        'A instancia nao possui foto de perfil cadastrada.',
+      );
+    }
+
+    try {
+      return await this.downloadRemoteProfilePicture(refreshedProfilePictureUrl);
+    } catch (error) {
+      throw this.buildFriendlyProfileError(
+        'Nao foi possivel carregar a foto de perfil do WhatsApp.',
+        error,
+      );
+    }
+  }
+
   async sendDirectMessage(
     workspaceId: string,
     payload: {
@@ -2507,6 +2569,57 @@ export class MetaWhatsAppService {
     this.logger.error(`${message} ${detail}`);
 
     return new BadRequestException(`${message} ${detail}`);
+  }
+
+  private readBusinessProfilePictureUrl(businessProfile: unknown) {
+    const profile =
+      businessProfile &&
+      typeof businessProfile === 'object' &&
+      !Array.isArray(businessProfile)
+        ? (businessProfile as Record<string, unknown>)
+        : null;
+    const url = profile?.profilePictureUrl;
+
+    return typeof url === 'string' && url.trim() ? url.trim() : null;
+  }
+
+  private async refreshBusinessProfileSnapshot(
+    workspaceId: string,
+    instanceId: string,
+  ) {
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const result = await this.provider.getBusinessProfile(config);
+
+    await this.persistBusinessProfileSnapshot(instanceId, result);
+    await this.redis.setJson(
+      this.cacheKey('business-profile', instanceId),
+      {
+        phoneNumber: result.phoneNumber,
+        businessProfile: result.businessProfile,
+      },
+      MetaWhatsAppService.CACHE_TTL_BUSINESS_PROFILE,
+    );
+
+    return result;
+  }
+
+  private async downloadRemoteProfilePicture(url: string) {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'image/*,*/*;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Falha ao baixar a foto de perfil (${response.status}).`,
+      );
+    }
+
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      mimeType: response.headers.get('content-type'),
+    };
   }
 
   private normalizeBaseUrl(value?: string | null) {
