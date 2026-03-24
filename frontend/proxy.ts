@@ -3,6 +3,14 @@ import { NextResponse } from 'next/server';
 import { ACCESS_COOKIE } from './lib/auth-cookies';
 
 const publicPaths = ['/login', '/register', '/forgot-password'];
+const MOBILE_USER_AGENT_RE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+
+function isMobileRequest(request: NextRequest) {
+  const userAgent = request.headers.get('user-agent') ?? '';
+  const secChUaMobile = request.headers.get('sec-ch-ua-mobile');
+
+  return secChUaMobile === '?1' || MOBILE_USER_AGENT_RE.test(userAgent);
+}
 
 function decodeJwtPayload(token?: string) {
   if (!token) {
@@ -56,6 +64,10 @@ export function proxy(request: NextRequest) {
 
   if (pathname.startsWith('/platform') && !accessToken) {
     return applyNoStore(NextResponse.redirect(new URL('/login', request.url)));
+  }
+
+  if (pathname.startsWith('/app/menu-interativo') && isMobileRequest(request)) {
+    return applyNoStore(NextResponse.redirect(new URL('/app', request.url)));
   }
 
   if (isPublicRoute && accessToken) {

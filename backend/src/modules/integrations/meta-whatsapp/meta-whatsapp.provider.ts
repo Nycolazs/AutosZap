@@ -4,6 +4,7 @@ import { InstanceMode } from '@prisma/client';
 import axios, { AxiosRequestConfig } from 'axios';
 import { createHmac, randomUUID } from 'crypto';
 import {
+  InteractiveMessagePayload,
   MessagingInstanceConfig,
   MessagingProvider,
   ParsedWebhookPayload,
@@ -231,6 +232,104 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       simulated: false,
       raw: response as Record<string, unknown>,
       messageType: 'template',
+    };
+  }
+
+  async sendInteractiveMessage(
+    config: MessagingInstanceConfig,
+    to: string,
+    payload: InteractiveMessagePayload,
+    options?: {
+      quotedExternalMessageId?: string;
+    },
+  ): Promise<ProviderSendResult> {
+    if (!this.canUseRealTransport(config)) {
+      return {
+        externalMessageId: `dev-${randomUUID()}`,
+        status: 'delivered',
+        simulated: true,
+        raw: {
+          mode: 'dev',
+          type: 'interactive',
+          to,
+          payload,
+          quotedExternalMessageId: options?.quotedExternalMessageId,
+        },
+        messageType: 'interactive',
+        metadata: {
+          interactiveType: payload.type,
+          quotedExternalMessageId: options?.quotedExternalMessageId,
+        },
+      };
+    }
+
+    const interactivePayload: Record<string, unknown> = {
+      type: payload.type,
+      body: {
+        text: payload.body,
+      },
+      ...(payload.footer
+        ? {
+            footer: {
+              text: payload.footer,
+            },
+          }
+        : {}),
+    };
+
+    if (payload.type === 'button') {
+      interactivePayload.action = {
+        buttons: payload.buttons.map((button) => ({
+          type: 'reply',
+          reply: {
+            id: button.id,
+            title: button.title,
+          },
+        })),
+      };
+    } else {
+      interactivePayload.action = {
+        button: payload.buttonText,
+        sections: payload.sections.map((section) => ({
+          ...(section.title ? { title: section.title } : {}),
+          rows: section.rows.map((row) => ({
+            id: row.id,
+            title: row.title,
+            ...(row.description ? { description: row.description } : {}),
+          })),
+        })),
+      };
+    }
+
+    const messagePayload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      to: this.normalizePhoneNumber(to),
+      type: 'interactive',
+      interactive: interactivePayload,
+    };
+
+    if (options?.quotedExternalMessageId) {
+      messagePayload.context = {
+        message_id: options.quotedExternalMessageId,
+      };
+    }
+
+    const response = await this.post<MetaMessageResponse>(
+      config,
+      `${config.phoneNumberId}/messages`,
+      messagePayload,
+    );
+
+    return {
+      externalMessageId: response.messages?.[0]?.id ?? randomUUID(),
+      status: 'sent',
+      simulated: false,
+      raw: response as Record<string, unknown>,
+      messageType: 'interactive',
+      metadata: {
+        interactiveType: payload.type,
+        quotedExternalMessageId: options?.quotedExternalMessageId,
+      },
     };
   }
 
@@ -865,6 +964,18 @@ export class MetaWhatsAppProvider implements MessagingProvider {
             timestamp?: string;
             type?: string;
             text?: { body?: string };
+            interactive?: {
+              type?: string;
+              button_reply?: {
+                id?: string;
+                title?: string;
+              };
+              list_reply?: {
+                id?: string;
+                title?: string;
+                description?: string;
+              };
+            };
             image?: {
               id?: string;
               mime_type?: string;
@@ -914,9 +1025,12 @@ export class MetaWhatsAppProvider implements MessagingProvider {
 
           const normalizedType = this.normalizeInboundMessageType(parsed);
           const mediaMetadata = this.extractInboundMediaMetadata(parsed);
+          const interactiveMetadata =
+            this.extractInboundInteractiveMetadata(parsed);
           const quoteMetadata = this.extractInboundQuoteMetadata(parsed);
           const inboundMetadata = this.mergeInboundMetadata(
             mediaMetadata,
+            interactiveMetadata,
             quoteMetadata,
           );
 
@@ -1187,6 +1301,10 @@ export class MetaWhatsAppProvider implements MessagingProvider {
 
   private normalizeInboundMessageType(message: {
     type?: string;
+    interactive?: {
+      button_reply?: { id?: string };
+      list_reply?: { id?: string };
+    };
     image?: { id?: string };
     audio?: { id?: string };
     video?: { id?: string };
@@ -1206,6 +1324,10 @@ export class MetaWhatsAppProvider implements MessagingProvider {
       document: 'document',
       sticker: 'sticker',
       animated_sticker: 'sticker',
+      interactive: 'text',
+      button: 'text',
+      button_reply: 'text',
+      list_reply: 'text',
     };
 
     if (normalizedInputType && typeMap[normalizedInputType]) {
@@ -1217,6 +1339,8 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     if (message.video?.id) return 'video';
     if (message.sticker?.id) return 'sticker';
     if (message.document?.id) return 'document';
+    if (message.interactive?.button_reply?.id) return 'text';
+    if (message.interactive?.list_reply?.id) return 'text';
 
     if (normalizedInputType) {
       return normalizedInputType;
@@ -1228,6 +1352,10 @@ export class MetaWhatsAppProvider implements MessagingProvider {
   private getInboundMessageBody(
     message: {
       text?: { body?: string };
+      interactive?: {
+        button_reply?: { title?: string };
+        list_reply?: { title?: string };
+      };
       image?: { caption?: string };
       video?: { caption?: string };
       document?: { caption?: string };
@@ -1235,6 +1363,14 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     messageType: string,
   ) {
     if (messageType === 'text') {
+      const interactiveTitle =
+        message.interactive?.button_reply?.title ??
+        message.interactive?.list_reply?.title;
+
+      if (interactiveTitle?.trim()) {
+        return interactiveTitle.trim();
+      }
+
       return message.text?.body ?? '';
     }
 
@@ -1337,6 +1473,46 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     return undefined;
   }
 
+  private extractInboundInteractiveMetadata(message: {
+    interactive?: {
+      type?: string;
+      button_reply?: {
+        id?: string;
+        title?: string;
+      };
+      list_reply?: {
+        id?: string;
+        title?: string;
+        description?: string;
+      };
+    };
+  }) {
+    const interactive = message.interactive;
+
+    if (!interactive) {
+      return undefined;
+    }
+
+    const replyId =
+      interactive.button_reply?.id ?? interactive.list_reply?.id ?? null;
+    const replyTitle =
+      interactive.button_reply?.title ?? interactive.list_reply?.title ?? null;
+    const replyDescription = interactive.list_reply?.description ?? null;
+
+    if (!replyId && !replyTitle) {
+      return undefined;
+    }
+
+    return {
+      interactive: {
+        type: interactive.type ?? null,
+        replyId,
+        replyTitle,
+        replyDescription,
+      },
+    };
+  }
+
   private extractInboundQuoteMetadata(message: {
     context?: {
       from?: string;
@@ -1357,14 +1533,16 @@ export class MetaWhatsAppProvider implements MessagingProvider {
 
   private mergeInboundMetadata(
     mediaMetadata?: Record<string, unknown>,
+    interactiveMetadata?: Record<string, unknown>,
     quoteMetadata?: Record<string, unknown>,
   ) {
-    if (!mediaMetadata && !quoteMetadata) {
+    if (!mediaMetadata && !interactiveMetadata && !quoteMetadata) {
       return undefined;
     }
 
     return {
       ...(mediaMetadata ?? {}),
+      ...(interactiveMetadata ?? {}),
       ...(quoteMetadata ?? {}),
     };
   }

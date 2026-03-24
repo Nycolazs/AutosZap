@@ -31,6 +31,7 @@ import {
 } from '../../../common/utils/phone';
 import { MetaWhatsAppProvider } from './meta-whatsapp.provider';
 import {
+  InteractiveMessagePayload,
   MessagingInstanceConfig,
   ProviderInstanceDiagnostics,
   ProviderTemplateSummary,
@@ -42,6 +43,39 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { AccessControlService } from '../../access-control/access-control.service';
 import { normalizeRole } from '../../access-control/permissions.constants';
 import { normalizeConversationStatus } from '../../conversations/conversation-workflow.utils';
+
+type InteractiveMenuNodeRecord = {
+  id: string;
+  parentId: string | null;
+  label: string;
+  message: string;
+  type: string;
+  order: number;
+};
+
+type InteractiveMenuRecord = {
+  id: string;
+  name: string;
+  headerText: string | null;
+  footerText: string | null;
+  triggerKeywords: string[];
+  nodes: InteractiveMenuNodeRecord[];
+};
+
+type InteractiveMenuContextOption = {
+  nodeId: string;
+  label: string;
+  order: number;
+  replyId: string;
+  type: string;
+};
+
+type InteractiveMenuContext = {
+  menuId: string;
+  parentNodeId: string | null;
+  sentAs: 'button' | 'list' | 'text';
+  options: InteractiveMenuContextOption[];
+};
 
 @Injectable()
 export class MetaWhatsAppService {
@@ -973,6 +1007,7 @@ export class MetaWhatsAppService {
           inboundInstance.workspaceId,
           conversation.id,
           inbound.body,
+          inboundMetadata,
         );
 
         if (!menuReplySent) {
@@ -1213,16 +1248,11 @@ export class MetaWhatsAppService {
       .replace(/\s+/g, ' ');
   }
 
-  private buildInteractiveMenuMessage(menu: {
-    headerText: string | null;
-    footerText: string | null;
-    nodes: Array<{ parentId: string | null; label: string; order: number }>;
-  }): string | null {
-    const rootNodes = menu.nodes
-      .filter((node) => node.parentId === null && node.label.trim())
-      .sort((left, right) => left.order - right.order);
-
-    if (!rootNodes.length) {
+  private buildInteractiveMenuMessage(
+    menu: Pick<InteractiveMenuRecord, 'headerText' | 'footerText'>,
+    options: InteractiveMenuNodeRecord[],
+  ): string | null {
+    if (!options.length) {
       return null;
     }
 
@@ -1231,7 +1261,7 @@ export class MetaWhatsAppService {
       lines.push(menu.headerText.trim());
     }
 
-    rootNodes.forEach((node, index) => {
+    options.forEach((node, index) => {
       lines.push(`${index + 1}. ${node.label.trim()}`);
     });
 
@@ -1246,16 +1276,8 @@ export class MetaWhatsAppService {
     workspaceId: string,
     conversationId: string,
     inboundBody?: string | null,
+    inboundMetadata?: Record<string, unknown>,
   ): Promise<boolean> {
-    if (!inboundBody?.trim()) {
-      return false;
-    }
-
-    const normalizedInbound = this.normalizeInteractiveMenuTrigger(inboundBody);
-    if (!normalizedInbound) {
-      return false;
-    }
-
     const activeMenus = await this.prisma.autoResponseMenu.findMany({
       where: {
         workspaceId,
@@ -1264,8 +1286,11 @@ export class MetaWhatsAppService {
       include: {
         nodes: {
           select: {
+            id: true,
             parentId: true,
             label: true,
+            message: true,
+            type: true,
             order: true,
           },
         },
@@ -1275,23 +1300,214 @@ export class MetaWhatsAppService {
       },
     });
 
-    const matchedMenu = activeMenus.find((menu) =>
-      (menu.triggerKeywords ?? []).some(
-        (keyword) =>
-          this.normalizeInteractiveMenuTrigger(keyword) === normalizedInbound,
-      ),
+    if (!activeMenus.length) {
+      return false;
+    }
+
+    const normalizedInbound = inboundBody?.trim()
+      ? this.normalizeInteractiveMenuTrigger(inboundBody)
+      : '';
+
+    if (normalizedInbound) {
+      const matchedMenu = activeMenus.find((menu) =>
+        (menu.triggerKeywords ?? []).some(
+          (keyword) =>
+            this.normalizeInteractiveMenuTrigger(keyword) === normalizedInbound,
+        ),
+      );
+
+      if (matchedMenu) {
+        const latestContext = await this.findLatestInteractiveMenuContext(
+          workspaceId,
+          conversationId,
+        );
+
+        if (
+          latestContext &&
+          latestContext.context.menuId === matchedMenu.id &&
+          latestContext.context.parentNodeId === null &&
+          Date.now() - latestContext.createdAt.getTime() < 2 * 60_000
+        ) {
+          return true;
+        }
+
+        return this.sendInteractiveMenuStep(
+          workspaceId,
+          conversationId,
+          matchedMenu,
+          null,
+        );
+      }
+    }
+
+    const latestContext = await this.findLatestInteractiveMenuContext(
+      workspaceId,
+      conversationId,
     );
 
-    if (!matchedMenu) {
+    if (
+      !latestContext ||
+      Date.now() - latestContext.createdAt.getTime() > 30 * 60_000
+    ) {
       return false;
     }
 
-    const menuMessage = this.buildInteractiveMenuMessage(matchedMenu);
-    if (!menuMessage) {
+    const menu = activeMenus.find((item) => item.id === latestContext.context.menuId);
+    if (!menu) {
       return false;
     }
 
-    const latestSystemMessage = await this.prisma.conversationMessage.findFirst({
+    const options = this.getMenuStepOptions(menu, latestContext.context.parentNodeId);
+    if (!options.length) {
+      return false;
+    }
+
+    const inboundReplyId = this.readInboundInteractiveReplyId(inboundMetadata);
+    const selectedOption = this.resolveSelectedInteractiveOption({
+      options: latestContext.context.options,
+      inboundReplyId,
+      inboundBody: inboundBody ?? null,
+      normalizedInbound,
+    });
+
+    if (!selectedOption) {
+      const fallbackMessage =
+        this.buildInteractiveMenuMessage(menu, options) ??
+        'Nao consegui identificar a opcao escolhida. Selecione uma das opcoes enviadas.';
+
+      await this.sendConversationMessage(
+        workspaceId,
+        conversationId,
+        null,
+        fallbackMessage,
+        {
+          direction: MessageDirection.SYSTEM,
+          isAutomated: true,
+        },
+      );
+      return true;
+    }
+
+    const selectedNode = options.find((node) => node.id === selectedOption.nodeId);
+    if (!selectedNode) {
+      return false;
+    }
+
+    const selectedMessage = selectedNode.message?.trim();
+    const defaultAgentMessage =
+      selectedNode.type === 'talk_to_agent'
+        ? 'Perfeito. Vou te encaminhar para um atendente agora mesmo.'
+        : null;
+    const outgoingMessage = selectedMessage || defaultAgentMessage;
+
+    if (outgoingMessage) {
+      await this.sendConversationMessage(
+        workspaceId,
+        conversationId,
+        null,
+        outgoingMessage,
+        {
+          direction: MessageDirection.SYSTEM,
+          isAutomated: true,
+        },
+      );
+    }
+
+    const hasChildren = this.getMenuStepOptions(menu, selectedNode.id).length > 0;
+
+    if (hasChildren) {
+      await this.sendInteractiveMenuStep(
+        workspaceId,
+        conversationId,
+        menu,
+        selectedNode.id,
+      );
+    }
+
+    return true;
+  }
+
+  private getMenuStepOptions(
+    menu: InteractiveMenuRecord,
+    parentNodeId: string | null,
+  ) {
+    return menu.nodes
+      .filter(
+        (node) =>
+          node.parentId === parentNodeId &&
+          typeof node.label === 'string' &&
+          node.label.trim().length > 0,
+      )
+      .sort((left, right) => left.order - right.order);
+  }
+
+  private readInboundInteractiveReplyId(metadata?: Record<string, unknown>) {
+    if (!metadata || typeof metadata !== 'object') {
+      return null;
+    }
+
+    const interactive =
+      metadata.interactive && typeof metadata.interactive === 'object'
+        ? (metadata.interactive as Record<string, unknown>)
+        : null;
+
+    if (!interactive) {
+      return null;
+    }
+
+    return typeof interactive.replyId === 'string' && interactive.replyId.trim()
+      ? interactive.replyId.trim()
+      : null;
+  }
+
+  private resolveSelectedInteractiveOption(payload: {
+    options: InteractiveMenuContextOption[];
+    inboundReplyId: string | null;
+    inboundBody: string | null;
+    normalizedInbound: string;
+  }) {
+    const sortedOptions = [...payload.options].sort(
+      (left, right) => left.order - right.order,
+    );
+
+    if (payload.inboundReplyId) {
+      const byReplyId = sortedOptions.find(
+        (option) => option.replyId === payload.inboundReplyId,
+      );
+
+      if (byReplyId) {
+        return byReplyId;
+      }
+    }
+
+    const leadingNumberMatch = payload.inboundBody?.trim().match(/^(\d{1,2})\D?/);
+    const requestedIndex = leadingNumberMatch
+      ? Number(leadingNumberMatch[1])
+      : Number.NaN;
+
+    if (Number.isFinite(requestedIndex) && requestedIndex > 0) {
+      const byIndex = sortedOptions[requestedIndex - 1];
+      if (byIndex) {
+        return byIndex;
+      }
+    }
+
+    if (payload.normalizedInbound) {
+      return sortedOptions.find(
+        (option) =>
+          this.normalizeInteractiveMenuTrigger(option.label) ===
+          payload.normalizedInbound,
+      );
+    }
+
+    return null;
+  }
+
+  private async findLatestInteractiveMenuContext(
+    workspaceId: string,
+    conversationId: string,
+  ) {
+    const candidates = await this.prisma.conversationMessage.findMany({
       where: {
         workspaceId,
         conversationId,
@@ -1300,31 +1516,313 @@ export class MetaWhatsAppService {
       orderBy: {
         createdAt: 'desc',
       },
+      take: 12,
       select: {
-        content: true,
         createdAt: true,
+        metadata: true,
       },
     });
 
-    if (
-      latestSystemMessage?.content?.trim() === menuMessage &&
-      Date.now() - latestSystemMessage.createdAt.getTime() < 2 * 60_000
-    ) {
+    for (const candidate of candidates) {
+      const metadata =
+        candidate.metadata && typeof candidate.metadata === 'object'
+          ? (candidate.metadata as Record<string, unknown>)
+          : null;
+
+      if (!metadata) {
+        continue;
+      }
+
+      const menuContext =
+        metadata.menuContext && typeof metadata.menuContext === 'object'
+          ? (metadata.menuContext as Record<string, unknown>)
+          : null;
+
+      if (!menuContext) {
+        continue;
+      }
+
+      const menuId =
+        typeof menuContext.menuId === 'string' ? menuContext.menuId : null;
+      if (!menuId) {
+        continue;
+      }
+
+      const parentNodeId =
+        typeof menuContext.parentNodeId === 'string'
+          ? menuContext.parentNodeId
+          : null;
+      const sentAsRaw =
+        typeof menuContext.sentAs === 'string' ? menuContext.sentAs : 'text';
+      const sentAs: 'button' | 'list' | 'text' =
+        sentAsRaw === 'button' || sentAsRaw === 'list' ? sentAsRaw : 'text';
+      const options = Array.isArray(menuContext.options)
+        ? menuContext.options
+            .map((item) => {
+              if (!item || typeof item !== 'object') {
+                return null;
+              }
+
+              const row = item as Record<string, unknown>;
+              const nodeId =
+                typeof row.nodeId === 'string' ? row.nodeId : null;
+              const label = typeof row.label === 'string' ? row.label : null;
+              const replyId =
+                typeof row.replyId === 'string' ? row.replyId : null;
+              const order =
+                typeof row.order === 'number' ? row.order : Number.NaN;
+              const type = typeof row.type === 'string' ? row.type : 'message';
+
+              if (!nodeId || !label || !replyId || !Number.isFinite(order)) {
+                return null;
+              }
+
+              return {
+                nodeId,
+                label,
+                replyId,
+                order,
+                type,
+              } satisfies InteractiveMenuContextOption;
+            })
+            .filter((item): item is InteractiveMenuContextOption => item !== null)
+        : [];
+
+      if (!options.length) {
+        continue;
+      }
+
+      return {
+        createdAt: candidate.createdAt,
+        context: {
+          menuId,
+          parentNodeId,
+          sentAs,
+          options,
+        } satisfies InteractiveMenuContext,
+      };
+    }
+
+    return null;
+  }
+
+  private buildInteractiveMenuReplyId(menuId: string, nodeId: string) {
+    return `menu:${menuId}:node:${nodeId}`;
+  }
+
+  private trimInteractiveLabel(label: string, limit: number) {
+    const normalized = label.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= limit) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, Math.max(0, limit - 3)).trim()}...`;
+  }
+
+  private async sendInteractiveMenuStep(
+    workspaceId: string,
+    conversationId: string,
+    menu: InteractiveMenuRecord,
+    parentNodeId: string | null,
+  ): Promise<boolean> {
+    const options = this.getMenuStepOptions(menu, parentNodeId);
+    if (!options.length) {
+      return false;
+    }
+
+    const contextOptions: InteractiveMenuContextOption[] = options.map((node) => ({
+      nodeId: node.id,
+      label: node.label.trim(),
+      order: node.order,
+      replyId: this.buildInteractiveMenuReplyId(menu.id, node.id),
+      type: node.type,
+    }));
+
+    const fallbackText = this.buildInteractiveMenuMessage(menu, options);
+    if (!fallbackText) {
+      return false;
+    }
+
+    const bodyText = menu.headerText?.trim() || 'Escolha uma opcao:';
+    const footerText = menu.footerText?.trim() || undefined;
+
+    let interactivePayload: InteractiveMessagePayload | null = null;
+    let sentAs: 'button' | 'list' | 'text' = 'text';
+
+    if (contextOptions.length <= 3) {
+      interactivePayload = {
+        type: 'button',
+        body: this.trimInteractiveLabel(bodyText, 1024),
+        footer: footerText ? this.trimInteractiveLabel(footerText, 60) : undefined,
+        buttons: contextOptions.map((option) => ({
+          id: option.replyId,
+          title: this.trimInteractiveLabel(option.label, 20),
+        })),
+      };
+      sentAs = 'button';
+    } else if (contextOptions.length <= 10) {
+      interactivePayload = {
+        type: 'list',
+        body: this.trimInteractiveLabel(bodyText, 1024),
+        footer: footerText ? this.trimInteractiveLabel(footerText, 60) : undefined,
+        buttonText: 'Ver opcoes',
+        sections: [
+          {
+            title: 'Opcoes',
+            rows: contextOptions.map((option) => ({
+              id: option.replyId,
+              title: this.trimInteractiveLabel(option.label, 24),
+            })),
+          },
+        ],
+      };
+      sentAs = 'list';
+    }
+
+    const metadata = {
+      menuContext: {
+        menuId: menu.id,
+        parentNodeId,
+        sentAs,
+        options: contextOptions,
+      },
+    };
+
+    if (!interactivePayload) {
+      await this.sendConversationMessage(
+        workspaceId,
+        conversationId,
+        null,
+        fallbackText,
+        {
+          direction: MessageDirection.SYSTEM,
+          isAutomated: true,
+        },
+      );
+
+      const latestSystemMessage = await this.prisma.conversationMessage.findFirst({
+        where: {
+          workspaceId,
+          conversationId,
+          direction: MessageDirection.SYSTEM,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (latestSystemMessage?.id) {
+        await this.prisma.conversationMessage.update({
+          where: {
+            id: latestSystemMessage.id,
+          },
+          data: {
+            metadata: metadata as Prisma.InputJsonValue,
+          },
+        });
+      }
+
       return true;
     }
 
-    await this.sendConversationMessage(
+    await this.sendConversationInteractiveMessage(
       workspaceId,
       conversationId,
-      null,
-      menuMessage,
-      {
-        direction: MessageDirection.SYSTEM,
-        isAutomated: true,
-      },
+      interactivePayload,
+      fallbackText,
+      metadata,
     );
 
     return true;
+  }
+
+  private async sendConversationInteractiveMessage(
+    workspaceId: string,
+    conversationId: string,
+    interactivePayload: InteractiveMessagePayload,
+    fallbackText: string,
+    metadata: Record<string, unknown>,
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        workspaceId,
+        deletedAt: null,
+      },
+      include: {
+        contact: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversa nao encontrada.');
+    }
+
+    const instanceId = conversation.instanceId
+      ? conversation.instanceId
+      : (
+          await this.prisma.instance.findFirst({
+            where: {
+              workspaceId,
+              deletedAt: null,
+            },
+            orderBy: {
+              updatedAt: 'desc',
+            },
+          })
+        )?.id;
+
+    if (!instanceId) {
+      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
+    }
+
+    const config = await this.getInstanceConfig(instanceId, workspaceId);
+    const windowStatus = await this.getCustomerServiceWindowStatus(
+      conversation.id,
+      workspaceId,
+      config,
+    );
+
+    if (!windowStatus.isOpen) {
+      await this.sendConversationMessage(
+        workspaceId,
+        conversationId,
+        null,
+        fallbackText,
+        {
+          direction: MessageDirection.SYSTEM,
+          isAutomated: true,
+        },
+      );
+      return;
+    }
+
+    const providerResult = await this.provider.sendInteractiveMessage(
+      config,
+      conversation.contact.phone,
+      interactivePayload,
+    );
+
+    await this.persistOutboundMessage({
+      workspaceId,
+      conversationId: conversation.id,
+      senderUserId: null,
+      instanceId,
+      content: fallbackText,
+      direction: MessageDirection.SYSTEM,
+      isAutomated: true,
+      providerResult: {
+        ...providerResult,
+        messageType: 'interactive',
+        metadata: {
+          ...(providerResult.metadata ?? {}),
+          ...metadata,
+        },
+      },
+    });
   }
 
   private async getInstanceConfig(

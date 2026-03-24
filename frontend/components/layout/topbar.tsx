@@ -249,7 +249,9 @@ export function Topbar({
                   {section.label}
                 </p>
                 <div className="space-y-1">
-                  {section.items.map((item) => {
+                  {section.items
+                    .filter((item) => item.href !== '/app/menu-interativo')
+                    .map((item) => {
                     const active = isRouteActive(pathname, item.href);
                     const Icon = item.icon;
 

@@ -67,7 +67,9 @@ export function MobileBottomNav({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !PRIMARY_DESTINATIONS.some((entry) => entry.href === item.href),
+        (item) =>
+          !PRIMARY_DESTINATIONS.some((entry) => entry.href === item.href) &&
+          item.href !== '/app/menu-interativo',
       ),
     }))
     .filter((section) => section.items.length);

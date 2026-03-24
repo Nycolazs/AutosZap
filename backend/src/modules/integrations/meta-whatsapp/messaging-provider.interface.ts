@@ -77,6 +77,35 @@ export interface ProviderHealthResult {
   raw?: Record<string, unknown>;
 }
 
+export type InteractiveButtonOption = {
+  id: string;
+  title: string;
+};
+
+export type InteractiveListRow = {
+  id: string;
+  title: string;
+  description?: string;
+};
+
+export type InteractiveMessagePayload =
+  | {
+      type: 'button';
+      body: string;
+      footer?: string;
+      buttons: InteractiveButtonOption[];
+    }
+  | {
+      type: 'list';
+      body: string;
+      footer?: string;
+      buttonText: string;
+      sections: Array<{
+        title?: string;
+        rows: InteractiveListRow[];
+      }>;
+    };
+
 export interface ProviderBusinessProfile {
   about?: string | null;
   description?: string | null;
@@ -155,6 +184,14 @@ export interface MessagingProvider {
       languageCode: string;
       headerParameters?: TemplateParameter[];
       bodyParameters?: TemplateParameter[];
+    },
+  ): Promise<ProviderSendResult>;
+  sendInteractiveMessage(
+    config: MessagingInstanceConfig,
+    to: string,
+    payload: InteractiveMessagePayload,
+    options?: {
+      quotedExternalMessageId?: string;
     },
   ): Promise<ProviderSendResult>;
   uploadMedia(
