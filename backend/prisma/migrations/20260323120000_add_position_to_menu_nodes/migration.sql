@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "AutoResponseMenuNode" ADD COLUMN "positionX" DOUBLE PRECISION,
+ADD COLUMN "positionY" DOUBLE PRECISION;
