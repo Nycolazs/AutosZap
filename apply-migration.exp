@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set host "178.156.252.137"
+set user "root"
+set password "2029"
+
+# Connect to the server
+spawn ssh $user@$host
+
+# Wait for password prompt
+expect {
+  "password:" {
+    send "$password\r"
+  }
+  "Permission denied" {
+    puts "Authentication failed!"
+    exit 1
+  }
+}
+
+# Wait for shell prompt
+expect {
+  "~#" { }
+  "#" { }
+  "$" { }
+}
+
+# Execute migration commands
+send "cd /opt/autozap && git pull origin main\r"
+expect {
+  "~#" { }
+  "#" { }
+  "$" { }
+}
+
+send "cd backend && npx prisma migrate deploy\r"
+expect {
+  "~#" { }
+  "#" { }
+  "$" { }
+  timeout {
+    puts "Command timed out"
+  }
+}
+
+send "npx prisma migrate status\r"
+expect {
+  "~#" { }
+  "#" { }
+  "$" { }
+}
+
+send "exit\r"
+expect eof
