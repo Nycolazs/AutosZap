@@ -1168,6 +1168,8 @@ model AutoResponseMenuNode {
   message   String                 @default("")
   type      String                 @default("message")
   order     Int                    @default(0)
+  positionX Float?
+  positionY Float?
   menu      AutoResponseMenu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
   parent    AutoResponseMenuNode?  @relation("NodeChildren", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children  AutoResponseMenuNode[] @relation("NodeChildren")

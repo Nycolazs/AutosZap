@@ -1,0 +1,10 @@
+⨯ Error: failed to pipe response
+    at ignore-listed frames {
+  [cause]: TypeError: terminated
+      at ignore-listed frames {
+    [cause]: Error [BodyTimeoutError]: Body Timeout Error
+        at ignore-listed frames {
+      code: 'UND_ERR_BODY_TIMEOUT'
+    }
+  }
+}

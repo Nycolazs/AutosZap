@@ -8,6 +8,8 @@ export type MenuNode = {
   message: string;
   type: string;
   order: number;
+  positionX: number | null;
+  positionY: number | null;
   createdAt: string;
   children?: MenuNode[];
 };
@@ -37,6 +39,8 @@ export type MenuNodeDraft = {
   message: string;
   type: NodeType;
   order: number;
+  positionX: number | null;
+  positionY: number | null;
   children: MenuNodeDraft[];
 };
 
@@ -48,6 +52,8 @@ export type MenuDraft = {
   headerText: string;
   footerText: string;
   nodes: MenuNodeDraft[];
+  /** Position of the start node in the canvas */
+  startPosition: { x: number; y: number } | null;
 };
 
 // --- Utility functions ---
@@ -58,7 +64,16 @@ export function tempId(): string {
 }
 
 export function emptyNodeDraft(type: NodeType = 'message'): MenuNodeDraft {
-  return { _tempId: tempId(), label: '', message: '', type, order: 0, children: [] };
+  return {
+    _tempId: tempId(),
+    label: '',
+    message: '',
+    type,
+    order: 0,
+    positionX: null,
+    positionY: null,
+    children: [],
+  };
 }
 
 export function emptyMenuDraft(): MenuDraft {
@@ -70,6 +85,7 @@ export function emptyMenuDraft(): MenuDraft {
     headerText: '',
     footerText: '',
     nodes: [],
+    startPosition: null,
   };
 }
 
@@ -116,6 +132,8 @@ export function menuToEditDraft(menu: AutoResponseMenu): MenuDraft {
       message: node.message,
       type: nodeType,
       order: node.order,
+      positionX: node.positionX,
+      positionY: node.positionY,
       children: (node.children ?? []).map(toNodeDraft),
     };
   }
@@ -128,6 +146,7 @@ export function menuToEditDraft(menu: AutoResponseMenu): MenuDraft {
     headerText: menu.headerText ?? '',
     footerText: menu.footerText ?? '',
     nodes: tree.map(toNodeDraft),
+    startPosition: null,
   };
 }
 
@@ -179,9 +198,16 @@ export function addChildToNode(
   });
 }
 
-export function draftToPayload(draft: MenuDraft) {
+export function draftToPayload(
+  draft: MenuDraft,
+  nodePositions: Map<string, { x: number; y: number }>,
+) {
   function nodeToPayload(node: MenuNodeDraft, index: number): Record<string, unknown> {
-    return {
+    const pos = nodePositions.get(node._tempId);
+    const x = pos?.x ?? node.positionX;
+    const y = pos?.y ?? node.positionY;
+
+    const payload: Record<string, unknown> = {
       label: node.label,
       message: node.type === 'talk_to_agent' ? '' : node.message,
       type: node.type,
@@ -190,6 +216,12 @@ export function draftToPayload(draft: MenuDraft) {
         .filter((n) => n.label.trim())
         .map((n, i) => nodeToPayload(n, i)),
     };
+
+    // Only include positions when they have actual values
+    if (x != null) payload.positionX = x;
+    if (y != null) payload.positionY = y;
+
+    return payload;
   }
 
   return {

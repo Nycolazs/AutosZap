@@ -5,7 +5,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   Handle,
   Position,
   useNodesState,
@@ -15,7 +14,9 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type NodeChange,
   BackgroundVariant,
+  ConnectionLineType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -32,16 +33,10 @@ import type { MenuDraft, MenuNodeDraft, NodeType } from '../_lib/types';
 // ----- Tree layout algorithm -----
 
 const NODE_W = 260;
-const NODE_H_START = 90;
-const NODE_H_OPTION = 76;
-const H_GAP = 32;
-const V_GAP = 56;
-
-type LayoutItem = {
-  id: string;
-  children: string[];
-  width: number;
-};
+const NODE_H_START = 100;
+const NODE_H_OPTION = 80;
+const H_GAP = 40;
+const V_GAP = 70;
 
 function computeLayout(draft: MenuDraft) {
   const nodes: Node[] = [];
@@ -49,113 +44,120 @@ function computeLayout(draft: MenuDraft) {
 
   const startId = '__start__';
 
-  // Collect all items for width calculation
-  const items = new Map<string, LayoutItem>();
+  // Collect items for width calculation
+  const itemWidths = new Map<string, number>();
+  const itemChildren = new Map<string, string[]>();
 
-  function registerNode(node: MenuNodeDraft, parentId: string) {
-    items.set(node._tempId, {
-      id: node._tempId,
-      children: node.children.map((c) => c._tempId),
-      width: 0,
-    });
+  function registerItem(node: MenuNodeDraft, parentId: string) {
+    itemChildren.set(node._tempId, node.children.map((c) => c._tempId));
+
+    const edgeColor =
+      node.type === 'talk_to_agent'
+        ? '#fbbf24'
+        : node.type === 'submenu' || node.children.length > 0
+          ? '#a78bfa'
+          : '#60a5fa';
+
     edges.push({
       id: `e-${parentId}-${node._tempId}`,
       source: parentId,
       target: node._tempId,
       type: 'smoothstep',
-      style: { stroke: 'hsl(var(--primary) / 0.3)', strokeWidth: 2 },
-      animated: false,
+      style: { stroke: edgeColor, strokeWidth: 2, opacity: 0.6 },
+      pathOptions: { borderRadius: 16 },
     });
-    node.children.forEach((child) => registerNode(child, node._tempId));
+    node.children.forEach((child) => registerItem(child, node._tempId));
+  }
+
+  itemChildren.set(startId, draft.nodes.map((n) => n._tempId));
+  draft.nodes.forEach((rootNode) => registerItem(rootNode, startId));
+
+  // Calculate subtree widths bottom-up
+  function getWidth(id: string): number {
+    const kids = itemChildren.get(id) ?? [];
+    if (kids.length === 0) {
+      itemWidths.set(id, NODE_W);
+      return NODE_W;
+    }
+    const w = kids.reduce((sum, cid) => sum + getWidth(cid) + H_GAP, -H_GAP);
+    const result = Math.max(NODE_W, w);
+    itemWidths.set(id, result);
+    return result;
+  }
+  getWidth(startId);
+
+  // Check if node has a saved position
+  function hasSavedPosition(node: MenuNodeDraft): boolean {
+    return node.positionX !== null && node.positionY !== null;
+  }
+
+  // Position nodes top-down
+  function positionChildren(parentId: string, cx: number, parentY: number, parentH: number) {
+    const kids = itemChildren.get(parentId) ?? [];
+    if (kids.length === 0) return;
+
+    const widths = kids.map((cid) => itemWidths.get(cid) ?? NODE_W);
+    const totalW = widths.reduce((s, w) => s + w + H_GAP, -H_GAP);
+    let curX = cx - totalW / 2;
+    const childY = parentY + parentH + V_GAP;
+
+    for (let i = 0; i < kids.length; i++) {
+      const childCx = curX + widths[i] / 2;
+      const childNode = findDraftNode(draft.nodes, kids[i]);
+
+      if (childNode) {
+        const useSaved = hasSavedPosition(childNode);
+        const posX = useSaved ? childNode.positionX! : childCx - NODE_W / 2;
+        const posY = useSaved ? childNode.positionY! : childY;
+
+        const isAgent = childNode.type === 'talk_to_agent';
+        const hasChildren = childNode.children.length > 0;
+        const hasError = !childNode.label.trim();
+
+        nodes.push({
+          id: kids[i],
+          type: 'optionNode',
+          position: { x: posX, y: posY },
+          data: {
+            label: childNode.label,
+            message: childNode.message,
+            nodeType: childNode.type as NodeType,
+            order: i + 1,
+            hasChildren,
+            isAgent,
+            hasError,
+          },
+          draggable: true,
+          selectable: true,
+        });
+
+        // Use the layout center for child positioning (not saved position)
+        positionChildren(kids[i], childCx, useSaved ? posY : childY, NODE_H_OPTION);
+      }
+
+      curX += widths[i] + H_GAP;
+    }
   }
 
   // Start node
-  items.set(startId, {
+  const startX = draft.startPosition?.x ?? 0 - NODE_W / 2;
+  const startY = draft.startPosition?.y ?? 0;
+
+  nodes.push({
     id: startId,
-    children: draft.nodes.map((n) => n._tempId),
-    width: 0,
+    type: 'startNode',
+    position: { x: startX, y: startY },
+    data: {
+      name: draft.name || 'Novo menu',
+      headerText: draft.headerText,
+      isActive: draft.isActive,
+      nodeCount: countNodes(draft.nodes),
+    },
+    draggable: true,
+    selectable: true,
   });
 
-  draft.nodes.forEach((rootNode) => registerNode(rootNode, startId));
-
-  // Calculate subtree widths (bottom-up)
-  function getWidth(id: string): number {
-    const item = items.get(id)!;
-    if (item.children.length === 0) {
-      item.width = NODE_W;
-      return NODE_W;
-    }
-    const childrenWidth = item.children.reduce(
-      (sum, cid) => sum + getWidth(cid) + H_GAP,
-      -H_GAP,
-    );
-    item.width = Math.max(NODE_W, childrenWidth);
-    return item.width;
-  }
-
-  getWidth(startId);
-
-  // Position nodes (top-down)
-  function positionNode(id: string, cx: number, y: number) {
-    const item = items.get(id)!;
-
-    if (id === startId) {
-      nodes.push({
-        id: startId,
-        type: 'startNode',
-        position: { x: cx - NODE_W / 2, y },
-        data: {
-          name: draft.name || 'Novo menu',
-          headerText: draft.headerText,
-          isActive: draft.isActive,
-          nodeCount: countNodes(draft.nodes),
-        },
-        draggable: true,
-        selectable: true,
-      });
-    }
-
-    const kids = item.children;
-    if (kids.length > 0) {
-      const widths = kids.map((cid) => items.get(cid)!.width);
-      const totalW = widths.reduce((s, w) => s + w + H_GAP, -H_GAP);
-      let curX = cx - totalW / 2;
-      const childY = y + (id === startId ? NODE_H_START : NODE_H_OPTION) + V_GAP;
-
-      for (let i = 0; i < kids.length; i++) {
-        const childCx = curX + widths[i] / 2;
-        const childNode = findDraftNode(draft.nodes, kids[i]);
-
-        if (childNode) {
-          const isAgent = childNode.type === 'talk_to_agent';
-          const hasChildren = childNode.children.length > 0;
-          const hasError = !childNode.label.trim();
-
-          nodes.push({
-            id: kids[i],
-            type: 'optionNode',
-            position: { x: childCx - NODE_W / 2, y: childY },
-            data: {
-              label: childNode.label,
-              message: childNode.message,
-              nodeType: childNode.type as NodeType,
-              order: i + 1,
-              hasChildren,
-              isAgent,
-              hasError,
-            },
-            draggable: true,
-            selectable: true,
-          });
-        }
-
-        positionNode(kids[i], childCx, childY);
-        curX += widths[i] + H_GAP;
-      }
-    }
-  }
-
-  positionNode(startId, 0, 0);
+  positionChildren(startId, startX + NODE_W / 2, startY, NODE_H_START);
 
   return { nodes, edges };
 }
@@ -307,18 +309,21 @@ function OptionNodeComponent({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {(d.nodeType === 'submenu' || d.hasChildren) && (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!h-3 !w-3 !rounded-full !border-2 !border-muted-foreground/40 !bg-background"
-        />
-      )}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={cn(
+          '!rounded-full !border-2 !bg-background',
+          d.nodeType === 'submenu' || d.hasChildren
+            ? '!h-3 !w-3 !border-muted-foreground/40'
+            : '!h-1 !w-1 !border-transparent !opacity-0',
+        )}
+      />
     </div>
   );
 }
 
-// ----- Node types registry (must be outside component) -----
+// ----- Node types registry (must be stable reference outside component) -----
 
 const nodeTypes = {
   startNode: StartNodeComponent,
@@ -332,51 +337,79 @@ function FlowCanvasInner({
   selectedNodeId,
   onSelectNode,
   onAddNode,
+  onNodePositionsChange,
 }: {
   draft: MenuDraft;
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
   onAddNode: (parentId: string | null) => void;
+  onNodePositionsChange: (positions: Map<string, { x: number; y: number }>) => void;
 }) {
   const reactFlow = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const prevStructureRef = useRef('');
+  const positionsRef = useRef(new Map<string, { x: number; y: number }>());
 
-  // Compute structure key to detect tree changes
+  // Compute structure key to detect tree changes (add/remove nodes)
   const structureKey = useMemo(() => {
-    function getKey(nodes: MenuNodeDraft[]): string {
-      return nodes.map((n) => `${n._tempId}[${getKey(n.children)}]`).join(',');
+    function getKey(ns: MenuNodeDraft[]): string {
+      return ns.map((n) => `${n._tempId}[${getKey(n.children)}]`).join(',');
     }
-    return getKey(draft.nodes) + `|${draft.name}|${draft.isActive}|${draft.headerText}`;
-  }, [draft]);
+    return getKey(draft.nodes);
+  }, [draft.nodes]);
 
   // Re-layout when structure changes
   useEffect(() => {
     const { nodes: layoutNodes, edges: layoutEdges } = computeLayout(draft);
+    const structureChanged = structureKey !== prevStructureRef.current;
 
-    if (structureKey !== prevStructureRef.current) {
-      // Structure changed - full re-layout
+    if (structureChanged) {
       setNodes(layoutNodes);
       setEdges(layoutEdges);
       prevStructureRef.current = structureKey;
 
-      // Fit view after layout
+      // Save initial positions
+      positionsRef.current = new Map(layoutNodes.map((n) => [n.id, n.position]));
+
       setTimeout(() => {
-        reactFlow.fitView({ padding: 0.2, duration: 300 });
+        reactFlow.fitView({ padding: 0.25, duration: 300 });
       }, 50);
     } else {
-      // Only data changed - update data without moving positions
+      // Only data changed (labels etc) - update data without moving
       setNodes((prev) => {
-        const posMap = new Map(prev.map((n) => [n.id, n.position]));
-        return layoutNodes.map((n) => ({
+        const dataMap = new Map(layoutNodes.map((n) => [n.id, n.data]));
+        return prev.map((n) => ({
           ...n,
-          position: posMap.get(n.id) ?? n.position,
+          data: dataMap.get(n.id) ?? n.data,
         }));
       });
       setEdges(layoutEdges);
     }
   }, [draft, structureKey, setNodes, setEdges, reactFlow]);
+
+  // Handle node changes (position drag)
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes);
+
+      // Track position changes from dragging
+      for (const change of changes) {
+        if (change.type === 'position' && change.position) {
+          positionsRef.current.set(change.id, change.position);
+        }
+      }
+
+      // When drag ends, notify parent
+      const hasDragEnd = changes.some(
+        (c) => c.type === 'position' && c.dragging === false,
+      );
+      if (hasDragEnd) {
+        onNodePositionsChange(new Map(positionsRef.current));
+      }
+    },
+    [onNodesChange, onNodePositionsChange],
+  );
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -405,31 +438,26 @@ function FlowCanvasInner({
         nodes={nodesWithSelection}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
+        connectionLineType={ConnectionLineType.SmoothStep}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.2}
+        fitViewOptions={{ padding: 0.25 }}
+        minZoom={0.15}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
         className="bg-transparent"
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          size={1}
+          color="hsl(var(--muted-foreground) / 0.15)"
+        />
         <Controls
           showInteractive={false}
           className="!rounded-xl !border-border !bg-background !shadow-lg [&>button]:!border-border [&>button]:!bg-background [&>button]:!text-muted-foreground hover:[&>button]:!bg-muted"
-        />
-        <MiniMap
-          nodeColor={(n) => {
-            if (n.type === 'startNode') return 'hsl(var(--primary))';
-            const d = n.data as { nodeType?: string };
-            if (d.nodeType === 'talk_to_agent') return '#fbbf24';
-            if (d.nodeType === 'submenu') return '#a78bfa';
-            return '#60a5fa';
-          }}
-          maskColor="hsl(var(--background) / 0.8)"
-          className="!rounded-xl !border-border !bg-background/80"
         />
       </ReactFlow>
 
@@ -458,6 +486,7 @@ export function FlowCanvas(props: {
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
   onAddNode: (parentId: string | null) => void;
+  onNodePositionsChange: (positions: Map<string, { x: number; y: number }>) => void;
 }) {
   return (
     <ReactFlowProvider>

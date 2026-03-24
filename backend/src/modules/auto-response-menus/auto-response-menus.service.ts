@@ -8,6 +8,8 @@ export type MenuNodeInput = {
   message?: string;
   type?: string;
   order: number;
+  positionX?: number | null;
+  positionY?: number | null;
   parentId?: string | null;
   children?: MenuNodeInput[];
 };
@@ -195,6 +197,8 @@ export class AutoResponseMenusService {
           message: node.message ?? '',
           type: node.type ?? 'message',
           order: node.order,
+          positionX: node.positionX ?? null,
+          positionY: node.positionY ?? null,
         },
       });
 

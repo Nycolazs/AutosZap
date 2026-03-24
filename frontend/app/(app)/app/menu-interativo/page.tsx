@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
@@ -61,6 +61,7 @@ export default function MenuInterativoPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const nodePositionsRef = useRef(new Map<string, { x: number; y: number }>());
 
   // --- Computed ---
   const selectedMenu = useMemo(
@@ -86,7 +87,7 @@ export default function MenuInterativoPage() {
       const error = hasValidationErrors(d);
       if (error) throw new Error(error);
 
-      const payload = draftToPayload(d);
+      const payload = draftToPayload(d, nodePositionsRef.current);
 
       if (selectedMenuId && !isCreating) {
         return apiRequest<AutoResponseMenu>(`auto-response-menus/${selectedMenuId}`, {
@@ -153,11 +154,10 @@ export default function MenuInterativoPage() {
   const duplicateMutation = useMutation({
     mutationFn: async (menu: AutoResponseMenu) => {
       const d = menuToEditDraft(menu);
-      const payload = draftToPayload({
-        ...d,
-        name: `${d.name} (cópia)`,
-        isActive: false,
-      });
+      const payload = draftToPayload(
+        { ...d, name: `${d.name} (cópia)`, isActive: false },
+        new Map(),
+      );
       return apiRequest<AutoResponseMenu>('auto-response-menus', {
         method: 'POST',
         body: payload,
@@ -188,6 +188,7 @@ export default function MenuInterativoPage() {
       setSelectedNodeId(null);
       setIsDirty(false);
       setIsCreating(false);
+      nodePositionsRef.current = new Map();
     },
     [isDirty],
   );
@@ -202,6 +203,7 @@ export default function MenuInterativoPage() {
     setSelectedNodeId('__start__');
     setIsDirty(true);
     setIsCreating(true);
+    nodePositionsRef.current = new Map();
   }, [isDirty]);
 
   const handleCancel = useCallback(() => {
@@ -268,6 +270,14 @@ export default function MenuInterativoPage() {
     [draft],
   );
 
+  const handleNodePositionsChange = useCallback(
+    (positions: Map<string, { x: number; y: number }>) => {
+      nodePositionsRef.current = positions;
+      setIsDirty(true);
+    },
+    [],
+  );
+
   const moveNode = useCallback(
     (id: string, direction: 'up' | 'down') => {
       if (!draft) return;
@@ -292,7 +302,7 @@ export default function MenuInterativoPage() {
 
   // --- Render ---
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col gap-3">
+    <div className="flex h-[calc(100dvh-10.5rem)] flex-col gap-3 lg:h-[calc(100dvh-5.75rem)]">
       {/* Top bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -469,6 +479,7 @@ export default function MenuInterativoPage() {
                 selectedNodeId={selectedNodeId}
                 onSelectNode={setSelectedNodeId}
                 onAddNode={addNode}
+                onNodePositionsChange={handleNodePositionsChange}
               />
 
               {/* Floating toolbar */}

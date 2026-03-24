@@ -11,8 +11,10 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
   Min,
 } from 'class-validator';
@@ -47,6 +49,16 @@ class MenuNodeDto {
   @IsInt()
   @Min(0)
   order!: number;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber()
+  positionX?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber()
+  positionY?: number | null;
 
   @IsOptional()
   @IsString()
