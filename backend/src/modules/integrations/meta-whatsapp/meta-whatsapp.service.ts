@@ -969,10 +969,18 @@ export class MetaWhatsAppService {
 
       // Nao dispara resposta automatica para mensagens antigas/atrasadas
       if (shouldTreatAsNewInboundActivity) {
-        await this.maybeSendAutomaticReply(
+        const menuReplySent = await this.maybeSendInteractiveMenuReply(
           inboundInstance.workspaceId,
           conversation.id,
+          inbound.body,
         );
+
+        if (!menuReplySent) {
+          await this.maybeSendAutomaticReply(
+            inboundInstance.workspaceId,
+            conversation.id,
+          );
+        }
       }
     }
 
@@ -1194,6 +1202,129 @@ export class MetaWhatsAppService {
         autoMessageType,
       },
     );
+  }
+
+  private normalizeInteractiveMenuTrigger(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  private buildInteractiveMenuMessage(menu: {
+    headerText: string | null;
+    footerText: string | null;
+    nodes: Array<{ parentId: string | null; label: string; order: number }>;
+  }): string | null {
+    const rootNodes = menu.nodes
+      .filter((node) => node.parentId === null && node.label.trim())
+      .sort((left, right) => left.order - right.order);
+
+    if (!rootNodes.length) {
+      return null;
+    }
+
+    const lines: string[] = [];
+    if (menu.headerText?.trim()) {
+      lines.push(menu.headerText.trim());
+    }
+
+    rootNodes.forEach((node, index) => {
+      lines.push(`${index + 1}. ${node.label.trim()}`);
+    });
+
+    if (menu.footerText?.trim()) {
+      lines.push(menu.footerText.trim());
+    }
+
+    return lines.join('\n').trim() || null;
+  }
+
+  private async maybeSendInteractiveMenuReply(
+    workspaceId: string,
+    conversationId: string,
+    inboundBody?: string | null,
+  ): Promise<boolean> {
+    if (!inboundBody?.trim()) {
+      return false;
+    }
+
+    const normalizedInbound = this.normalizeInteractiveMenuTrigger(inboundBody);
+    if (!normalizedInbound) {
+      return false;
+    }
+
+    const activeMenus = await this.prisma.autoResponseMenu.findMany({
+      where: {
+        workspaceId,
+        isActive: true,
+      },
+      include: {
+        nodes: {
+          select: {
+            parentId: true,
+            label: true,
+            order: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    const matchedMenu = activeMenus.find((menu) =>
+      (menu.triggerKeywords ?? []).some(
+        (keyword) =>
+          this.normalizeInteractiveMenuTrigger(keyword) === normalizedInbound,
+      ),
+    );
+
+    if (!matchedMenu) {
+      return false;
+    }
+
+    const menuMessage = this.buildInteractiveMenuMessage(matchedMenu);
+    if (!menuMessage) {
+      return false;
+    }
+
+    const latestSystemMessage = await this.prisma.conversationMessage.findFirst({
+      where: {
+        workspaceId,
+        conversationId,
+        direction: MessageDirection.SYSTEM,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        content: true,
+        createdAt: true,
+      },
+    });
+
+    if (
+      latestSystemMessage?.content?.trim() === menuMessage &&
+      Date.now() - latestSystemMessage.createdAt.getTime() < 2 * 60_000
+    ) {
+      return true;
+    }
+
+    await this.sendConversationMessage(
+      workspaceId,
+      conversationId,
+      null,
+      menuMessage,
+      {
+        direction: MessageDirection.SYSTEM,
+        isAutomated: true,
+      },
+    );
+
+    return true;
   }
 
   private async getInstanceConfig(
