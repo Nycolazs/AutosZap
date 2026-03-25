@@ -107,6 +107,8 @@ export interface ConversationMessage {
   direction: 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
   messageType: string;
   content: string;
+  isAutomated?: boolean;
+  autoMessageType?: string | null;
   metadata?: {
     mediaId?: string;
     mimeType?: string | null;

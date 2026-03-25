@@ -120,6 +120,8 @@ type ConversationTimelineItem =
       kind: 'message';
       key: string;
       timestamp: string;
+      dateReference: string;
+      sortTimestamp: number;
       sortRank: number;
       message: ConversationMessage;
     }
@@ -127,13 +129,34 @@ type ConversationTimelineItem =
       kind: 'event';
       key: string;
       timestamp: string;
+      dateReference: string;
+      sortTimestamp: number;
       sortRank: number;
       label: string;
       tone: 'info' | 'warning' | 'danger';
     };
 
+function getConversationEventMetadata(
+  event: ConversationEvent,
+): Record<string, unknown> | null {
+  if (!event.metadata || typeof event.metadata !== 'object' || Array.isArray(event.metadata)) {
+    return null;
+  }
+
+  return event.metadata;
+}
+
 function getConversationEventLabel(event: ConversationEvent) {
+  const metadata = getConversationEventMetadata(event);
+
   if (event.type === 'CLOSED') {
+    if (
+      metadata?.triggeredBy === 'waiting_auto_close_timeout' ||
+      metadata?.closeReason === 'UNANSWERED'
+    ) {
+      return 'Conversa encerrada automaticamente';
+    }
+
     return 'Conversa encerrada';
   }
 
@@ -150,13 +173,10 @@ function getConversationEventLabel(event: ConversationEvent) {
 
 function getConversationEventTone(event: ConversationEvent): 'info' | 'warning' | 'danger' {
   if (event.type === 'CLOSED') {
+    const metadata = getConversationEventMetadata(event);
     const closeReason =
-      event.metadata &&
-      typeof event.metadata === 'object' &&
-      !Array.isArray(event.metadata) &&
-      'closeReason' in event.metadata &&
-      typeof event.metadata.closeReason === 'string'
-        ? event.metadata.closeReason
+      metadata?.closeReason && typeof metadata.closeReason === 'string'
+        ? metadata.closeReason
         : null;
 
     return closeReason === 'UNANSWERED' ? 'warning' : 'danger';
@@ -165,15 +185,23 @@ function getConversationEventTone(event: ConversationEvent): 'info' | 'warning' 
   return 'info';
 }
 
+function getConversationEventAnchorMessageId(event: ConversationEvent) {
+  const metadata = getConversationEventMetadata(event);
+
+  return metadata?.messageId && typeof metadata.messageId === 'string'
+    ? metadata.messageId
+    : null;
+}
+
 function shouldShowDateSeparator(
   items: Array<{
-    timestamp: string;
+    dateReference: string;
   }>,
   index: number,
 ) {
   if (index === 0) return true;
-  const current = new Date(items[index].timestamp);
-  const previous = new Date(items[index - 1].timestamp);
+  const current = new Date(items[index].dateReference);
+  const previous = new Date(items[index - 1].dateReference);
   return current.toDateString() !== previous.toDateString();
 }
 
@@ -970,48 +998,156 @@ function InboxPageContent() {
     }
 
     const items: ConversationTimelineItem[] = [];
+    const sortedMessagesByTime = [...selectedConversationMessages].sort(
+      (left, right) =>
+        new Date(getConversationMessageTimestamp(left)).getTime() -
+        new Date(getConversationMessageTimestamp(right)).getTime(),
+    );
+    const messagesById = new Map(
+      sortedMessagesByTime.map((message) => [message.id, message]),
+    );
+    const lifecycleEvents = [...(selectedConversation.events ?? [])]
+      .filter((event) => Boolean(getConversationEventLabel(event)))
+      .sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+    const autoMessageEvents = [...(selectedConversation.events ?? [])]
+      .filter((event) => event.type === 'AUTO_MESSAGE_SENT')
+      .sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+    const conversationCreatedAt = new Date(selectedConversation.createdAt).getTime();
 
     if (selectedConversation.createdAt) {
       items.push({
         kind: 'event',
         key: `conversation-opened-${selectedConversation.id}`,
         timestamp: selectedConversation.createdAt,
+        dateReference: selectedConversation.createdAt,
+        sortTimestamp: conversationCreatedAt,
         sortRank: 0,
         label: 'Conversa aberta',
         tone: 'info',
       });
     }
 
-    for (const event of selectedConversation.events ?? []) {
+    for (const [eventIndex, event] of lifecycleEvents.entries()) {
       const label = getConversationEventLabel(event);
 
       if (!label) {
         continue;
       }
 
+      const eventTime = new Date(event.createdAt).getTime();
+      const nextLifecycleEventTime =
+        eventIndex < lifecycleEvents.length - 1
+          ? new Date(lifecycleEvents[eventIndex + 1].createdAt).getTime()
+          : Number.POSITIVE_INFINITY;
+      let sortTimestamp = eventTime;
+      let dateReference = event.createdAt;
+      let sortRank = event.type === 'REOPENED' ? 0 : 2;
+
+      if (event.type === 'REOPENED') {
+        const metadata = getConversationEventMetadata(event);
+
+        if (metadata?.triggeredBy === 'customer_message') {
+          const previousLifecycleEventTime =
+            eventIndex > 0
+              ? new Date(lifecycleEvents[eventIndex - 1].createdAt).getTime()
+              : conversationCreatedAt;
+          const triggerMessage = sortedMessagesByTime.find((message) => {
+            if (message.direction !== 'INBOUND') {
+              return false;
+            }
+
+            const messageTime = new Date(
+              getConversationMessageTimestamp(message),
+            ).getTime();
+
+            return (
+              messageTime >= previousLifecycleEventTime &&
+              messageTime <= eventTime + 5 * 60_000
+            );
+          });
+
+          if (triggerMessage) {
+            dateReference = getConversationMessageTimestamp(triggerMessage);
+            sortTimestamp = new Date(dateReference).getTime();
+            sortRank = 0;
+          }
+        }
+      }
+
+      if (event.type === 'CLOSED' || event.type === 'RESOLVED') {
+        const expectedAutoMessageType =
+          event.type === 'CLOSED' ? 'FINAL_CLOSED' : 'FINAL_RESOLVED';
+        const anchorAutoEvent = autoMessageEvents.find((candidate) => {
+          const candidateTime = new Date(candidate.createdAt).getTime();
+          const metadata = getConversationEventMetadata(candidate);
+
+          return (
+            candidateTime >= eventTime &&
+            candidateTime < nextLifecycleEventTime &&
+            metadata?.result === 'SENT' &&
+            metadata?.autoMessageType === expectedAutoMessageType
+          );
+        });
+        const anchorMessageId = anchorAutoEvent
+          ? getConversationEventAnchorMessageId(anchorAutoEvent)
+          : null;
+        const anchorMessage =
+          (anchorMessageId ? messagesById.get(anchorMessageId) : null) ??
+          sortedMessagesByTime.find((message) => {
+            const messageTime = new Date(
+              getConversationMessageTimestamp(message),
+            ).getTime();
+
+            return (
+              message.direction === 'SYSTEM' &&
+              message.isAutomated &&
+              message.autoMessageType === expectedAutoMessageType &&
+              messageTime >= eventTime &&
+              messageTime < nextLifecycleEventTime
+            );
+          });
+
+        if (anchorMessage) {
+          dateReference = getConversationMessageTimestamp(anchorMessage);
+          sortTimestamp = new Date(dateReference).getTime();
+          sortRank = 2;
+        }
+      }
+
       items.push({
         kind: 'event',
         key: `conversation-event-${event.id}`,
         timestamp: event.createdAt,
-        sortRank: event.type === 'REOPENED' ? 0 : 2,
+        dateReference,
+        sortTimestamp,
+        sortRank,
         label,
         tone: getConversationEventTone(event),
       });
     }
 
     for (const message of selectedConversationMessages) {
+      const timestamp = getConversationMessageTimestamp(message);
+
       items.push({
         kind: 'message',
         key: message.id,
-        timestamp: getConversationMessageTimestamp(message),
+        timestamp,
+        dateReference: timestamp,
+        sortTimestamp: new Date(timestamp).getTime(),
         sortRank: 1,
         message,
       });
     }
 
     return items.sort((left, right) => {
-      const timestampDiff =
-        new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime();
+      const timestampDiff = left.sortTimestamp - right.sortTimestamp;
 
       if (timestampDiff !== 0) {
         return timestampDiff;
