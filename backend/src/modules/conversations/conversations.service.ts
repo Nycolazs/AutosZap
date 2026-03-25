@@ -38,7 +38,8 @@ type ConversationIncludeToken =
   | 'messages'
   | 'notes'
   | 'reminders'
-  | 'contactTags';
+  | 'contactTags'
+  | 'events';
 
 type FinalAutoMessageDeliveryResult = {
   attempted: boolean;
@@ -290,6 +291,21 @@ export class ConversationsService {
               ],
             }
           : false,
+        events: includes.has('events')
+          ? {
+              select: {
+                id: true,
+                type: true,
+                fromStatus: true,
+                toStatus: true,
+                metadata: true,
+                createdAt: true,
+              },
+              orderBy: {
+                createdAt: 'asc',
+              },
+            }
+          : false,
       },
     });
 
@@ -301,7 +317,7 @@ export class ConversationsService {
       ...conversation,
       messages: conversation.messages
         ? this.sortConversationMessages(
-            this.filterConversationMessagesForUser(conversation.messages, user),
+            this.filterConversationMessagesForUser(conversation.messages),
           )
         : undefined,
       tags: conversation.tags.map((item) => item.tag),
@@ -357,10 +373,15 @@ export class ConversationsService {
         includes.add('contactTags');
       }
 
+      if (value === 'events') {
+        includes.add('events');
+      }
+
       if (value === 'sidebar' || value === 'details') {
         includes.add('notes');
         includes.add('reminders');
         includes.add('contactTags');
+        includes.add('events');
       }
 
       if (value === 'all') {
@@ -368,6 +389,7 @@ export class ConversationsService {
         includes.add('notes');
         includes.add('reminders');
         includes.add('contactTags');
+        includes.add('events');
       }
     }
 
@@ -644,7 +666,7 @@ export class ConversationsService {
         sentAt: now,
         metadata: {
           internalMessage: {
-            scope: 'SELF',
+            scope: 'WORKSPACE',
             authorUserId: user.sub,
             authorName: user.name,
             label: 'Mensagem interna',
@@ -724,9 +746,7 @@ export class ConversationsService {
         break;
       }
 
-      visibleMessages.push(
-        ...this.filterConversationMessagesForUser(batch, user),
-      );
+      visibleMessages.push(...this.filterConversationMessagesForUser(batch));
 
       if (batch.length < batchSize) {
         break;
@@ -806,18 +826,15 @@ export class ConversationsService {
     T extends {
       metadata?: Prisma.JsonValue | null;
     },
-  >(messages: T[], user: CurrentAuthUser) {
+  >(messages: T[]) {
     return messages.filter((message) =>
-      this.isConversationMessageVisibleToUser(message, user),
+      this.isConversationMessageVisibleToUser(message),
     );
   }
 
-  private isConversationMessageVisibleToUser(
-    message: {
-      metadata?: Prisma.JsonValue | null;
-    },
-    user: CurrentAuthUser,
-  ) {
+  private isConversationMessageVisibleToUser(message: {
+    metadata?: Prisma.JsonValue | null;
+  }) {
     const metadata =
       message.metadata &&
       typeof message.metadata === 'object' &&
@@ -835,21 +852,7 @@ export class ConversationsService {
       return true;
     }
 
-    const scope =
-      typeof internalMessage.scope === 'string'
-        ? internalMessage.scope.trim()
-        : null;
-
-    if (scope !== 'SELF') {
-      return true;
-    }
-
-    const authorUserId =
-      typeof internalMessage.authorUserId === 'string'
-        ? internalMessage.authorUserId.trim()
-        : null;
-
-    return authorUserId === user.sub;
+    return true;
   }
 
   async sendMessage(

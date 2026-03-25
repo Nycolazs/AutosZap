@@ -69,6 +69,7 @@ import { canAccess, getRoleLabel } from '@/lib/permissions';
 import {
   AuthMeResponse,
   Conversation,
+  ConversationEvent,
   ConversationMessage,
   ConversationMessagesPage,
   ConversationReminder,
@@ -114,13 +115,65 @@ function getConversationMessageTimestamp(message: Pick<ConversationMessage, 'sen
   return message.sentAt ?? message.createdAt;
 }
 
+type ConversationTimelineItem =
+  | {
+      kind: 'message';
+      key: string;
+      timestamp: string;
+      sortRank: number;
+      message: ConversationMessage;
+    }
+  | {
+      kind: 'event';
+      key: string;
+      timestamp: string;
+      sortRank: number;
+      label: string;
+      tone: 'info' | 'warning' | 'danger';
+    };
+
+function getConversationEventLabel(event: ConversationEvent) {
+  if (event.type === 'CLOSED') {
+    return 'Conversa encerrada';
+  }
+
+  if (event.type === 'REOPENED') {
+    return 'Conversa reaberta';
+  }
+
+  if (event.type === 'RESOLVED') {
+    return 'Conversa resolvida';
+  }
+
+  return null;
+}
+
+function getConversationEventTone(event: ConversationEvent): 'info' | 'warning' | 'danger' {
+  if (event.type === 'CLOSED') {
+    const closeReason =
+      event.metadata &&
+      typeof event.metadata === 'object' &&
+      !Array.isArray(event.metadata) &&
+      'closeReason' in event.metadata &&
+      typeof event.metadata.closeReason === 'string'
+        ? event.metadata.closeReason
+        : null;
+
+    return closeReason === 'UNANSWERED' ? 'warning' : 'danger';
+  }
+
+  return 'info';
+}
+
 function shouldShowDateSeparator(
-  messages: ConversationMessage[],
+  items: Array<{
+    timestamp: string;
+  }>,
   index: number,
 ) {
   if (index === 0) return true;
-  const current = new Date(getConversationMessageTimestamp(messages[index]));
-  const previous = new Date(getConversationMessageTimestamp(messages[index - 1]));
+  const current = new Date(items[index].timestamp);
+  const previous = new Date(items[index - 1].timestamp);
   return current.toDateString() !== previous.toDateString();
 }
 
@@ -277,7 +330,7 @@ function InboxPageContent() {
     enabled: Boolean(activeConversationId),
     queryFn: () =>
       apiRequest<Conversation>(
-        `conversations/${activeConversationId}?include=contactTags`,
+        `conversations/${activeConversationId}?include=contactTags,events`,
       ),
     refetchInterval: false,
     refetchIntervalInBackground: false,
@@ -310,7 +363,7 @@ function InboxPageContent() {
     enabled: conversationDetailsEnabled,
     queryFn: () =>
       apiRequest<Conversation>(
-        `conversations/${activeConversationId}?include=details`,
+        `conversations/${activeConversationId}?include=details,events`,
       ),
     refetchInterval: false,
     refetchIntervalInBackground: false,
@@ -627,7 +680,7 @@ function InboxPageContent() {
         content: trimmedContent,
         metadata: {
           internalMessage: {
-            scope: 'SELF',
+            scope: 'WORKSPACE',
             authorUserId: meQuery.data?.id ?? null,
             authorName: meQuery.data?.name ?? null,
             label: 'Mensagem interna',
@@ -860,6 +913,7 @@ function InboxPageContent() {
       assignedUser: detailsConversation.assignedUser ?? baseConversation.assignedUser,
       tags: detailsConversation.tags ?? baseConversation.tags,
       messages: conversationMessages,
+      events: detailsConversation.events ?? baseConversation.events,
       notes: detailsConversation.notes ?? baseConversation.notes,
       reminders: detailsConversation.reminders ?? baseConversation.reminders,
     } satisfies Conversation;
@@ -906,7 +960,66 @@ function InboxPageContent() {
       ? selectedConversation.messages[selectedConversation.messages.length - 1]
           ?.id
       : null;
-  const selectedConversationMessages = selectedConversation?.messages ?? [];
+  const selectedConversationMessages = useMemo(
+    () => selectedConversation?.messages ?? [],
+    [selectedConversation?.messages],
+  );
+  const conversationTimelineItems = useMemo<ConversationTimelineItem[]>(() => {
+    if (!selectedConversation) {
+      return [];
+    }
+
+    const items: ConversationTimelineItem[] = [];
+
+    if (selectedConversation.createdAt) {
+      items.push({
+        kind: 'event',
+        key: `conversation-opened-${selectedConversation.id}`,
+        timestamp: selectedConversation.createdAt,
+        sortRank: 0,
+        label: 'Conversa aberta',
+        tone: 'info',
+      });
+    }
+
+    for (const event of selectedConversation.events ?? []) {
+      const label = getConversationEventLabel(event);
+
+      if (!label) {
+        continue;
+      }
+
+      items.push({
+        kind: 'event',
+        key: `conversation-event-${event.id}`,
+        timestamp: event.createdAt,
+        sortRank: event.type === 'REOPENED' ? 0 : 2,
+        label,
+        tone: getConversationEventTone(event),
+      });
+    }
+
+    for (const message of selectedConversationMessages) {
+      items.push({
+        kind: 'message',
+        key: message.id,
+        timestamp: getConversationMessageTimestamp(message),
+        sortRank: 1,
+        message,
+      });
+    }
+
+    return items.sort((left, right) => {
+      const timestampDiff =
+        new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime();
+
+      if (timestampDiff !== 0) {
+        return timestampDiff;
+      }
+
+      return left.sortRank - right.sortRank;
+    });
+  }, [selectedConversation, selectedConversationMessages]);
   const hasMoreHistory = Boolean(conversationMessagesQuery.hasNextPage);
   const isFetchingHistory = conversationMessagesQuery.isFetchingNextPage;
 
@@ -1624,11 +1737,6 @@ function InboxPageContent() {
               </div>
 
               <div ref={messagesScrollRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(10,30,60,0.3),transparent_70%)] px-3 py-3 sm:px-4">
-                <ConversationTimelineEvent
-                  label="Conversa aberta"
-                  timestamp={selectedConversation.createdAt}
-                />
-
                 {hasMoreHistory && !isFetchingHistory ? (
                   <div className="flex items-center justify-center pb-2">
                     <Button
@@ -1673,27 +1781,37 @@ function InboxPageContent() {
                   </div>
                 ) : null}
 
-                {!conversationMessagesQuery.isLoading && selectedConversationMessages.length === 0 ? (
-                  <div className="py-8">
-                    <EmptyState
-                      icon={MessageSquareText}
-                      title="Nenhuma mensagem nesta conversa"
-                      description="Quando o historico for iniciado, as mensagens aparecerao aqui."
-                    />
-                  </div>
-                ) : null}
+                {conversationTimelineItems.map((item, index) => {
+                  if (item.kind === 'event') {
+                    return (
+                      <div key={item.key}>
+                        {shouldShowDateSeparator(conversationTimelineItems, index) && (
+                          <div className="my-3 flex items-center justify-center first:mt-0">
+                            <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                              {getDateLabel(item.timestamp)}
+                            </span>
+                          </div>
+                        )}
+                        <ConversationTimelineEvent
+                          label={item.label}
+                          timestamp={item.timestamp}
+                          tone={item.tone}
+                        />
+                      </div>
+                    );
+                  }
 
-                {selectedConversationMessages.map((message, index) => {
+                  const { message } = item;
                   const internalMessage = resolveInternalMessageMetadata(
                     message.metadata,
                   );
 
                   return (
-                    <div key={message.id}>
-                      {shouldShowDateSeparator(selectedConversationMessages, index) && (
+                    <div key={item.key}>
+                      {shouldShowDateSeparator(conversationTimelineItems, index) && (
                         <div className="my-3 flex items-center justify-center first:mt-0">
                           <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                            {getDateLabel(getConversationMessageTimestamp(message))}
+                            {getDateLabel(item.timestamp)}
                           </span>
                         </div>
                       )}
@@ -1766,21 +1884,26 @@ function InboxPageContent() {
                   );
                 })}
 
-                {selectedConversation.closedAt ? (
-                  <ConversationTimelineEvent
-                    label="Conversa encerrada"
-                    timestamp={selectedConversation.closedAt}
-                    tone={
-                      selectedConversation.closeReason === 'UNANSWERED'
-                        ? 'warning'
-                        : 'danger'
-                    }
-                  />
+                {!conversationMessagesQuery.isLoading && selectedConversationMessages.length === 0 ? (
+                  <div className="py-8">
+                    <EmptyState
+                      icon={MessageSquareText}
+                      title="Nenhuma mensagem nesta conversa"
+                      description="Quando o historico for iniciado, as mensagens aparecerao aqui."
+                    />
+                  </div>
                 ) : null}
               </div>
 
               <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-2.5 py-1.5 sm:px-3 sm:py-2">
-                <div className="rounded-[16px] bg-[#1a2a3d]/80 p-1.5 sm:p-2">
+                <div
+                  className={cn(
+                    'rounded-[18px] border p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm sm:p-2.5',
+                    isInternalComposerMode
+                      ? 'border-violet-400/20 bg-[#1a2541]'
+                      : 'border-white/8 bg-[#162535]',
+                  )}
+                >
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1874,14 +1997,14 @@ function InboxPageContent() {
                   {!isRecording ? (
                     <>
                       {isInternalComposerMode ? (
-                        <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border border-violet-400/20 bg-violet-500/10 px-2 py-1.5">
+                        <div className="mb-2 flex items-start justify-between gap-3 rounded-[14px] border border-violet-400/20 bg-violet-500/10 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-100">
+                            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100">
                               <StickyNote className="h-3.5 w-3.5" />
-                              Modo interno ativo
+                              Mensagem interna
                             </p>
-                            <p className="text-xs text-violet-100/75">
-                              Essa mensagem entra na timeline do chat, mas fica visível só para você.
+                            <p className="mt-1 text-xs leading-5 text-violet-100/75">
+                              Ela aparece na timeline do chat, mas não é enviada ao cliente.
                             </p>
                           </div>
                           <button
@@ -1920,7 +2043,7 @@ function InboxPageContent() {
                         onKeyDown={handleComposerKeyDown}
                         placeholder={
                           isInternalComposerMode
-                            ? 'Escreva uma anotação interna. Ela ficará visível só para você nesta conversa.'
+                            ? 'Escreva uma anotação interna. Ela ficará visível apenas para os usuários do sistema.'
                             : isConversationClosed
                             ? 'Conversa encerrada para o cliente. Voce ainda pode registrar uma mensagem interna aqui.'
                             : selectedFile
@@ -1929,10 +2052,10 @@ function InboxPageContent() {
                                 : 'Adicione uma legenda opcional para a mídia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
-                        className="min-h-[34px] max-h-28 resize-none border-none bg-transparent px-0.5 py-0.5 text-[13px] leading-5 placeholder:text-muted-foreground/50"
+                        className="min-h-[34px] max-h-28 resize-none border-none bg-transparent px-1 py-1 text-[13px] leading-5 placeholder:text-muted-foreground/50"
                       />
-                      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[max-content_max-content_max-content_max-content_1fr_max-content] sm:items-center">
-                        <div className="flex flex-wrap items-center gap-1.5 sm:contents">
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Button
                             type="button"
                             variant="secondary"
@@ -2004,7 +2127,7 @@ function InboxPageContent() {
                             {isInternalComposerMode ? 'Interna ativa' : 'Interna'}
                           </Button>
                         </div>
-                        <div className="sm:col-start-6 sm:justify-self-end">
+                        <div className="flex w-full sm:w-auto sm:justify-end">
                           <Button
                             onClick={submitComposer}
                             disabled={
@@ -2019,7 +2142,7 @@ function InboxPageContent() {
                                   isConversationClosed
                             }
                             className={cn(
-                              'h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs',
+                              'h-8 w-full min-w-[140px] rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs',
                               isInternalComposerMode
                                 ? 'bg-violet-500/90 text-violet-50 hover:bg-violet-500'
                                 : undefined,
@@ -2651,17 +2774,13 @@ function InternalConversationMessageContent({
   >;
 }) {
   const label = internalMessage.label?.trim() || 'Mensagem interna';
-  const visibilityLabel =
-    internalMessage.scope === 'SELF' ? 'So voce' : 'Uso interno';
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-full bg-violet-400/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-100/90">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-100/90">
+          <StickyNote className="h-3 w-3" />
           {label}
-        </span>
-        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-violet-100/55">
-          {visibilityLabel}
         </span>
       </div>
       {internalMessage.authorName ? (

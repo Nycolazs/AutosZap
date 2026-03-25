@@ -156,6 +156,15 @@ export interface ConversationReminder {
   completedBy?: UserSummary | null;
 }
 
+export interface ConversationEvent {
+  id: string;
+  type: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface QuickMessage {
   id: string;
   workspaceId: string;
@@ -186,6 +195,7 @@ export interface Conversation {
   assignedUser?: UserSummary | null;
   tags: Tag[];
   messages?: ConversationMessage[];
+  events?: ConversationEvent[];
   notes?: Array<{ id: string; content: string; author: UserSummary; createdAt: string }>;
   reminders?: ConversationReminder[];
   waitingSince?: string | null;
