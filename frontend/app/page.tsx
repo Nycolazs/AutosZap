@@ -29,13 +29,15 @@ const jsonLd = {
 };
 
 export default function HomePage() {
+  const currentYear = new Date().getFullYear();
+
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <HomeContent />
+      <HomeContent currentYear={currentYear} />
     </>
   );
 }

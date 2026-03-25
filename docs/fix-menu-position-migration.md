@@ -1,58 +1,93 @@
-# Fix para erro de banco de dados no Menu Interativo
+# Runbook: Migration de posições do Menu Interativo
 
-## Problema
-Ao salvar o menu interativo, você recebe: "Não foi possível concluir a operação no banco de dados."
+Use este documento quando o menu interativo falhar ao salvar nós com erro de banco, normalmente por ausência da migration que adiciona `positionX` e `positionY` em `AutoResponseMenuNode`.
 
-## Causa
-A migration do banco de dados para adicionar os campos `positionX` e `positionY` ainda não foi aplicada na produção.
+## Sintoma
 
-## Solução
-Execute os seguintes comandos no VPS de produção:
+Ao salvar o menu interativo, a interface retorna algo como:
+
+```text
+Não foi possível concluir a operação no banco de dados.
+```
+
+## Causa provável
+
+A migration abaixo ainda não foi aplicada no schema tenant usado pela empresa:
+
+- `backend/prisma/migrations/20260323120000_add_position_to_menu_nodes/migration.sql`
+
+Alteração:
+
+- adiciona `positionX` e `positionY` (`DOUBLE PRECISION`) em `AutoResponseMenuNode`
+
+## Procedimento recomendado em produção
+
+Como a plataforma é multi-tenant, o caminho seguro não é aplicar `prisma migrate deploy` apenas contra um `DATABASE_URL` isolado. O padrão atual é migrar os tenants via scripts de multitenancy do backend.
+
+### Opção A: migrar todos os tenants `READY`
+
+No servidor de produção:
 
 ```bash
-# 1. Conectar ao VPS
-ssh root@178.156.252.137
+ssh root@<SERVER_IP>
+cd /opt/autozap/backend
+npm run mt:migrate:all-tenants
+```
 
-# 2. Aplicar a migration
+### Opção B: migrar apenas um tenant específico
+
+Use esta opção quando o problema estiver restrito a uma empresa conhecida:
+
+```bash
+ssh root@<SERVER_IP>
+cd /opt/autozap/backend
+npm run mt:migrate:tenant -- --company <COMPANY_ID>
+```
+
+### Opção C: ambiente legado ou banco compartilhado
+
+Se o ambiente ainda estiver operando em modo antigo ou em fallback compartilhado, existe o helper:
+
+```bash
+ssh root@<SERVER_IP>
 cd /opt/autozap
 bash scripts/deploy/apply-migration.sh
-
-# 3. Verificar status das migrations
-cd backend
-npx prisma migrate status
-
-# 4. Se necessário, forçar deploy completo
-cd /opt/autozap
-bash scripts/deploy/deploy.sh
 ```
 
-## Detalhes Técnicos
+Use esse caminho apenas quando tiver certeza de que a correção depende de uma única `DATABASE_URL`.
 
-### Migration criada
-- **Arquivo**: `backend/prisma/migrations/20260323120000_add_position_to_menu_nodes/migration.sql`
-- **Alteração**: Adiciona colunas `positionX` e `positionY` (DOUBLE PRECISION) à tabela `AutoResponseMenuNode`
-- **Commit**: `0bf1406`
+## Verificações após a migration
 
-### Arquivos atualizados
-1. **Backend**:
-   - `backend/prisma/schema.prisma` - Schema com novos campos
-   - `backend/src/modules/auto-response-menus/auto-response-menus.controller.ts` - Validações de DTO
-   - `backend/src/modules/auto-response-menus/auto-response-menus.service.ts` - Tipos de entrada
-
-2. **Frontend**:
-   - `frontend/app/(app)/app/menu-interativo/_components/flow-canvas.tsx` - Canvas com persistência de posições
-   - `frontend/app/(app)/app/menu-interativo/_lib/types.ts` - Tipos do menu
-   - `frontend/app/(app)/app/menu-interativo/page.tsx` - Página principal
-
-## Status
-- ✅ Migration criada e commitada
-- ✅ Backend rebuildar com novos campos
-- ⏳ **Aguardando**: Aplicação da migration no banco de dados de produção
-- ⏳ **Aguardando**: Confirmação de persistência de posições no canvas
-
-## Rollback (se necessário)
-Se for necessário reverter a migration:
 ```bash
-cd /opt/autozap/backend
-npx prisma migrate resolve --rolled-back 20260323120000_add_position_to_menu_nodes
+curl -sS https://api.autoszap.com/api/health
 ```
+
+Depois valide na aplicação:
+
+1. Abrir `/app/menu-interativo`.
+2. Mover pelo menos um nó no canvas.
+3. Salvar o menu.
+4. Recarregar a tela e confirmar que a posição persistiu.
+
+## Referências técnicas
+
+Arquivos relacionados:
+
+- `backend/prisma/schema.prisma`
+- `backend/src/modules/auto-response-menus/auto-response-menus.controller.ts`
+- `backend/src/modules/auto-response-menus/auto-response-menus.service.ts`
+- `frontend/app/(app)/app/menu-interativo/_components/flow-canvas.tsx`
+- `frontend/app/(app)/app/menu-interativo/_lib/types.ts`
+- `frontend/app/(app)/app/menu-interativo/page.tsx`
+
+Scripts úteis:
+
+- `backend/scripts/multitenancy/migrate-all-tenants.ts`
+- `backend/scripts/multitenancy/migrate-tenant.ts`
+- `scripts/deploy/apply-migration.sh`
+
+## Observações importantes
+
+- O `scripts/deploy/deploy.sh` não executa migrations automaticamente.
+- Se houver múltiplos tenants dedicados, aplicar migration em apenas um banco não resolve o problema de forma global.
+- Se o erro persistir depois da migration, valide também a presença da coluna `type` em `AutoResponseMenuNode`, adicionada no hotfix `20260323223000_add_type_to_auto_response_menu_node`.

@@ -2,6 +2,11 @@
 
 Guia operacional para publicar builds e updates OTA do app `apps/mobile` em produção.
 
+Consulte também:
+
+- `docs/README.md`
+- `docs/operacao-e-fluxos.md`
+
 ## Pré-requisitos
 
 1. Autenticar no Expo:
@@ -33,8 +38,10 @@ npm run build --workspace backend
 - Canais:
   - `preview` (homologação)
   - `production` (clientes finais)
+  - `internal` (uso interno/distribuição controlada)
 - Configuração em `apps/mobile/eas.json`.
 - `runtimeVersion` segue `policy: "appVersion"` em `apps/mobile/app.config.ts`.
+- No perfil `production`, o Android atual gera `apk`.
 
 ### Regra de compatibilidade
 
@@ -64,13 +71,12 @@ Saída esperada: `Update group ID` e link do dashboard.
 
 1. Commit e push no GitHub.
 2. Deploy Web (Vercel) e Backend (VPS) concluídos.
-3. Build mobile de produção (`eas build`).
-4. OTA de produção (`eas update`) se não houver mudança nativa.
+3. Build mobile de produção (`eas build`) quando houver mudança nativa ou release completa.
+4. OTA de produção (`eas update`) quando a mudança for apenas JS/assets.
 5. Atualizar manifesto de releases (`deploy/platform-releases.json`) quando houver novo link público de download.
 
-## Última execução validada
+## Boas práticas
 
-- Commit: `b485815`
-- Build Android: `https://expo.dev/artifacts/eas/pJ9fVtgEubCmFiCnND7q3j.apk`
-- OTA update group: `6f6d73cb-4475-41ed-ab3b-7ae0c3e5271c`
-- Dashboard: `https://expo.dev/accounts/nyc2029/projects/autoszap-mobile/updates/6f6d73cb-4475-41ed-ab3b-7ae0c3e5271c`
+- Não registrar links temporários de artefatos ou update groups em documentos versionados; eles envelhecem rápido e perdem valor operacional.
+- Sempre confirmar `EXPO_PUBLIC_API_URL`, `APP_VERSION` e `APP_BUILD_NUMBER` antes de publicar.
+- Quando houver nova build distribuível para clientes, refletir isso também em `deploy/platform-releases.json`.

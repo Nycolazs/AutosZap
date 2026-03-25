@@ -18,7 +18,6 @@ import {
   Smartphone,
   Star,
   Users,
-  Workflow,
   Zap,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -120,7 +119,11 @@ const gridItem = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
 };
 
-export function HomeContent() {
+interface HomeContentProps {
+  currentYear: number;
+}
+
+export function HomeContent({ currentYear }: HomeContentProps) {
   return (
     <main className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-[#060918] text-white">
       {/* ── ambient gradients ── */}
@@ -470,7 +473,7 @@ export function HomeContent() {
             </div>
 
             <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/[0.06] pt-5 text-[11px] text-white/30 sm:mt-10 sm:flex-row sm:pt-6 sm:text-xs">
-              <p>&copy; {new Date().getFullYear()} AutosZap. Todos os direitos reservados.</p>
+              <p>&copy; {currentYear} AutosZap. Todos os direitos reservados.</p>
               <p>API oficial do WhatsApp Business Platform da Meta.</p>
             </div>
           </div>

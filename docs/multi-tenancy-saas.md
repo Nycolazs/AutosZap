@@ -1,4 +1,4 @@
-# AutoZap Multi-Tenancy (Control Plane + Tenant DB)
+# AutosZap Multi-Tenancy (Control Plane + Tenant DB)
 
 ## 1) Arquitetura adotada
 
@@ -22,7 +22,7 @@ A plataforma foi separada em **duas camadas de dados**:
 - O backend resolve o tenant em servidor:
   - `TenantContextGuard` + `TenantConnectionService`
   - Rotas comuns exigem membership ativa + tenant resolvido
-  - Rotas de plataforma usam `@PlatformAdmin()` e exigem `platformRole=SUPER_ADMIN`
+  - Rotas de plataforma usam `@PlatformAdmin()` e aceitam `platformRole=SUPER_ADMIN` ou `platformRole=SUPPORT`
 - O frontend **não decide isolamento**; sem `companyId` confiado do client.
 
 ## 3) Provisionamento de empresa
@@ -50,6 +50,12 @@ Novos endpoints em `backend/src/modules/platform-admin` (`/api/platform-admin/*`
 - `GET/POST/PATCH /platform-admin/users`
 - `POST /platform-admin/users/:globalUserId/memberships`
 - `GET /platform-admin/audit-logs`
+- `GET/PATCH /platform-admin/lead-interests`
+- `GET /platform-admin/support-tickets/counts`
+- `GET /platform-admin/support-tickets`
+- `GET /platform-admin/support-tickets/:ticketId`
+- `POST /platform-admin/support-tickets/:ticketId/messages`
+- `PATCH /platform-admin/support-tickets/:ticketId/status`
 
 Frontend novo:
 
@@ -57,6 +63,8 @@ Frontend novo:
 - `frontend/app/(platform)/platform/page.tsx`
 - `frontend/app/(platform)/platform/companies/page.tsx`
 - `frontend/app/(platform)/platform/users/page.tsx`
+- `frontend/app/(platform)/platform/interessados/page.tsx`
+- `frontend/app/(platform)/platform/suporte/page.tsx`
 - `frontend/app/(platform)/platform/audit/page.tsx`
 
 ## 5) Rodando localmente
@@ -102,6 +110,10 @@ Frontend novo:
 2. Rodar migrations do control plane.
 3. Rodar migrations dos tenants (por lote ou individual).
 4. Validar healthcheck e dashboard de provisioning.
+
+Observação:
+
+- o script `scripts/deploy/deploy.sh` não roda migrations automaticamente; esse passo precisa ser explícito no procedimento operacional.
 
 ### Rollback
 
