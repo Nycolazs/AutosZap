@@ -199,6 +199,7 @@ function InboxPageContent() {
     useState<ConversationStatusFilterValue>('ALL');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
+  const [composerMode, setComposerMode] = useState<'reply' | 'internal'>('reply');
   const [quotedMessageId, setQuotedMessageId] = useState<string | null>(null);
   const [quickMessagesOpen, setQuickMessagesOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
@@ -505,6 +506,7 @@ function InboxPageContent() {
       };
     },
     onSuccess: async (message) => {
+      setComposerMode('reply');
       setMessageDraft('');
       setQuotedMessageId(null);
 
@@ -571,6 +573,7 @@ function InboxPageContent() {
       });
     },
     onSuccess: async () => {
+      setComposerMode('reply');
       setMessageDraft('');
       setQuotedMessageId(null);
       setSelectedFile(null);
@@ -652,6 +655,7 @@ function InboxPageContent() {
       };
     },
     onSuccess: async () => {
+      setComposerMode('reply');
       setMessageDraft('');
       setQuotedMessageId(null);
       shouldStickToBottomRef.current = true;
@@ -956,6 +960,7 @@ function InboxPageContent() {
       setEditingReminderId(null);
       setDetailsOpen(false);
       setQuickMessagesOpen(false);
+      setComposerMode('reply');
       setQuotedMessageId(null);
       pendingHistoryAnchorRef.current = null;
     }, 0);
@@ -1159,9 +1164,10 @@ function InboxPageContent() {
   const submitComposer = () => {
     if (
       !activeConversationId ||
-      sendMutation.isPending ||
       sendMediaMutation.isPending ||
-      isConversationClosed
+      (isInternalComposerMode
+        ? sendInternalMessageMutation.isPending
+        : sendMutation.isPending || isConversationClosed)
     ) {
       return;
     }
@@ -1177,20 +1183,34 @@ function InboxPageContent() {
       return;
     }
 
-    sendMutation.mutate();
-  };
-
-  const submitInternalMessage = () => {
-    if (
-      !activeConversationId ||
-      sendInternalMessageMutation.isPending ||
-      !messageDraft.trim()
-    ) {
+    if (isInternalComposerMode) {
+      sendInternalMessageMutation.mutate(messageDraft);
       return;
     }
 
-    shouldStickToBottomRef.current = true;
-    sendInternalMessageMutation.mutate(messageDraft);
+    sendMutation.mutate();
+  };
+
+  const toggleInternalComposerMode = () => {
+    if (!activeConversationId || sendInternalMessageMutation.isPending) {
+      return;
+    }
+
+    if (selectedFile) {
+      toast.error('Remova o anexo atual antes de registrar uma mensagem interna.');
+      return;
+    }
+
+    if (isRecording) {
+      toast.error('Finalize a gravação atual antes de usar a mensagem interna.');
+      return;
+    }
+
+    setComposerMode((current) => (current === 'internal' ? 'reply' : 'internal'));
+    setQuotedMessageId(null);
+    window.requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus();
+    });
   };
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1212,6 +1232,8 @@ function InboxPageContent() {
       toast.error('Envie ou remova o arquivo atual antes de gravar.');
       return;
     }
+
+    setComposerMode('reply');
 
     if (
       typeof window === 'undefined' ||
@@ -1331,6 +1353,9 @@ function InboxPageContent() {
   const isConversationClosed =
     selectedConversation?.status === 'RESOLVED' ||
     selectedConversation?.status === 'CLOSED';
+  const isInternalComposerMode = composerMode === 'internal';
+  const canToggleInternalComposerMode =
+    Boolean(activeConversationId) && !sendInternalMessageMutation.isPending;
 
   const refreshConversationQueries = async () => {
     await Promise.all([
@@ -1761,7 +1786,10 @@ function InboxPageContent() {
                     type="file"
                     className="hidden"
                     accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
-                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setComposerMode('reply');
+                      setSelectedFile(event.target.files?.[0] ?? null);
+                    }}
                   />
                   {isRecording ? (
                     <div className="flex items-center gap-2.5 rounded-xl bg-[#1a2a3d] px-2.5 py-2">
@@ -1845,7 +1873,27 @@ function InboxPageContent() {
                   ) : null}
                   {!isRecording ? (
                     <>
-                      {quotedMessage ? (
+                      {isInternalComposerMode ? (
+                        <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border border-violet-400/20 bg-violet-500/10 px-2 py-1.5">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-100">
+                              <StickyNote className="h-3.5 w-3.5" />
+                              Modo interno ativo
+                            </p>
+                            <p className="text-xs text-violet-100/75">
+                              Essa mensagem entra na timeline do chat, mas fica visível só para você.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-full p-1 text-violet-100/70 transition hover:bg-violet-500/15 hover:text-violet-50"
+                            onClick={() => setComposerMode('reply')}
+                            aria-label="Sair do modo interno"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : quotedMessage ? (
                         <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border-l-[3px] border-l-primary bg-[#1a2a3d] px-2 py-1.5">
                           <div className="min-w-0">
                             <p className="text-[11px] font-semibold text-primary">
@@ -1871,7 +1919,9 @@ function InboxPageContent() {
                         onChange={(event) => setMessageDraft(event.target.value)}
                         onKeyDown={handleComposerKeyDown}
                         placeholder={
-                          isConversationClosed
+                          isInternalComposerMode
+                            ? 'Escreva uma anotação interna. Ela ficará visível só para você nesta conversa.'
+                            : isConversationClosed
                             ? 'Conversa encerrada para o cliente. Voce ainda pode registrar uma mensagem interna aqui.'
                             : selectedFile
                               ? selectedFile.type.startsWith('audio/')
@@ -1887,7 +1937,12 @@ function InboxPageContent() {
                             type="button"
                             variant="secondary"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={!activeConversationId || sendMediaMutation.isPending || isConversationClosed}
+                            disabled={
+                              !activeConversationId ||
+                              sendMediaMutation.isPending ||
+                              isConversationClosed ||
+                              isInternalComposerMode
+                            }
                             className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
                             title="Anexar arquivo"
                           >
@@ -1898,7 +1953,11 @@ function InboxPageContent() {
                             type="button"
                             variant="secondary"
                             onClick={() => setQuickMessagesOpen(true)}
-                            disabled={!activeConversationId || sendMutation.isPending}
+                            disabled={
+                              !activeConversationId ||
+                              sendMutation.isPending ||
+                              isInternalComposerMode
+                            }
                             className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
                             title="Abrir mensagens rapidas"
                           >
@@ -1911,7 +1970,13 @@ function InboxPageContent() {
                             onClick={() => {
                               void startAudioRecording();
                             }}
-                            disabled={!activeConversationId || Boolean(selectedFile) || sendMediaMutation.isPending || isConversationClosed}
+                            disabled={
+                              !activeConversationId ||
+                              Boolean(selectedFile) ||
+                              sendMediaMutation.isPending ||
+                              isConversationClosed ||
+                              isInternalComposerMode
+                            }
                             className="h-8 rounded-[11px] px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs"
                             title="Gravar audio"
                           >
@@ -1921,34 +1986,51 @@ function InboxPageContent() {
                           <Button
                             type="button"
                             variant="secondary"
-                            onClick={submitInternalMessage}
-                            disabled={
-                              !activeConversationId ||
-                              Boolean(selectedFile) ||
-                              !messageDraft.trim() ||
-                              sendInternalMessageMutation.isPending
+                            onClick={toggleInternalComposerMode}
+                            disabled={!canToggleInternalComposerMode}
+                            className={cn(
+                              'h-8 rounded-[11px] border-violet-400/20 px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs',
+                              isInternalComposerMode
+                                ? 'bg-violet-500/20 text-violet-50 hover:bg-violet-500/25'
+                                : 'bg-violet-500/10 text-violet-100 hover:bg-violet-500/20 hover:text-violet-50',
+                            )}
+                            title={
+                              isInternalComposerMode
+                                ? 'Sair do modo de mensagem interna'
+                                : 'Ativar modo de mensagem interna no chat'
                             }
-                            className="h-8 rounded-[11px] border-violet-400/20 bg-violet-500/10 px-2.5 text-[11px] font-medium text-violet-100 hover:bg-violet-500/20 hover:text-violet-50 sm:px-3 sm:text-xs"
-                            title="Registrar mensagem interna no chat"
                           >
                             <StickyNote className="h-3.5 w-3.5" />
-                            Interna
+                            {isInternalComposerMode ? 'Interna ativa' : 'Interna'}
                           </Button>
                         </div>
                         <div className="sm:col-start-6 sm:justify-self-end">
                           <Button
                             onClick={submitComposer}
                             disabled={
-                              (!messageDraft.trim() && !selectedFile) ||
-                              !activeConversationId ||
-                              sendMutation.isPending ||
-                              sendMediaMutation.isPending ||
-                              isConversationClosed
+                              isInternalComposerMode
+                                ? !messageDraft.trim() ||
+                                  !activeConversationId ||
+                                  sendInternalMessageMutation.isPending
+                                : (!messageDraft.trim() && !selectedFile) ||
+                                  !activeConversationId ||
+                                  sendMutation.isPending ||
+                                  sendMediaMutation.isPending ||
+                                  isConversationClosed
                             }
-                            className="h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs"
+                            className={cn(
+                              'h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs',
+                              isInternalComposerMode
+                                ? 'bg-violet-500/90 text-violet-50 hover:bg-violet-500'
+                                : undefined,
+                            )}
                           >
                             <SendHorizontal className="h-3.5 w-3.5" />
-                            {selectedFile ? 'Enviar mídia' : 'Enviar'}
+                            {isInternalComposerMode
+                              ? 'Salvar interna'
+                              : selectedFile
+                                ? 'Enviar mídia'
+                                : 'Enviar'}
                           </Button>
                         </div>
                       </div>
@@ -2102,6 +2184,7 @@ function InboxPageContent() {
         canManage={canManageQuickMessages}
         isConversationClosed={isConversationClosed}
         onInsertInInput={(value) => {
+          setComposerMode('reply');
           setMessageDraft(value);
           window.requestAnimationFrame(() => {
             composerTextareaRef.current?.focus();
