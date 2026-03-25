@@ -731,7 +731,7 @@ function InboxPageContent() {
         }),
         queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       ]);
-      toast.success('Lembrete concluÃ­do.');
+      toast.success('Lembrete concluído.');
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1481,8 +1481,8 @@ function InboxPageContent() {
                         {conversation.assignedUser ? (
                           <span className="text-[11px] text-muted-foreground">
                             {conversation.status === 'WAITING'
-                              ? `Ãšltimo responsÃ¡vel: ${conversation.assignedUser.name}`
-                              : `ResponsÃ¡vel: ${conversation.assignedUser.name}`}
+                              ? `Último responsável: ${conversation.assignedUser.name}`
+                              : `Responsável: ${conversation.assignedUser.name}`}
                           </span>
                         ) : null}
                         {conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}
@@ -1529,12 +1529,12 @@ function InboxPageContent() {
                       </p>
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         {selectedConversation.assignedUser
-                          ? `ResponsÃ¡vel atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
+                          ? `Responsável atual: ${selectedConversation.assignedUser.name} (${getRoleLabel(
                               selectedConversation.assignedUser.normalizedRole ?? selectedConversation.assignedUser.role,
                             )})`
                           : selectedConversation.status === 'WAITING'
-                            ? 'DisponÃ­vel para retomada por qualquer vendedor liberado.'
-                            : 'Ainda sem responsÃ¡vel definido.'}
+                            ? 'Disponível para retomada por qualquer vendedor liberado.'
+                            : 'Ainda sem responsável definido.'}
                       </p>
                     </div>
                   </div>
@@ -1876,7 +1876,7 @@ function InboxPageContent() {
                             : selectedFile
                               ? selectedFile.type.startsWith('audio/')
                                 ? 'Adicione uma legenda opcional para a mensagem de voz...'
-                                : 'Adicione uma legenda opcional para a mÃ­dia...'
+                                : 'Adicione uma legenda opcional para a mídia...'
                               : 'Digite uma resposta para enviar pelo canal selecionado...'
                         }
                         className="min-h-[34px] max-h-28 resize-none border-none bg-transparent px-0.5 py-0.5 text-[13px] leading-5 placeholder:text-muted-foreground/50"
@@ -1916,7 +1916,7 @@ function InboxPageContent() {
                             title="Gravar audio"
                           >
                             <Mic className="h-3.5 w-3.5" />
-                            Gravar Ã¡udio
+                            Gravar áudio
                           </Button>
                           <Button
                             type="button"
@@ -1948,7 +1948,7 @@ function InboxPageContent() {
                             className="h-8 w-full rounded-[11px] px-3 text-[11px] font-medium sm:w-auto sm:px-3.5 sm:text-xs"
                           >
                             <SendHorizontal className="h-3.5 w-3.5" />
-                            {selectedFile ? 'Enviar mÃ­dia' : 'Enviar'}
+                            {selectedFile ? 'Enviar mídia' : 'Enviar'}
                           </Button>
                         </div>
                       </div>
@@ -2177,7 +2177,7 @@ function ChatConversationLoadingState() {
           <div className="min-w-0">
             <p className="font-heading text-[18px] font-semibold">Carregando conversa...</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Buscando histÃ³rico e informaÃ§Ãµes do contato.
+              Buscando histórico e informações do contato.
             </p>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
@@ -2293,14 +2293,14 @@ function ConversationSidebar({
         </div>
 
         <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
-          <p className="font-medium">AtribuiÃ§Ã£o e status</p>
+          <p className="font-medium">Atribuição e status</p>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
               status={selectedConversation.status}
               closeReason={selectedConversation.closeReason}
             />
             {selectedConversation.status === 'WAITING' ? (
-              <Badge variant="secondary">DisponÃ­vel para retomada</Badge>
+              <Badge variant="secondary">Disponível para retomada</Badge>
             ) : null}
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -2336,7 +2336,7 @@ function ConversationSidebar({
             }
             disabled={!canTransferConversation || isConversationClosed}
           >
-            <option value="">Sem responsÃ¡vel</option>
+            <option value="">Sem responsável</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
@@ -2345,7 +2345,7 @@ function ConversationSidebar({
           </NativeSelect>
           {!canTransferConversation ? (
             <p className="text-xs text-muted-foreground">
-              TransferÃªncia de conversa nÃ£o liberada para seu usuÃ¡rio.
+              Transferência de conversa não liberada para seu usuário.
             </p>
           ) : null}
         </div>
@@ -2426,7 +2426,7 @@ function ConversationSidebar({
               >
                 <p className="text-sm">{note.content}</p>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  {note.author.name} â€¢ {formatDate(note.createdAt)}
+                  {note.author.name} • {formatDate(note.createdAt)}
                 </p>
               </div>
             ))}
