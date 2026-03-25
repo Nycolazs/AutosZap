@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -82,17 +82,12 @@ export default function SuportePage() {
   const searchParams = useSearchParams();
   const highlightedTicketId = searchParams.get('ticket');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<TicketCategory | ''>('');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (highlightedTicketId) {
-      setExpandedTicket(highlightedTicketId);
-    }
-  }, [highlightedTicketId]);
+  const expandedTicket = highlightedTicketId ?? expandedTicketId;
 
   const ticketsQuery = useQuery({
     queryKey: ['support-tickets'],
@@ -131,7 +126,7 @@ export default function SuportePage() {
       setTitle('');
       setBody('');
       setCategory('');
-      setExpandedTicket(ticket.id);
+      setExpandedTicketId(ticket.id);
       await queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -229,7 +224,7 @@ export default function SuportePage() {
                         <button
                           type="button"
                           onClick={() =>
-                            setExpandedTicket(isExpanded ? null : ticket.id)
+                            setExpandedTicketId(isExpanded ? null : ticket.id)
                           }
                           className="text-left transition-colors hover:text-primary"
                         >
@@ -263,7 +258,7 @@ export default function SuportePage() {
                         size="sm"
                         className="h-8 gap-1.5 text-[11px]"
                         onClick={() =>
-                          setExpandedTicket(isExpanded ? null : ticket.id)
+                          setExpandedTicketId(isExpanded ? null : ticket.id)
                         }
                       >
                         {isExpanded ? 'Ocultar conversa' : 'Abrir conversa'}

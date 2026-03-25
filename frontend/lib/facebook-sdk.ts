@@ -309,7 +309,7 @@ export function loadFacebookSdk({
   });
 }
 
-function launchEmbeddedSignupWithFacebookSdk({
+export function launchEmbeddedSignupWithFacebookSdk({
   configurationId,
 }: Pick<LaunchEmbeddedSignupOptions, 'configurationId'>): Promise<EmbeddedSignupResult> {
   ensureBrowserEnvironment();
@@ -459,7 +459,6 @@ function buildEmbeddedSignupUrl({
 function launchEmbeddedSignupViaOAuth({
   appId,
   configurationId,
-  graphApiVersion = DEFAULT_GRAPH_API_VERSION,
   bridgeBaseUrl,
 }: LaunchEmbeddedSignupOptions): Promise<EmbeddedSignupResult> {
   ensureBrowserEnvironment();

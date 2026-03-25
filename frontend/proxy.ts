@@ -79,6 +79,8 @@ export function proxy(request: NextRequest) {
   return applyNoStore(NextResponse.next());
 }
 
+export default proxy;
+
 export const config = {
   matcher: [
     '/login',

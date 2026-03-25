@@ -1,17 +1,8 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/google';
+import '@fontsource-variable/plus-jakarta-sans/wght.css';
+import '@fontsource-variable/space-grotesk/wght.css';
 import './globals.css';
 import { Providers } from './providers';
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: '--font-plus-jakarta',
-  subsets: ['latin'],
-});
-
-const spaceGrotesk = Space_Grotesk({
-  variable: '--font-space-grotesk',
-  subsets: ['latin'],
-});
 
 const SITE_URL = 'https://autoszap.com';
 
@@ -93,9 +84,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body
-        className={`${plusJakartaSans.variable} ${spaceGrotesk.variable} min-h-screen bg-background text-foreground antialiased`}
-      >
+      <body className="min-h-screen bg-background text-foreground antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -3,12 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "vite dev --port 3000",
+    "build": "NITRO_PRESET=node vite build",
+    "start": "node .output/server/index.mjs",
+    "lint": "eslint .",
+    "check:vinext": "vinext check",
+    "verify": "npm run lint && npm run check:vinext && npm run build && npm run build:vercel",
+    "dev:vinext": "vite dev --port 3000",
+    "build:vinext": "NITRO_PRESET=node vite build",
+    "start:vinext": "node .output/server/index.mjs",
+    "build:vercel": "NITRO_PRESET=vercel vite build",
+    "dev:next": "next dev --webpack --port 3000",
+    "build:next": "next build --webpack",
+    "start:next": "next start --port 3000"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "5.2.7",
+    "@fontsource-variable/space-grotesk": "5.2.8",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -38,8 +49,8 @@
     "framer-motion": "^12.35.2",
     "lucide-react": "^0.577.0",
     "next": "^16.1.7",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-hook-form": "^7.71.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
@@ -48,16 +59,27 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-rsc": "^0.5.21",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "nitro": "^3.0.260311-beta",
+    "react-server-dom-webpack": "^19.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vinext": "^0.0.35",
+    "vite": "^8.0.2"
   },
   "optionalDependencies": {
     "@tailwindcss/oxide-linux-x64-gnu": "^4.2.1",
     "@tailwindcss/oxide-win32-x64-msvc": "^4.2.1"
-  }
+  },
+  "engines": {
+    "node": ">=24 <26"
+  },
+  "type": "module"
 }

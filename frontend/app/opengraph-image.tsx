@@ -114,7 +114,7 @@ export default function Image() {
                   background: 'rgba(56, 145, 255, 0.1)',
                 }}
               >
-                <span style={{ color: '#3891ff', fontSize: '18px' }}>&#10003;</span>
+                <span style={{ color: '#3891ff', fontSize: '14px', fontWeight: 700 }}>OK</span>
                 <span style={{ color: '#e2e8f0', fontSize: '18px', fontWeight: 500 }}>
                   {item}
                 </span>

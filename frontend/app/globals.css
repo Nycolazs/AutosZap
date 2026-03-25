@@ -5,6 +5,8 @@ html {
 }
 
 :root {
+  --font-plus-jakarta: 'Plus Jakarta Sans Variable';
+  --font-space-grotesk: 'Space Grotesk Variable';
   --background: #040d19;
   --background-elevated: #081423;
   --background-panel: #0c1a2c;

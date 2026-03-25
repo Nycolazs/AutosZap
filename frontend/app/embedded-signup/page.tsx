@@ -23,20 +23,10 @@ function getSearchParam(name: string) {
   return new URLSearchParams(window.location.search).get(name)?.trim() ?? '';
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : 'Nao foi possivel concluir o Embedded Signup da Meta.';
-}
-
 export default function EmbeddedSignupBridgePage() {
   const launchStartedRef = useRef(false);
   const appId = useMemo(() => getSearchParam('appId'), []);
   const configurationId = useMemo(() => getSearchParam('configurationId'), []);
-  const graphApiVersion = useMemo(
-    () => getSearchParam('graphApiVersion') || 'v22.0',
-    [],
-  );
   const autoStart = useMemo(() => getSearchParam('autoStart') === '1', []);
 
   const initialState = useMemo<BridgeState>(() => {

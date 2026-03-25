@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This frontend now runs on [vinext](https://github.com/cloudflare/vinext), which reimplements the Next.js API surface on top of Vite. The application code keeps the existing `app/`, `route.ts`, `proxy.ts` and `next/*` imports, but the default local and build workflow now uses `vinext` instead of `next`.
 
-## Getting Started
+## Development
 
-First, run the development server:
+Start the vinext dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+If you need the previous Next.js runtime for comparison or rollback, it is still available:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev:next
+```
 
-## Learn More
+## Build And Start
 
-To learn more about Next.js, take a look at the following resources:
+Build a local Node target with Nitro:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run build
+npm run start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Generate a Vercel-targeted build explicitly:
 
-## Deploy on Vercel
+```bash
+npm run build:vercel
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `NEXT_PUBLIC_*` variables remain supported by vinext and do not need to be renamed.
+- Fonts are self-hosted through Fontsource, so production no longer depends on CDN loading from the framework font helper.
+- `next/image` continues to work through vinext's compatibility layer, without Next.js image optimization.
+- Local production builds generate `.output` for the Node server started by `npm run start`.
+- Vercel builds generate `.vercel/output` through Nitro's Vercel preset, triggered by `npm run build:vercel`.
+- Full verification is available through `npm run verify`.
+
+## Vercel
+
+- Root Directory: `frontend`
+- Framework Preset: `Other`
+- `vercel.json` already pins the build command to `npm run build:vercel`
+
+## References
+
+- [vinext README](https://github.com/cloudflare/vinext)
+- [Cloudflare announcement](https://blog.cloudflare.com/vinext/)
+- [Nitro deployment docs](https://v3.nitro.build/deploy)
