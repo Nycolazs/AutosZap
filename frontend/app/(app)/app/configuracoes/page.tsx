@@ -482,6 +482,7 @@ export default function SettingsPage() {
           })
           .finally(() => setConnectingProvider(null));
       },
+      {},
     );
   }
 

@@ -242,6 +242,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           })
           .finally(() => setLoading(null));
       },
+      {},
     );
   }, [sendToBackend]);
 
