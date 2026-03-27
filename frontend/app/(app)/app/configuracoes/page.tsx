@@ -82,6 +82,8 @@ const GOOGLE_CLIENT_ID =
   '121260038469-oqt0ujgfinc815bmolr61md8egkkokni.apps.googleusercontent.com';
 const FACEBOOK_APP_ID =
   process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '1904602866817490';
+const FACEBOOK_LOGIN_SCOPE =
+  process.env.NEXT_PUBLIC_FACEBOOK_LOGIN_SCOPE ?? 'public_profile';
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -476,7 +478,11 @@ export default function SettingsPage() {
 
     setConnectingProvider('facebook');
 
-    loginWithFacebookSdk()
+    loginWithFacebookSdk({
+      options: {
+        scope: FACEBOOK_LOGIN_SCOPE,
+      },
+    })
       .then((token) =>
         connectProviderMutation.mutateAsync({
           provider: 'facebook',
