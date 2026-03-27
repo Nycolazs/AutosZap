@@ -241,16 +241,73 @@ export interface ContactListRecord {
   createdAt?: string;
 }
 
+export type InstanceProvider = 'META_WHATSAPP' | 'WHATSAPP_WEB';
+
+export type InstanceConnectionPhase =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'QR_PENDING'
+  | 'QR_SCANNED'
+  | 'AUTHENTICATING'
+  | 'RECONNECTING'
+  | 'LOGGED_OUT'
+  | 'ERROR';
+
+export interface InstanceProviderCapabilities {
+  embeddedSignup: boolean;
+  qrLogin: boolean;
+  templates: boolean;
+  businessProfile: boolean;
+  webhookSubscribe: boolean;
+  freeformText: boolean;
+  freeformMedia: boolean;
+  sessionReconnect: boolean;
+  sessionLogout: boolean;
+  sessionDisconnect: boolean;
+}
+
+export interface InstanceConnectionStateRecord {
+  phase: InstanceConnectionPhase;
+  healthy: boolean;
+  detail?: string | null;
+  connectedAt?: string | null;
+  lastSeenAt?: string | null;
+  qrCode?: string | null;
+  qrCodeExpiresAt?: string | null;
+  sessionId?: string | null;
+  transport?: string | null;
+  raw?: Record<string, unknown> | null;
+}
+
+export interface InstanceQrRecord {
+  status: 'NONE' | 'PENDING' | 'READY' | 'EXPIRED' | 'SCANNED' | 'ERROR';
+  qrCode?: string | null;
+  qrCodeExpiresAt?: string | null;
+  scannedAt?: string | null;
+  refreshedAt?: string | null;
+  raw?: Record<string, unknown> | null;
+}
+
 export interface InstanceRecord {
   id: string;
   name: string;
-  provider: string;
+  provider: InstanceProvider | string;
   status: string;
   mode: string;
   appId?: string | null;
   phoneNumber?: string | null;
   businessAccountId?: string | null;
   phoneNumberId?: string | null;
+  externalInstanceId?: string | null;
+  providerConfig?: Record<string, unknown> | null;
+  providerMetadata?: Record<string, unknown> | null;
+  providerSessionState?: Record<string, unknown> | null;
+  providerCapabilities?: InstanceProviderCapabilities | null;
+  connectionState?: InstanceConnectionStateRecord | null;
+  qr?: InstanceQrRecord | null;
+  connectedAt?: string | null;
+  lastSeenAt?: string | null;
   lastSyncAt?: string | null;
 }
 
@@ -266,6 +323,17 @@ export interface CreateEmbeddedSignupPayload {
   phoneNumberId: string;
   wabaId: string;
   name?: string;
+}
+
+export interface CreateInstancePayload {
+  name: string;
+  provider?: InstanceProvider;
+  status?: string;
+  mode?: string;
+  externalInstanceId?: string;
+  providerConfig?: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+  providerSessionState?: Record<string, unknown>;
 }
 
 export interface EmbeddedSignupInstanceRecord extends InstanceRecord {
@@ -608,22 +676,23 @@ export interface UpdateTeamMemberPayload {
 
 export interface CreateInstancePayload {
   name: string;
-  provider?: string;
+  provider?: InstanceProvider;
   status?: string;
   mode?: string;
-  appId?: string;
-  phoneNumber?: string;
-  businessAccountId?: string;
-  phoneNumberId?: string;
-  accessToken?: string;
-  webhookVerifyToken?: string;
-  appSecret?: string;
+  externalInstanceId?: string;
+  providerConfig?: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+  providerSessionState?: Record<string, unknown>;
 }
 
 export interface InstanceDiagnostics {
   healthy: boolean;
   simulated: boolean;
   detail: string;
+  provider?: InstanceProvider;
+  capabilities?: InstanceProviderCapabilities;
+  connectionState?: InstanceConnectionStateRecord | null;
+  qr?: InstanceQrRecord | null;
   phoneNumber?: Record<string, unknown>;
   businessProfile?: Record<string, unknown>;
   subscribedApps?: Array<{ appId: string; appName: string; link: string }>;

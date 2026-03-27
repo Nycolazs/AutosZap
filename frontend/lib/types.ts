@@ -22,7 +22,7 @@ export interface UserSummary {
   name: string;
   email?: string;
   role?: string;
-  normalizedRole?: 'ADMIN' | 'SELLER';
+  normalizedRole?: "ADMIN" | "SELLER";
   title?: string | null;
 }
 
@@ -42,7 +42,7 @@ export interface NotificationItem {
 export interface NotificationRealtimeEvent {
   workspaceId: string;
   userId: string;
-  type: 'notification.created' | 'notification.read' | 'notification.read-all';
+  type: "notification.created" | "notification.read" | "notification.read-all";
   notificationId?: string;
   unreadCount?: number;
   payload?: Record<string, unknown> | null;
@@ -52,7 +52,7 @@ export interface PermissionCatalogEntry {
   key: string;
   label: string;
   description: string;
-  category: 'Telas' | 'Acoes' | 'Analise' | 'Configuracoes';
+  category: "Telas" | "Acoes" | "Analise" | "Configuracoes";
 }
 
 export interface WorkspaceRole {
@@ -75,7 +75,7 @@ export interface TeamMember {
   email: string;
   title?: string | null;
   role: string;
-  normalizedRole: 'ADMIN' | 'SELLER';
+  normalizedRole: "ADMIN" | "SELLER";
   workspaceRoleId?: string | null;
   workspaceRole?: {
     id: string;
@@ -104,7 +104,7 @@ export interface Contact {
 
 export interface ConversationMessage {
   id: string;
-  direction: 'INBOUND' | 'OUTBOUND' | 'SYSTEM';
+  direction: "INBOUND" | "OUTBOUND" | "SYSTEM";
   messageType: string;
   content: string;
   isAutomated?: boolean;
@@ -128,7 +128,7 @@ export interface ConversationMessage {
       externalMessageId?: string | null;
       contentPreview?: string | null;
       messageType?: string | null;
-      direction?: 'INBOUND' | 'OUTBOUND' | 'SYSTEM' | null;
+      direction?: "INBOUND" | "OUTBOUND" | "SYSTEM" | null;
       createdAt?: string | null;
       from?: string | null;
     } | null;
@@ -137,6 +137,15 @@ export interface ConversationMessage {
     windowClosedTemplateReply?: boolean;
     headerParameters?: string[];
     bodyParameters?: string[];
+    contact?: {
+      phone?: string | null;
+      contactPhone?: string | null;
+      profileName?: string | null;
+      pushName?: string | null;
+      shortName?: string | null;
+      profilePictureUrl?: string | null;
+    } | null;
+    contactPhone?: string | null;
   } | null;
   status: string;
   sentAt?: string | null;
@@ -148,7 +157,7 @@ export interface ConversationReminder {
   messageToSend: string;
   internalDescription?: string | null;
   remindAt: string;
-  status: 'PENDING' | 'NOTIFIED' | 'COMPLETED' | 'CANCELED';
+  status: "PENDING" | "NOTIFIED" | "COMPLETED" | "CANCELED";
   notifiedAt?: string | null;
   completedAt?: string | null;
   canceledAt?: string | null;
@@ -179,7 +188,7 @@ export interface QuickMessage {
 }
 
 export interface QuickMessageApplyResponse {
-  action: 'SEND_NOW' | 'EDIT_IN_INPUT';
+  action: "SEND_NOW" | "EDIT_IN_INPUT";
   content: string;
   message?: ConversationMessage;
 }
@@ -187,18 +196,36 @@ export interface QuickMessageApplyResponse {
 export interface Conversation {
   id: string;
   status: string;
-  closeReason?: 'MANUAL' | 'UNANSWERED' | null;
+  closeReason?: "MANUAL" | "UNANSWERED" | null;
   ownership: string;
   unreadCount: number;
   createdAt: string;
   lastMessageAt?: string | null;
   lastMessagePreview?: string | null;
   contact: Contact;
+  contactAvatarUrl?: string | null;
+  contactDisplayPhone?: string | null;
+  instance?: Pick<
+    Instance,
+    | "id"
+    | "name"
+    | "status"
+    | "provider"
+    | "mode"
+    | "phoneNumber"
+    | "profilePictureUrl"
+    | "profilePictureUpdatedAt"
+  > | null;
   assignedUser?: UserSummary | null;
   tags: Tag[];
   messages?: ConversationMessage[];
   events?: ConversationEvent[];
-  notes?: Array<{ id: string; content: string; author: UserSummary; createdAt: string }>;
+  notes?: Array<{
+    id: string;
+    content: string;
+    author: UserSummary;
+    createdAt: string;
+  }>;
   reminders?: ConversationReminder[];
   waitingSince?: string | null;
   resolvedAt?: string | null;
@@ -263,22 +290,94 @@ export interface Assistant {
   tools: Array<{ id: string; name: string; type: string }>;
 }
 
+export type InstanceProvider = "META_WHATSAPP" | "WHATSAPP_WEB";
+
+export type InstanceConnectionPhase =
+  | "DISCONNECTED"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "QR_PENDING"
+  | "QR_SCANNED"
+  | "AUTHENTICATING"
+  | "RECONNECTING"
+  | "LOGGED_OUT"
+  | "ERROR";
+
+export interface InstanceProviderCapabilities {
+  embeddedSignup: boolean;
+  qrLogin: boolean;
+  templates: boolean;
+  businessProfile: boolean;
+  webhookSubscribe: boolean;
+  freeformText: boolean;
+  freeformMedia: boolean;
+  sessionReconnect: boolean;
+  sessionLogout: boolean;
+  sessionDisconnect: boolean;
+}
+
+export interface InstanceConnectionState {
+  phase: InstanceConnectionPhase;
+  healthy: boolean;
+  detail?: string | null;
+  connectedAt?: string | null;
+  lastSeenAt?: string | null;
+  qrCode?: string | null;
+  qrCodeExpiresAt?: string | null;
+  sessionId?: string | null;
+  transport?: string | null;
+  raw?: Record<string, unknown> | null;
+}
+
+export interface InstanceQrState {
+  status: "NONE" | "PENDING" | "READY" | "EXPIRED" | "SCANNED" | "ERROR";
+  qrCode?: string | null;
+  qrCodeExpiresAt?: string | null;
+  scannedAt?: string | null;
+  refreshedAt?: string | null;
+  raw?: Record<string, unknown> | null;
+}
+
 export interface Instance {
   id: string;
   name: string;
-  provider: string;
+  provider: InstanceProvider | string;
   status: string;
   mode: string;
   appId?: string | null;
   phoneNumber?: string | null;
   businessAccountId?: string | null;
   phoneNumberId?: string | null;
+  externalInstanceId?: string | null;
+  providerConfig?: Record<string, unknown> | null;
+  providerMetadata?: Record<string, unknown> | null;
+  providerSessionState?: Record<string, unknown> | null;
+  providerCapabilities?: InstanceProviderCapabilities | null;
+  connectionState?: InstanceConnectionState | null;
+  qr?: InstanceQrState | null;
+  connectedAt?: string | null;
+  lastSeenAt?: string | null;
   accessTokenMasked?: string | null;
   webhookVerifyTokenMasked?: string | null;
   appSecretMasked?: string | null;
   profilePictureUrl?: string | null;
   profilePictureUpdatedAt?: string | null;
   lastSyncAt?: string | null;
+}
+
+export interface InboxInstance {
+  id: string;
+  name: string;
+  provider: InstanceProvider | string;
+  status: string;
+  mode: string;
+  phoneNumber?: string | null;
+  profilePictureUrl?: string | null;
+  profilePictureUpdatedAt?: string | null;
+  visibleConversationsCount: number;
+  unreadMessagesCount: number;
+  newConversationsCount: number;
+  hasNewMessages: boolean;
 }
 
 export interface EmbeddedSignupConfig {
@@ -350,7 +449,19 @@ export interface DevelopmentOverview {
     startTunnel: string;
   };
   selectedInstanceId?: string | null;
-  instances: Array<Pick<Instance, 'id' | 'name' | 'status' | 'mode' | 'phoneNumber' | 'businessAccountId' | 'phoneNumberId' | 'lastSyncAt'>>;
+  instances: Array<
+    Pick<
+      Instance,
+      | "id"
+      | "name"
+      | "status"
+      | "mode"
+      | "phoneNumber"
+      | "businessAccountId"
+      | "phoneNumberId"
+      | "lastSyncAt"
+    >
+  >;
 }
 
 export interface WhatsAppTemplateSummary {
@@ -367,6 +478,29 @@ export interface WhatsAppInstanceDiagnostics {
   healthy: boolean;
   simulated: boolean;
   detail: string;
+  provider?: InstanceProvider;
+  capabilities?: InstanceProviderCapabilities;
+  connectionState?: InstanceConnectionState | null;
+  qr?: InstanceQrState | null;
+  historySync?: {
+    instanceId: string;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    chatsEvaluated: number;
+    chatsEligible: number;
+    chatsSynced: number;
+    messagesDiscovered: number;
+    messagesEmitted: number;
+    inboundMessages: number;
+    outboundMessages: number;
+    mediaMessages: number;
+    detail: string;
+    errors: Array<{
+      chatId?: string;
+      message: string;
+    }>;
+  } | null;
   phoneNumber?: {
     id?: string | null;
     displayPhoneNumber?: string | null;
@@ -403,11 +537,12 @@ export interface WhatsAppProfilePictureUpdateResult {
     codeVerificationStatus?: string | null;
     nameStatus?: string | null;
   };
-  businessProfile?: WhatsAppInstanceDiagnostics['businessProfile'];
+  businessProfile?: WhatsAppInstanceDiagnostics["businessProfile"];
   raw?: Record<string, unknown>;
 }
 
-export type WhatsAppBusinessProfileOverview = WhatsAppProfilePictureUpdateResult;
+export type WhatsAppBusinessProfileOverview =
+  WhatsAppProfilePictureUpdateResult;
 
 export interface DashboardOverview {
   metrics: {
@@ -507,7 +642,7 @@ export interface AuthMeResponse {
   email: string;
   avatarUrl?: string | null;
   role: string;
-  normalizedRole: 'ADMIN' | 'SELLER';
+  normalizedRole: "ADMIN" | "SELLER";
   title?: string | null;
   workspaceRoleId?: string | null;
   workspaceRole?: {
@@ -638,10 +773,10 @@ export interface PlatformAuditLog {
 }
 
 export type PlatformLeadInterestStatus =
-  | 'PENDING'
-  | 'CONTACTED'
-  | 'CONVERTED'
-  | 'ARCHIVED';
+  | "PENDING"
+  | "CONTACTED"
+  | "CONVERTED"
+  | "ARCHIVED";
 
 export interface PlatformLeadInterest {
   id: string;

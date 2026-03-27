@@ -3,8 +3,8 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
 import { RealtimeModule } from '../../common/realtime/realtime.module';
 import { RedisModule } from '../../common/redis/redis.module';
 import { AccessControlModule } from '../access-control/access-control.module';
-import { MetaWhatsAppModule } from '../integrations/meta-whatsapp/meta-whatsapp.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { WhatsAppModule } from '../integrations/whatsapp/whatsapp.module';
 import { ConversationWorkflowModule } from './conversation-workflow.module';
 import { ConversationReminderAutomationService } from './conversation-reminder-automation.service';
 import { ConversationRemindersController } from './conversation-reminders.controller';
@@ -21,7 +21,7 @@ import { QuickMessagesService } from './quick-messages.service';
     RealtimeModule,
     RedisModule,
     AccessControlModule,
-    MetaWhatsAppModule,
+    WhatsAppModule,
     ConversationWorkflowModule,
     NotificationsModule,
   ],

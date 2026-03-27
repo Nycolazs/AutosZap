@@ -392,12 +392,21 @@ export class MetaWhatsAppProvider implements MessagingProvider {
     to: string,
     payload: {
       type: 'image' | 'audio' | 'video' | 'document' | 'sticker';
-      mediaId: string;
+      mediaId?: string;
+      mediaBufferBase64?: string;
+      mimeType?: string;
       caption?: string;
       fileName?: string;
+      voice?: boolean;
       quotedExternalMessageId?: string;
     },
   ): Promise<ProviderSendResult> {
+    if (!payload.mediaId) {
+      throw new Error(
+        'mediaId is required to send media through the Meta provider.',
+      );
+    }
+
     if (!this.canUseRealTransport(config)) {
       return {
         externalMessageId: `dev-${randomUUID()}`,
@@ -410,6 +419,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
           mediaId: payload.mediaId,
           caption: payload.caption,
           fileName: payload.fileName,
+          voice: payload.voice ?? false,
           quotedExternalMessageId: payload.quotedExternalMessageId,
         },
         messageType: payload.type,
@@ -417,6 +427,7 @@ export class MetaWhatsAppProvider implements MessagingProvider {
           mediaId: payload.mediaId,
           fileName: payload.fileName,
           caption: payload.caption,
+          voice: payload.voice ?? false,
           quotedExternalMessageId: payload.quotedExternalMessageId,
         },
       };

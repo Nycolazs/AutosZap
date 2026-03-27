@@ -32,6 +32,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DevelopmentModule } from './modules/development/development.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { MetaWhatsAppModule } from './modules/integrations/meta-whatsapp/meta-whatsapp.module';
+import { WhatsAppModule } from './modules/integrations/whatsapp/whatsapp.module';
 import { InstancesModule } from './modules/instances/instances.module';
 import { ListsModule } from './modules/lists/lists.module';
 import { ControlPlaneModule } from './modules/control-plane/control-plane.module';
@@ -64,6 +65,7 @@ import { WorkspaceSettingsModule } from './modules/workspace-settings/workspace-
     TagsModule,
     ListsModule,
     GroupsModule,
+    WhatsAppModule,
     MetaWhatsAppModule,
     PlatformModule,
     PlatformAdminModule,

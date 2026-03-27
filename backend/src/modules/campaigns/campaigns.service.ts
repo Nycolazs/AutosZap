@@ -10,7 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
+import { WhatsAppMessagingService } from '../integrations/whatsapp/whatsapp-messaging.service';
 import { CampaignMediaStorageService } from './campaign-media-storage.service';
 
 type CampaignPayload = {
@@ -29,7 +29,7 @@ type CampaignPayload = {
 export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly metaWhatsAppService: MetaWhatsAppService,
+    private readonly whatsappMessagingService: WhatsAppMessagingService,
     private readonly campaignMediaStorageService: CampaignMediaStorageService,
   ) {}
 
@@ -270,19 +270,22 @@ export class CampaignsService {
     for (const contact of contacts) {
       try {
         const message = campaign.mediaStoragePath
-          ? await this.metaWhatsAppService.sendDirectMediaMessage(workspaceId, {
-              instanceId: campaign.instanceId,
-              to: contact.phone,
-              buffer: await this.campaignMediaStorageService.read(
-                campaign.mediaStoragePath,
-              ),
-              fileName: campaign.mediaFileName ?? 'campanha.jpg',
-              mimeType: campaign.mediaMimeType ?? 'image/jpeg',
-              caption: campaign.message,
-              userId: actorId,
-              contactName: contact.name,
-            })
-          : await this.metaWhatsAppService.sendDirectMessage(workspaceId, {
+          ? await this.whatsappMessagingService.sendDirectMediaMessage(
+              workspaceId,
+              {
+                instanceId: campaign.instanceId,
+                to: contact.phone,
+                buffer: await this.campaignMediaStorageService.read(
+                  campaign.mediaStoragePath,
+                ),
+                fileName: campaign.mediaFileName ?? 'campanha.jpg',
+                mimeType: campaign.mediaMimeType ?? 'image/jpeg',
+                caption: campaign.message,
+                userId: actorId,
+                contactName: contact.name,
+              },
+            )
+          : await this.whatsappMessagingService.sendDirectMessage(workspaceId, {
               instanceId: campaign.instanceId,
               to: contact.phone,
               body: campaign.message,

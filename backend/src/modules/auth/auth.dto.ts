@@ -105,4 +105,8 @@ export class SocialLoginDto {
   @IsOptional()
   @IsString()
   inviteCode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  loginOnly?: boolean;
 }

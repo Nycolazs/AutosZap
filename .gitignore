@@ -30,3 +30,12 @@ tmp-*.py
 tmp-*.sh
 scratch-*.sh
 scratch-*.py
+
+/frontend/.output
+.data
+
+# Dados locais e sensiveis do gateway/instancias WhatsApp Web
+/backend/storage/
+/apps/whatsapp-web-gateway/dist/
+/apps/whatsapp-web-gateway/.wwebjs_cache/
+/apps/whatsapp-web-gateway/.wwebjs_auth/

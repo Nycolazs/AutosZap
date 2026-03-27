@@ -10,12 +10,15 @@ import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { WhatsAppMediaStorageService } from '../integrations/whatsapp/whatsapp-media-storage.service';
+import { getWhatsAppProviderCapabilities } from '../integrations/whatsapp/whatsapp-provider-capabilities';
 
 type InstancePayload = {
   name: string;
   provider?: InstanceProvider;
   status?: InstanceStatus;
   mode?: InstanceMode;
+  externalInstanceId?: string;
   appId?: string;
   phoneNumber?: string;
   businessAccountId?: string;
@@ -23,6 +26,9 @@ type InstancePayload = {
   accessToken?: string;
   webhookVerifyToken?: string;
   appSecret?: string;
+  providerConfig?: Record<string, unknown> | null;
+  providerMetadata?: Record<string, unknown> | null;
+  providerSessionState?: Record<string, unknown> | null;
 };
 
 export type EmbeddedSignupPayload = {
@@ -60,6 +66,7 @@ export class InstancesService {
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
     private readonly configService: ConfigService,
+    private readonly mediaStorageService: WhatsAppMediaStorageService,
   ) {}
 
   async list(workspaceId: string) {
@@ -145,10 +152,14 @@ export class InstancesService {
           provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
           status: payload.status ?? InstanceStatus.DISCONNECTED,
           mode: payload.mode ?? InstanceMode.DEV,
+          externalInstanceId: payload.externalInstanceId,
           appId: payload.appId,
           phoneNumber: payload.phoneNumber,
           businessAccountId: payload.businessAccountId,
           phoneNumberId: payload.phoneNumberId,
+          providerConfig: payload.providerConfig as never,
+          providerMetadata: payload.providerMetadata as never,
+          providerSessionState: payload.providerSessionState as never,
           accessTokenEncrypted: this.cryptoService.encrypt(payload.accessToken),
           webhookVerifyTokenEncrypted: this.cryptoService.encrypt(
             payload.webhookVerifyToken,
@@ -170,10 +181,14 @@ export class InstancesService {
         provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
         status: payload.status ?? InstanceStatus.DISCONNECTED,
         mode: payload.mode ?? InstanceMode.DEV,
+        externalInstanceId: payload.externalInstanceId,
         appId: payload.appId,
         phoneNumber: payload.phoneNumber,
         businessAccountId: payload.businessAccountId,
         phoneNumberId: payload.phoneNumberId,
+        providerConfig: payload.providerConfig as never,
+        providerMetadata: payload.providerMetadata as never,
+        providerSessionState: payload.providerSessionState as never,
         accessTokenEncrypted: this.cryptoService.encrypt(payload.accessToken),
         webhookVerifyTokenEncrypted: this.cryptoService.encrypt(
           payload.webhookVerifyToken,
@@ -205,11 +220,25 @@ export class InstancesService {
         provider: payload.provider ?? instance.provider,
         status: payload.status ?? instance.status,
         mode: payload.mode ?? instance.mode,
+        externalInstanceId:
+          payload.externalInstanceId ?? instance.externalInstanceId,
         appId: payload.appId ?? instance.appId,
         phoneNumber: payload.phoneNumber ?? instance.phoneNumber,
         businessAccountId:
           payload.businessAccountId ?? instance.businessAccountId,
         phoneNumberId: payload.phoneNumberId ?? instance.phoneNumberId,
+        providerConfig:
+          payload.providerConfig !== undefined
+            ? (payload.providerConfig as never)
+            : undefined,
+        providerMetadata:
+          payload.providerMetadata !== undefined
+            ? (payload.providerMetadata as never)
+            : undefined,
+        providerSessionState:
+          payload.providerSessionState !== undefined
+            ? (payload.providerSessionState as never)
+            : undefined,
         accessTokenEncrypted:
           payload.accessToken !== undefined
             ? this.cryptoService.encrypt(payload.accessToken)
@@ -252,6 +281,8 @@ export class InstancesService {
     if (!instance) {
       throw new NotFoundException('Instancia nao encontrada.');
     }
+
+    await this.deleteInstanceMediaFiles(instance.workspaceId, instance.id);
 
     await this.prisma.instance.update({
       where: { id },
@@ -422,9 +453,20 @@ export class InstancesService {
 
   sanitizeInstance<
     T extends {
+      provider: InstanceProvider;
+      status: InstanceStatus;
+      externalInstanceId?: string | null;
+      providerConfig?: unknown;
+      providerMetadata?: unknown;
+      providerSessionState?: unknown;
+      qrCode?: string | null;
+      qrCodeExpiresAt?: Date | null;
+      connectedAt?: Date | null;
+      lastSeenAt?: Date | null;
       accessTokenEncrypted?: string | null;
       webhookVerifyTokenEncrypted?: string | null;
       appSecretEncrypted?: string | null;
+      internalWebhookSecretEncrypted?: string | null;
     },
   >(instance: T) {
     const accessTokenMasked = this.maskStoredSecret(
@@ -434,16 +476,263 @@ export class InstancesService {
       instance.webhookVerifyTokenEncrypted,
     );
     const appSecretMasked = this.maskStoredSecret(instance.appSecretEncrypted);
+    const providerCapabilities = getWhatsAppProviderCapabilities(
+      instance.provider,
+    );
+    const connectionState = this.buildConnectionState(instance);
+    const qr = this.buildQrState(
+      instance,
+      connectionState?.phase ?? 'DISCONNECTED',
+    );
 
     return {
       ...instance,
+      providerCapabilities,
+      connectionState,
+      qr,
       accessTokenMasked,
       webhookVerifyTokenMasked,
       appSecretMasked,
       accessTokenEncrypted: undefined,
       webhookVerifyTokenEncrypted: undefined,
       appSecretEncrypted: undefined,
+      internalWebhookSecretEncrypted: undefined,
     };
+  }
+
+  private async deleteInstanceMediaFiles(
+    workspaceId: string,
+    instanceId: string,
+  ) {
+    let cursorId: string | undefined;
+
+    while (true) {
+      const messages = await this.prisma.conversationMessage.findMany({
+        where: {
+          workspaceId,
+          OR: [
+            { instanceId },
+            {
+              conversation: {
+                instanceId,
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          metadata: true,
+        },
+        orderBy: {
+          id: 'asc',
+        },
+        take: 200,
+        ...(cursorId
+          ? {
+              cursor: {
+                id: cursorId,
+              },
+              skip: 1,
+            }
+          : {}),
+      });
+
+      if (!messages.length) {
+        break;
+      }
+
+      const storagePaths = new Set<string>();
+
+      for (const message of messages) {
+        for (const storagePath of this.extractMediaStoragePaths(
+          message.metadata,
+        )) {
+          storagePaths.add(storagePath);
+        }
+      }
+
+      if (storagePaths.size) {
+        await Promise.all(
+          Array.from(storagePaths).map((storagePath) =>
+            this.mediaStorageService.delete(storagePath),
+          ),
+        );
+      }
+
+      cursorId = messages.at(-1)?.id;
+    }
+    await this.mediaStorageService.deleteInstanceDirectory(
+      workspaceId,
+      instanceId,
+    );
+  }
+
+  private extractMediaStoragePaths(metadata: unknown) {
+    const storagePaths = new Set<string>();
+
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return storagePaths;
+    }
+
+    const root = metadata as Record<string, unknown>;
+    const directPath =
+      typeof root.storagePath === 'string' ? root.storagePath.trim() : '';
+
+    if (directPath) {
+      storagePaths.add(directPath);
+    }
+
+    const media =
+      root.media && typeof root.media === 'object' && !Array.isArray(root.media)
+        ? (root.media as Record<string, unknown>)
+        : null;
+    const nestedPath =
+      typeof media?.storagePath === 'string' ? media.storagePath.trim() : '';
+
+    if (nestedPath) {
+      storagePaths.add(nestedPath);
+    }
+
+    return storagePaths;
+  }
+
+  private buildConnectionState(instance: {
+    provider: InstanceProvider;
+    status: InstanceStatus;
+    externalInstanceId?: string | null;
+    providerSessionState?: unknown;
+    qrCode?: string | null;
+    qrCodeExpiresAt?: Date | null;
+    connectedAt?: Date | null;
+    lastSeenAt?: Date | null;
+  }) {
+    const providerSessionState = this.toRecord(instance.providerSessionState);
+    const phase = this.resolveConnectionPhase(
+      instance.provider,
+      instance.status,
+      providerSessionState,
+    );
+
+    return {
+      phase,
+      healthy: instance.status === InstanceStatus.CONNECTED,
+      detail:
+        this.pickString(
+          providerSessionState?.lastError,
+          providerSessionState?.detail,
+        ) ?? null,
+      connectedAt: instance.connectedAt ?? null,
+      lastSeenAt: instance.lastSeenAt ?? null,
+      qrCode:
+        this.pickString(providerSessionState?.qrCode, instance.qrCode) ?? null,
+      qrCodeExpiresAt:
+        instance.qrCodeExpiresAt ??
+        this.parseDate(providerSessionState?.qrCodeExpiresAt),
+      sessionId:
+        this.pickString(
+          providerSessionState?.sessionId,
+          instance.externalInstanceId,
+        ) ?? null,
+      transport:
+        instance.provider === InstanceProvider.WHATSAPP_WEB
+          ? 'WHATSAPP_WEB_GATEWAY'
+          : 'META_CLOUD_API',
+      raw: providerSessionState,
+    };
+  }
+
+  private buildQrState(
+    instance: {
+      provider: InstanceProvider;
+      status: InstanceStatus;
+      providerSessionState?: unknown;
+      qrCode?: string | null;
+      qrCodeExpiresAt?: Date | null;
+    },
+    phase: string,
+  ) {
+    const providerSessionState = this.toRecord(instance.providerSessionState);
+    const qrCode =
+      this.pickString(providerSessionState?.qrCode, instance.qrCode) ?? null;
+    const qrCodeExpiresAt =
+      instance.qrCodeExpiresAt ??
+      this.parseDate(providerSessionState?.qrCodeExpiresAt);
+    const now = Date.now();
+    const expiresAtMs = qrCodeExpiresAt?.getTime() ?? null;
+
+    let status: 'NONE' | 'PENDING' | 'READY' | 'EXPIRED' | 'SCANNED' | 'ERROR' =
+      'NONE';
+
+    if (instance.status === InstanceStatus.ERROR) {
+      status = 'ERROR';
+    } else if (phase === 'AUTHENTICATING' || phase === 'QR_SCANNED') {
+      status = 'SCANNED';
+    } else if (qrCode && expiresAtMs && expiresAtMs < now) {
+      status = 'EXPIRED';
+    } else if (qrCode) {
+      status = 'READY';
+    } else if (phase === 'CONNECTING') {
+      status = 'PENDING';
+    }
+
+    return {
+      status,
+      qrCode,
+      qrCodeExpiresAt,
+      raw: providerSessionState,
+    };
+  }
+
+  private resolveConnectionPhase(
+    provider: InstanceProvider,
+    status: InstanceStatus,
+    providerSessionState?: Record<string, unknown> | null,
+  ) {
+    if (provider === InstanceProvider.WHATSAPP_WEB) {
+      const state = this.pickString(providerSessionState?.state)?.toUpperCase();
+
+      switch (state) {
+        case 'QR_READY':
+          return 'QR_PENDING';
+        case 'AUTHENTICATED':
+          return 'AUTHENTICATING';
+        case 'CONNECTED':
+          return 'CONNECTED';
+        case 'STARTING':
+          return 'CONNECTING';
+        case 'RECONNECTING':
+          return 'RECONNECTING';
+        case 'LOGGED_OUT':
+          return 'LOGGED_OUT';
+        case 'ERROR':
+          return 'ERROR';
+        case 'STOPPED':
+          return 'LOGGED_OUT';
+        case 'DISCONNECTED':
+        default:
+          return status === InstanceStatus.CONNECTED
+            ? 'CONNECTED'
+            : status === InstanceStatus.SYNCING
+              ? 'CONNECTING'
+              : status === InstanceStatus.ERROR
+                ? 'ERROR'
+                : 'DISCONNECTED';
+      }
+    }
+
+    if (status === InstanceStatus.CONNECTED) {
+      return 'CONNECTED';
+    }
+
+    if (status === InstanceStatus.SYNCING) {
+      return 'CONNECTING';
+    }
+
+    if (status === InstanceStatus.ERROR) {
+      return 'ERROR';
+    }
+
+    return 'DISCONNECTED';
   }
 
   private maskStoredSecret(encryptedValue?: string | null) {
@@ -477,6 +766,37 @@ export class InstancesService {
     }
 
     return normalizedValue;
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private pickString(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private parseDate(value: unknown) {
+    if (value instanceof Date) {
+      return value;
+    }
+
+    if (typeof value !== 'string' || !value.trim()) {
+      return null;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   private maskSecret(value: string) {

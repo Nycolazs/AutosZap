@@ -144,6 +144,45 @@ export class TenantConnectionService implements OnModuleDestroy {
     return null;
   }
 
+  async resolveTenantByInstanceId(instanceId: string) {
+    const tenantIds = await this.listActiveTenantIds();
+    const candidateTenantIds = tenantIds.length
+      ? tenantIds
+      : ['legacy-shared-bootstrap'];
+
+    for (const tenantId of candidateTenantIds) {
+      let tenantClient: PrismaClient;
+      try {
+        tenantClient = await this.getTenantClient(tenantId);
+      } catch {
+        continue;
+      }
+
+      const instance = await tenantClient.instance.findFirst({
+        where: {
+          id: instanceId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+        },
+      });
+
+      if (!instance) {
+        continue;
+      }
+
+      return {
+        companyId: tenantId,
+        workspaceId: instance.workspaceId,
+        instanceId: instance.id,
+      };
+    }
+
+    return null;
+  }
+
   async resolveTenantByWebhookVerifyToken(token: string) {
     const tenantIds = await this.listActiveTenantIds();
     const candidateTenantIds = tenantIds.length
@@ -223,11 +262,16 @@ export class TenantConnectionService implements OnModuleDestroy {
         );
       }
 
+      const normalizedUrl = this.normalizeTenantDatabaseUrl(
+        decryptedUrl,
+        companyId,
+      );
+
       const runtimeConfig: TenantRuntimeConfig = {
         companyId,
         workspaceId: tenantDb.company.workspaceId,
         databaseName: tenantDb.databaseName,
-        databaseUrl: decryptedUrl,
+        databaseUrl: normalizedUrl,
       };
 
       this.configCache.set(companyId, runtimeConfig);
@@ -290,5 +334,57 @@ export class TenantConnectionService implements OnModuleDestroy {
       databaseName,
       databaseUrl: sharedUrl,
     };
+  }
+
+  private normalizeTenantDatabaseUrl(databaseUrl: string, companyId: string) {
+    try {
+      const tenantUrl = new URL(databaseUrl);
+
+      if (!this.isRuntimeLocalDatabaseHost(tenantUrl.hostname)) {
+        return databaseUrl;
+      }
+
+      const primaryDatabaseUrl =
+        this.configService.get<string>('DATABASE_URL') ??
+        this.configService.get<string>('CONTROL_PLANE_DATABASE_URL');
+
+      if (!primaryDatabaseUrl) {
+        return databaseUrl;
+      }
+
+      const primaryUrl = new URL(primaryDatabaseUrl);
+
+      if (!primaryUrl.hostname || primaryUrl.hostname === tenantUrl.hostname) {
+        return databaseUrl;
+      }
+
+      tenantUrl.hostname = primaryUrl.hostname;
+
+      if (!tenantUrl.port && primaryUrl.port) {
+        tenantUrl.port = primaryUrl.port;
+      }
+
+      this.logger.warn(
+        `Tenant ${companyId} com host local em connectionUrl. Ajustando runtime de ${databaseUrl} para ${tenantUrl.toString()}.`,
+      );
+
+      return tenantUrl.toString();
+    } catch {
+      return databaseUrl;
+    }
+  }
+
+  private isRuntimeLocalDatabaseHost(hostname?: string | null) {
+    if (!hostname) {
+      return false;
+    }
+
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === 'postgres' ||
+      hostname === 'host.docker.internal'
+    );
   }
 }

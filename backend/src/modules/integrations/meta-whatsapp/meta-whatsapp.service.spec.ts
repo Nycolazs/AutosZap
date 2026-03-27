@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
-import { AutoMessageType, MessageDirection } from '@prisma/client';
+import {
+  AutoMessageType,
+  InstanceProvider,
+  MessageDirection,
+} from '@prisma/client';
 import { MetaWhatsAppService } from './meta-whatsapp.service';
 
 describe('MetaWhatsAppService automatic replies', () => {
@@ -51,6 +55,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       new ConfigService(),
       {} as never,
       workspaceSettings as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -164,6 +169,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       getInstanceConfig: jest.fn().mockResolvedValue({
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: 'PRODUCTION',
         accessToken: 'token',
         phoneNumberId: 'phone-id',
@@ -244,6 +250,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       getInstanceConfig: jest.fn().mockResolvedValue({
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: 'PRODUCTION',
         accessToken: 'token',
         phoneNumberId: 'phone-id',
@@ -321,6 +328,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       getInstanceConfig: jest.fn().mockResolvedValue({
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: 'PRODUCTION',
         accessToken: 'token',
         phoneNumberId: 'phone-id',
@@ -409,6 +417,7 @@ describe('MetaWhatsAppService automatic replies', () => {
       getInstanceConfig: jest.fn().mockResolvedValue({
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: 'PRODUCTION',
         accessToken: 'token',
         phoneNumberId: 'phone-id',
@@ -483,6 +492,7 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       provider as never,
       new ConfigService(),
       conversationWorkflowService as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

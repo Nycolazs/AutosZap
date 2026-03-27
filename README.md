@@ -12,7 +12,8 @@ SaaS dark premium em tons de azul para atendimento, CRM e automacao via WhatsApp
 
 - Frontend: Next.js 16, TypeScript, Tailwind CSS, componentes estilo shadcn/ui, React Query, Zustand, react-hook-form, zod, lucide-react, dnd-kit.
 - Backend: NestJS 11, Prisma ORM, PostgreSQL, Redis, JWT com refresh token rotacionado, bcrypt, Swagger.
-- Infra local: Docker Compose para PostgreSQL, Redis e backend containerizado.
+- Gateway QR: app interno self-hosted com `whatsapp-web.js`, Chromium e persistencia de sessao.
+- Infra local: Docker Compose para PostgreSQL, Redis, backend e gateway WhatsApp Web containerizados.
 
 ## Multi-tenancy SaaS
 
@@ -20,6 +21,7 @@ O backend agora suporta arquitetura **Control Plane + Tenant DB por empresa**.
 
 - Documentação completa: `docs/multi-tenancy-saas.md`
 - Playbook de onboarding WhatsApp (Comercial + Suporte): `docs/onboarding-whatsapp-playbook.md`
+- Runbook do provedor QR self-hosted: `docs/whatsapp-web-qr-provider.md`
 - Schema tenant: `backend/prisma/schema.prisma`
 - Schema control plane: `backend/prisma/control-plane/schema.prisma`
 - Admin da plataforma: `/platform` no frontend e `/api/platform-admin/*` no backend
@@ -83,6 +85,8 @@ npm run dev
 - Backend API: [http://localhost:4000/api](http://localhost:4000/api)
 - Swagger: [http://localhost:4000/docs](http://localhost:4000/docs)
 
+O fluxo QR do WhatsApp Web fica disponivel em `/app/instancias` e usa o gateway interno definido em `apps/whatsapp-web-gateway`.
+
 ## Rodando as novas plataformas
 
 Instale a workspace completa na raiz:
@@ -101,6 +105,12 @@ npm run dev:web
 
 ```bash
 npm run dev:backend
+```
+
+### WhatsApp Web Gateway
+
+```bash
+npm run dev:whatsapp-gateway
 ```
 
 ### Mobile Expo
@@ -393,4 +403,3 @@ npm run package
 - O app mobile foi pensado para vendedores com foco em inbox, conversa, lembretes e push.
 - O app desktop foi pensado para operação continua com inbox em tela grande, conversa lateralizada e notificacoes do sistema.
 - O visual replica a composição das referências em versão dark blue premium, sem reutilizar identidade original.
-

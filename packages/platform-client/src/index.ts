@@ -30,8 +30,9 @@ import type {
   EmbeddedSignupInstanceRecord,
   ForgotPasswordPayload,
   GroupRecord,
-  InstanceDiagnostics,
+  InstanceConnectionStateRecord,
   InstanceRecord,
+  InstanceQrRecord,
   KnowledgeBaseRecord,
   KnowledgeDocumentRecord,
   LeadDetail,
@@ -543,6 +544,19 @@ export function createPlatformClient(config: ClientConfig) {
     getInstance(instanceId: string) {
       return request<InstanceRecord>(`instances/${instanceId}`);
     },
+    getInstanceConnectionState(instanceId: string) {
+      return request<InstanceConnectionStateRecord>(
+        `instances/${instanceId}/connection-state`,
+      );
+    },
+    getInstanceQr(instanceId: string) {
+      return request<InstanceQrRecord>(`instances/${instanceId}/qr`);
+    },
+    refreshInstanceQr(instanceId: string) {
+      return request<InstanceQrRecord>(`instances/${instanceId}/qr/refresh`, {
+        method: 'POST',
+      });
+    },
     getEmbeddedSignupConfig() {
       return request<EmbeddedSignupConfigRecord>('instances/embedded-signup-config');
     },
@@ -570,13 +584,21 @@ export function createPlatformClient(config: ClientConfig) {
       });
     },
     getInstanceDiagnostics(instanceId: string) {
-      return request<InstanceDiagnostics>(`instances/${instanceId}/diagnostics`);
+      return request<InstanceConnectionStateRecord>(
+        `instances/${instanceId}/connection-state`,
+      );
     },
     connectInstance(instanceId: string) {
       return request(`instances/${instanceId}/connect`, { method: 'POST' });
     },
     disconnectInstance(instanceId: string) {
       return request(`instances/${instanceId}/disconnect`, { method: 'POST' });
+    },
+    reconnectInstance(instanceId: string) {
+      return request(`instances/${instanceId}/reconnect`, { method: 'POST' });
+    },
+    logoutInstance(instanceId: string) {
+      return request(`instances/${instanceId}/logout`, { method: 'POST' });
     },
 
     // ── Assistants (CRUD) ───────────────────────────────────
