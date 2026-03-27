@@ -20,8 +20,11 @@ import {
   getPagination,
   paginatedResponse,
 } from '../../common/utils/pagination';
-import { normalizeSearchPhone } from '../../common/utils/phone';
-import { MetaWhatsAppService } from '../integrations/meta-whatsapp/meta-whatsapp.service';
+import {
+  normalizeContactPhone,
+  normalizeSearchPhone,
+} from '../../common/utils/phone';
+import { WhatsAppMessagingService } from '../integrations/whatsapp/whatsapp-messaging.service';
 import { WorkspaceSettingsService } from '../workspace-settings/workspace-settings.service';
 import {
   ConversationAssignmentTransition,
@@ -29,10 +32,27 @@ import {
 } from './conversation-workflow.service';
 import { resolveConversationPlaceholders } from './conversation-placeholders.util';
 import { normalizeConversationStatus } from './conversation-workflow.utils';
+import { InstanceProvider } from '@prisma/client';
 
 const INBOX_MESSAGES_PRELOAD_LIMIT = 120;
 const MESSAGE_PAGE_DEFAULT_LIMIT = 40;
 const MESSAGE_PAGE_MAX_LIMIT = 80;
+const INBOX_INSTANCE_SELECT = {
+  id: true,
+  name: true,
+  status: true,
+  provider: true,
+  mode: true,
+  phoneNumber: true,
+  profilePictureUrl: true,
+  profilePictureUpdatedAt: true,
+} satisfies Prisma.InstanceSelect;
+
+type InboxInstanceActivitySummary = {
+  visibleConversationsCount: number;
+  unreadMessagesCount: number;
+  newConversationsCount: number;
+};
 
 type ConversationIncludeToken =
   | 'messages'
@@ -85,7 +105,7 @@ export class ConversationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly metaWhatsAppService: MetaWhatsAppService,
+    private readonly whatsappMessagingService: WhatsAppMessagingService,
     private readonly inboxEventsService: InboxEventsService,
     private readonly conversationWorkflowService: ConversationWorkflowService,
     private readonly workspaceSettingsService: WorkspaceSettingsService,
@@ -102,6 +122,7 @@ export class ConversationsService {
       ownership?: string;
       assignedUserId?: string;
       tagId?: string;
+      instanceId?: string;
     },
   ) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
@@ -110,9 +131,12 @@ export class ConversationsService {
     const [data, groupedContacts] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
         where,
-        distinct: ['contactId'],
+        distinct: ['contactId', 'instanceId'],
         include: {
           contact: true,
+          instance: {
+            select: INBOX_INSTANCE_SELECT,
+          },
           assignedUser: {
             select: {
               id: true,
@@ -125,6 +149,15 @@ export class ConversationsService {
               tag: true,
             },
           },
+          messages: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 25,
+            select: {
+              metadata: true,
+            },
+          },
         },
         orderBy: {
           lastMessageAt: 'desc',
@@ -134,7 +167,7 @@ export class ConversationsService {
       }),
       this.prisma.conversation.groupBy({
         where,
-        by: ['contactId'],
+        by: ['contactId', 'instanceId'],
         orderBy: {
           contactId: 'asc',
         },
@@ -144,10 +177,23 @@ export class ConversationsService {
     const total = groupedContacts.length;
 
     return paginatedResponse(
-      data.map((conversation) => ({
-        ...conversation,
-        tags: conversation.tags.map((item) => item.tag),
-      })),
+      data.map((conversation) => {
+        const { messages, ...conversationData } = conversation;
+
+        return {
+          ...conversationData,
+          tags: conversation.tags.map((item) => item.tag),
+          contactAvatarUrl: this.resolveQrConversationContactAvatarUrl(
+            conversation.instance?.provider,
+            messages,
+          ),
+          contactDisplayPhone: this.resolveQrConversationContactPhone(
+            conversation.instance?.provider,
+            conversation.contact.phone,
+            messages,
+          ),
+        };
+      }),
       total,
       page,
       limit,
@@ -161,6 +207,7 @@ export class ConversationsService {
       ownership?: string;
       assignedUserId?: string;
       tagId?: string;
+      instanceId?: string;
     },
   ) {
     const where = this.buildConversationWhere(user, query, {
@@ -201,6 +248,104 @@ export class ConversationsService {
     return summary;
   }
 
+  async listInboxInstances(user: CurrentAuthUser) {
+    const where = this.buildConversationWhere(
+      user,
+      {},
+      {
+        includeStatus: false,
+      },
+    );
+
+    const [instances, groupedConversations] = await this.prisma.$transaction([
+      this.prisma.instance.findMany({
+        where: {
+          workspaceId: user.workspaceId,
+          deletedAt: null,
+        },
+        select: INBOX_INSTANCE_SELECT,
+        orderBy: [
+          {
+            updatedAt: 'desc',
+          },
+          {
+            name: 'asc',
+          },
+        ],
+      }),
+      this.prisma.conversation.groupBy({
+        by: ['instanceId', 'status', 'assignedUserId'],
+        where,
+        orderBy: [
+          {
+            instanceId: 'asc',
+          },
+          {
+            status: 'asc',
+          },
+          {
+            assignedUserId: 'asc',
+          },
+        ],
+        _count: {
+          _all: true,
+        },
+        _sum: {
+          unreadCount: true,
+        },
+      }),
+    ]);
+
+    const activityByInstance = new Map<string, InboxInstanceActivitySummary>();
+
+    for (const group of groupedConversations) {
+      if (!group.instanceId) {
+        continue;
+      }
+
+      const currentSummary = activityByInstance.get(group.instanceId) ?? {
+        visibleConversationsCount: 0,
+        unreadMessagesCount: 0,
+        newConversationsCount: 0,
+      };
+      const normalizedStatus = normalizeConversationStatus(
+        group.status,
+        group.assignedUserId,
+      );
+      const visibleConversationsCount =
+        typeof group._count === 'object' && group._count
+          ? (group._count._all ?? 0)
+          : 0;
+      const unreadMessagesCount =
+        group._sum && typeof group._sum === 'object'
+          ? (group._sum.unreadCount ?? 0)
+          : 0;
+
+      currentSummary.visibleConversationsCount += visibleConversationsCount;
+      currentSummary.unreadMessagesCount += unreadMessagesCount;
+
+      if (normalizedStatus === 'NEW') {
+        currentSummary.newConversationsCount += visibleConversationsCount;
+      }
+
+      activityByInstance.set(group.instanceId, currentSummary);
+    }
+
+    return instances.map((instance) => {
+      const summary = activityByInstance.get(instance.id);
+      const unreadMessagesCount = summary?.unreadMessagesCount ?? 0;
+      const newConversationsCount = summary?.newConversationsCount ?? 0;
+
+      return {
+        ...instance,
+        visibleConversationsCount: summary?.visibleConversationsCount ?? 0,
+        unreadMessagesCount,
+        newConversationsCount,
+        hasNewMessages: unreadMessagesCount > 0 || newConversationsCount > 0,
+      };
+    });
+  }
+
   async findOne(id: string, user: CurrentAuthUser, include?: string) {
     await this.conversationWorkflowService.assertConversationAccess(
       id,
@@ -209,6 +354,7 @@ export class ConversationsService {
     );
 
     const includes = this.resolveConversationIncludes(include);
+    const shouldIncludeFullMessages = includes.has('messages');
 
     const contactInclude = includes.has('contactTags')
       ? {
@@ -227,9 +373,13 @@ export class ConversationsService {
         id,
         workspaceId: user.workspaceId,
         deletedAt: null,
+        ...this.buildPrivateConversationOnlyWhere(),
       },
       include: {
         contact: contactInclude,
+        instance: {
+          select: INBOX_INSTANCE_SELECT,
+        },
         assignedUser: {
           select: {
             id: true,
@@ -242,14 +392,22 @@ export class ConversationsService {
             tag: true,
           },
         },
-        messages: includes.has('messages')
+        messages: shouldIncludeFullMessages
           ? {
               orderBy: {
                 createdAt: 'desc',
               },
               take: INBOX_MESSAGES_PRELOAD_LIMIT,
             }
-          : false,
+          : {
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: 25,
+              select: {
+                metadata: true,
+              },
+            },
         notes: includes.has('notes')
           ? {
               include: {
@@ -313,18 +471,71 @@ export class ConversationsService {
       throw new NotFoundException('Conversa nao encontrada.');
     }
 
+    const fullConversationMessages = shouldIncludeFullMessages
+      ? (conversation.messages as Array<{
+          sentAt?: Date | null;
+          createdAt: Date;
+          metadata?: Prisma.JsonValue | null;
+        }>)
+      : undefined;
+    const visibleConversationMessages = fullConversationMessages
+      ? this.sortConversationMessages(
+          this.filterConversationMessagesForUser(fullConversationMessages),
+        )
+      : undefined;
+
     return {
       ...conversation,
-      messages: conversation.messages
-        ? this.sortConversationMessages(
-            this.filterConversationMessagesForUser(conversation.messages),
-          )
-        : undefined,
+      messages: visibleConversationMessages,
       tags: conversation.tags.map((item) => item.tag),
       contact: {
         ...conversation.contact,
         tags: this.extractContactTags(conversation.contact),
       },
+      contactAvatarUrl: this.resolveQrConversationContactAvatarUrl(
+        conversation.instance?.provider,
+        conversation.messages,
+      ),
+      contactDisplayPhone: this.resolveQrConversationContactPhone(
+        conversation.instance?.provider,
+        conversation.contact.phone,
+        conversation.messages,
+      ),
+    };
+  }
+
+  async markAsRead(id: string, user: CurrentAuthUser) {
+    await this.conversationWorkflowService.assertConversationAccess(
+      id,
+      user,
+      'marcar esta conversa como lida',
+    );
+
+    const result = await this.prisma.conversation.updateMany({
+      where: {
+        id,
+        workspaceId: user.workspaceId,
+        deletedAt: null,
+        unreadCount: {
+          gt: 0,
+        },
+      },
+      data: {
+        unreadCount: 0,
+      },
+    });
+
+    if (result.count > 0) {
+      await this.conversationWorkflowService.emitConversationRealtimeEvent(
+        user.workspaceId,
+        id,
+        'conversation.updated',
+      );
+    }
+
+    return {
+      success: true,
+      changed: result.count > 0,
     };
   }
 
@@ -337,6 +548,134 @@ export class ConversationsService {
       .tagLinks;
 
     return tagLinks?.map((item) => item.tag);
+  }
+
+  private toRecord(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private pickString(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private resolveQrConversationContactAvatarUrl(
+    instanceProvider?: string | null,
+    messages?: Array<{ metadata?: Prisma.JsonValue | null }>,
+  ) {
+    if (
+      instanceProvider !== InstanceProvider.WHATSAPP_WEB ||
+      !messages?.length
+    ) {
+      return null;
+    }
+
+    for (const message of messages) {
+      const contactMetadata = this.toRecord(
+        this.toRecord(message.metadata)?.contact,
+      );
+      const avatarUrl = this.pickString(
+        contactMetadata?.profilePictureUrl,
+        contactMetadata?.profile_picture_url,
+      );
+
+      if (avatarUrl) {
+        return avatarUrl;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveQrConversationContactPhone(
+    instanceProvider?: string | null,
+    fallbackPhone?: string | null,
+    messages?: Array<{ metadata?: Prisma.JsonValue | null }>,
+  ) {
+    if (
+      instanceProvider !== InstanceProvider.WHATSAPP_WEB ||
+      !messages?.length
+    ) {
+      return fallbackPhone ?? null;
+    }
+
+    let sawLegacyLidPeer = false;
+
+    for (const message of messages) {
+      const metadata = this.toRecord(message.metadata);
+      const contactMetadata = this.toRecord(metadata?.contact);
+      const metadataPhone = this.pickString(
+        contactMetadata?.phone,
+        contactMetadata?.contactPhone,
+        metadata?.contactPhone,
+      );
+
+      if (metadataPhone) {
+        const normalizedMetadataPhone =
+          this.normalizeQrBrazilianDisplayPhone(metadataPhone);
+
+        if (normalizedMetadataPhone) {
+          return normalizedMetadataPhone;
+        }
+      }
+
+      const providerMessageContext = this.toRecord(
+        metadata?.providerMessageContext,
+      );
+      const peerJid = this.pickString(
+        providerMessageContext?.remoteJid,
+        providerMessageContext?.fromMe === true
+          ? providerMessageContext?.toRaw
+          : providerMessageContext?.fromRaw,
+      );
+
+      if (peerJid?.trim().endsWith('@lid')) {
+        sawLegacyLidPeer = true;
+      }
+
+      const jidPhone = this.normalizeQrContactPhoneFromJid(peerJid);
+
+      if (jidPhone) {
+        return jidPhone;
+      }
+    }
+
+    if (sawLegacyLidPeer) {
+      return null;
+    }
+
+    return this.normalizeQrBrazilianDisplayPhone(fallbackPhone);
+  }
+
+  private normalizeQrContactPhoneFromJid(value?: string | null) {
+    const normalizedValue = value?.trim();
+
+    if (!normalizedValue || !normalizedValue.endsWith('@c.us')) {
+      return null;
+    }
+
+    const [userPart] = normalizedValue.split('@', 1);
+
+    if (!userPart) {
+      return null;
+    }
+
+    return this.normalizeQrBrazilianDisplayPhone(userPart);
+  }
+
+  private normalizeQrBrazilianDisplayPhone(value?: string | null) {
+    const normalizedPhone = normalizeContactPhone(value);
+
+    return /^\+55\d{10,11}$/.test(normalizedPhone) ? normalizedPhone : null;
   }
 
   private resolveConversationIncludes(include?: string) {
@@ -406,6 +745,7 @@ export class ConversationsService {
       ownership?: string;
       assignedUserId?: string;
       tagId?: string;
+      instanceId?: string;
     },
     options?: {
       includeStatus?: boolean;
@@ -427,8 +767,22 @@ export class ConversationsService {
             },
           },
           {
+            instance: {
+              is: {
+                name: { contains: query.search, mode: 'insensitive' },
+              },
+            },
+          },
+          {
             contact: {
               phone: { contains: query.search },
+            },
+          },
+          {
+            instance: {
+              is: {
+                phoneNumber: { contains: query.search },
+              },
             },
           },
           ...searchPhoneVariants.map((phone) => ({
@@ -446,6 +800,8 @@ export class ConversationsService {
       : [];
 
     const conditions: Prisma.ConversationWhereInput[] = [accessWhere];
+
+    conditions.push(this.buildPrivateConversationOnlyWhere());
 
     if (statusWhere) {
       conditions.push(statusWhere);
@@ -473,6 +829,12 @@ export class ConversationsService {
       });
     }
 
+    if (query.instanceId) {
+      conditions.push({
+        instanceId: query.instanceId,
+      });
+    }
+
     if (searchFilters.length) {
       conditions.push({
         OR: searchFilters,
@@ -485,6 +847,103 @@ export class ConversationsService {
 
     return {
       AND: conditions,
+    };
+  }
+
+  private buildPrivateConversationOnlyWhere(): Prisma.ConversationWhereInput {
+    return {
+      messages: {
+        none: {
+          OR: [
+            {
+              metadata: {
+                path: ['providerMessageContext', 'isPrivateChat'],
+                equals: false,
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'isGroupMsg'],
+                equals: true,
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'remoteJid'],
+                string_ends_with: '@g.us',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'fromRaw'],
+                string_ends_with: '@g.us',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'toRaw'],
+                string_ends_with: '@g.us',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'remoteJid'],
+                string_ends_with: '@newsletter',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'fromRaw'],
+                string_ends_with: '@newsletter',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'toRaw'],
+                string_ends_with: '@newsletter',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'remoteJid'],
+                string_ends_with: '@broadcast',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'fromRaw'],
+                string_ends_with: '@broadcast',
+              },
+            },
+            {
+              metadata: {
+                path: ['providerMessageContext', 'toRaw'],
+                string_ends_with: '@broadcast',
+              },
+            },
+            {
+              externalMessageId: {
+                contains: '@g.us',
+              },
+            },
+            {
+              externalMessageId: {
+                contains: '@newsletter',
+              },
+            },
+            {
+              externalMessageId: {
+                contains: 'status@broadcast',
+              },
+            },
+            {
+              externalMessageId: {
+                contains: '@broadcast',
+              },
+            },
+          ],
+        },
+      },
     };
   }
 
@@ -877,7 +1336,7 @@ export class ConversationsService {
         content,
       );
 
-    const message = await this.metaWhatsAppService.sendConversationMessage(
+    const message = await this.whatsappMessagingService.sendConversationMessage(
       user.workspaceId,
       conversationId,
       user.sub,
@@ -926,15 +1385,16 @@ export class ConversationsService {
         )
       : undefined;
 
-    const message = await this.metaWhatsAppService.sendConversationMediaMessage(
-      user.workspaceId,
-      conversationId,
-      user.sub,
-      {
-        ...payload,
-        caption: formattedCaption,
-      },
-    );
+    const message =
+      await this.whatsappMessagingService.sendConversationMediaMessage(
+        user.workspaceId,
+        conversationId,
+        user.sub,
+        {
+          ...payload,
+          caption: formattedCaption,
+        },
+      );
 
     if (preparedReply.assignmentTransition?.changed) {
       await this.maybeSendAssignmentAutoMessage({
@@ -1010,33 +1470,6 @@ export class ConversationsService {
   async reprocessWaitingTimeouts(_user: CurrentAuthUser) {
     void _user;
     return this.conversationWorkflowService.processWaitingTimeouts();
-  }
-
-  async getMessageMedia(messageId: string, user: CurrentAuthUser) {
-    const message = await this.prisma.conversationMessage.findFirst({
-      where: {
-        id: messageId,
-        workspaceId: user.workspaceId,
-      },
-      select: {
-        conversationId: true,
-      },
-    });
-
-    if (!message) {
-      throw new NotFoundException('Mensagem nao encontrada.');
-    }
-
-    await this.conversationWorkflowService.assertConversationAccess(
-      message.conversationId,
-      user,
-      'baixar a midia desta conversa',
-    );
-
-    return this.metaWhatsAppService.getMessageMedia(
-      user.workspaceId,
-      messageId,
-    );
   }
 
   private async maybeSendAssignmentAutoMessage(payload: {
@@ -1185,7 +1618,7 @@ export class ConversationsService {
 
     try {
       const sentMessage =
-        await this.metaWhatsAppService.sendConversationMessage(
+        await this.whatsappMessagingService.sendConversationMessage(
           payload.workspaceId,
           payload.conversationId,
           payload.actorUserId,
@@ -1383,7 +1816,7 @@ export class ConversationsService {
 
     try {
       const sentMessage =
-        await this.metaWhatsAppService.sendConversationMessage(
+        await this.whatsappMessagingService.sendConversationMessage(
           payload.workspaceId,
           payload.conversationId,
           payload.actorUserId,
@@ -1493,5 +1926,32 @@ export class ConversationsService {
         error: errorMessage,
       };
     }
+  }
+
+  async getMessageMedia(messageId: string, user: CurrentAuthUser) {
+    const message = await this.prisma.conversationMessage.findFirst({
+      where: {
+        id: messageId,
+        workspaceId: user.workspaceId,
+      },
+      select: {
+        conversationId: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Mensagem nao encontrada.');
+    }
+
+    await this.conversationWorkflowService.assertConversationAccess(
+      message.conversationId,
+      user,
+      'baixar a midia desta conversa',
+    );
+
+    return this.whatsappMessagingService.getMessageMedia(
+      user.workspaceId,
+      messageId,
+    );
   }
 }

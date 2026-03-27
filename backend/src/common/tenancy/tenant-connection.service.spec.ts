@@ -59,4 +59,62 @@ describe('TenantConnectionService', () => {
       service.resolveTenantRuntimeConfig('company-1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('normaliza tenant URL com localhost para o host do banco principal', async () => {
+    controlPlanePrisma.tenantDatabase.findUnique.mockResolvedValue({
+      status: 'READY',
+      databaseName: 'autozap_tenant_demo',
+      company: {
+        id: 'company-1',
+        workspaceId: 'workspace-1',
+        status: 'ACTIVE',
+      },
+      connectionUrlEncrypted: 'encrypted',
+    } as never);
+
+    cryptoService.decrypt.mockReturnValue(
+      'postgresql://postgres:postgres@localhost:5432/autozap_tenant_demo?schema=public',
+    );
+
+    const runtimeConfig = await service.resolveTenantRuntimeConfig('company-1');
+
+    expect(runtimeConfig.databaseUrl).toBe(
+      'postgresql://postgres:postgres@postgres:5432/autozap_tenant_demo?schema=public',
+    );
+  });
+
+  it('normaliza tenant URL com host docker para localhost quando o backend roda fora do container', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'NODE_ENV') {
+        return 'production';
+      }
+
+      if (key === 'DATABASE_URL') {
+        return 'postgresql://autoszap:pwd@localhost:5432/autozap';
+      }
+
+      return undefined;
+    });
+
+    controlPlanePrisma.tenantDatabase.findUnique.mockResolvedValue({
+      status: 'READY',
+      databaseName: 'autozap_tenant_demo',
+      company: {
+        id: 'company-1',
+        workspaceId: 'workspace-1',
+        status: 'ACTIVE',
+      },
+      connectionUrlEncrypted: 'encrypted',
+    } as never);
+
+    cryptoService.decrypt.mockReturnValue(
+      'postgresql://postgres:postgres@postgres:5432/autozap_tenant_demo?schema=public',
+    );
+
+    const runtimeConfig = await service.resolveTenantRuntimeConfig('company-1');
+
+    expect(runtimeConfig.databaseUrl).toBe(
+      'postgresql://postgres:postgres@localhost:5432/autozap_tenant_demo?schema=public',
+    );
+  });
 });

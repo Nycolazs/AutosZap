@@ -10,6 +10,9 @@ describe('InstancesService embedded signup', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      conversationMessage: {
+        findMany: jest.fn(),
+      },
     };
     const cryptoService = {
       encrypt: jest.fn((value?: string | null) =>
@@ -35,6 +38,10 @@ describe('InstancesService embedded signup', () => {
         BACKEND_PUBLIC_URL: 'https://api.autoszap.com/',
         ...configOverrides,
       }),
+      {
+        delete: jest.fn(),
+        deleteInstanceDirectory: jest.fn(),
+      } as never,
     );
 
     return {
@@ -163,6 +170,62 @@ describe('InstancesService embedded signup', () => {
         businessAccountId: 'waba-456',
         webhookVerifyTokenEncrypted: 'enc:default-verify-token',
       }),
+    });
+  });
+
+  it('removes locally stored media paths when deleting an instance', async () => {
+    const { service, prisma } = createService();
+    const mediaStorageService = (service as any).mediaStorageService as {
+      delete: jest.Mock;
+      deleteInstanceDirectory: jest.Mock;
+    };
+
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'ws-1',
+      deletedAt: null,
+    });
+    prisma.conversationMessage.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'message-1',
+          metadata: {
+            storagePath: 'ws-1/instance-1/conversation-1/inbound/a.jpg',
+          },
+        },
+        {
+          id: 'message-2',
+          metadata: {
+            media: {
+              storagePath: 'ws-1/instance-1/conversation-2/outbound/b.ogg',
+            },
+          },
+        },
+        {
+          id: 'message-3',
+          metadata: {
+            storagePath: 'ws-1/instance-1/conversation-1/inbound/a.jpg',
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    await service.remove('instance-1', 'ws-1');
+
+    expect(mediaStorageService.delete).toHaveBeenCalledTimes(2);
+    expect(mediaStorageService.delete).toHaveBeenCalledWith(
+      'ws-1/instance-1/conversation-1/inbound/a.jpg',
+    );
+    expect(mediaStorageService.delete).toHaveBeenCalledWith(
+      'ws-1/instance-1/conversation-2/outbound/b.ogg',
+    );
+    expect(mediaStorageService.deleteInstanceDirectory).toHaveBeenCalledWith(
+      'ws-1',
+      'instance-1',
+    );
+    expect(prisma.instance.update).toHaveBeenCalledWith({
+      where: { id: 'instance-1' },
+      data: { deletedAt: expect.any(Date) },
     });
   });
 });

@@ -74,6 +74,11 @@ services:
       META_APP_ID: ${META_APP_ID:-}
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_EMBEDDED_SIGNUP_CONFIG_ID: ${META_EMBEDDED_SIGNUP_CONFIG_ID:-}
+      BACKEND_INTERNAL_BASE_URL: ${BACKEND_INTERNAL_BASE_URL:-http://backend:4000}
+      WHATSAPP_WEB_GATEWAY_URL: ${WHATSAPP_WEB_GATEWAY_URL:-http://whatsapp-web-gateway:3001}
+      WHATSAPP_WEB_GATEWAY_SHARED_SECRET: ${WHATSAPP_WEB_GATEWAY_SHARED_SECRET:-autoszap-local-whatsapp-web-secret}
+      WHATSAPP_WEB_GATEWAY_CALLBACK_URL: ${WHATSAPP_WEB_GATEWAY_CALLBACK_URL:-}
+      JSON_BODY_LIMIT: ${JSON_BODY_LIMIT:-50mb}
     ports:
       - "4000:4000"
     volumes:
@@ -85,7 +90,38 @@ services:
       timeout: 5s
       retries: 10
 
+  whatsapp-web-gateway:
+    build:
+      context: ./apps/whatsapp-web-gateway
+      dockerfile: Dockerfile
+    container_name: autoszap-whatsapp-web-gateway
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      BIND_HOST: 0.0.0.0
+      GATEWAY_SHARED_SECRET: ${WHATSAPP_WEB_GATEWAY_SHARED_SECRET:-autoszap-local-whatsapp-web-secret}
+      BACKEND_CALLBACK_BASE_URL: ${BACKEND_INTERNAL_BASE_URL:-http://backend:4000}
+      SESSION_DIR: /data/sessions
+      REGISTRY_FILE: /data/registry.json
+      CHROMIUM_PATH: /usr/bin/chromium
+      HEADLESS: ${WHATSAPP_WEB_GATEWAY_HEADLESS:-true}
+      CALLBACK_TIMEOUT_MS: ${WHATSAPP_WEB_GATEWAY_CALLBACK_TIMEOUT_MS:-10000}
+      AUTO_RESTART_DELAY_MS: ${WHATSAPP_WEB_GATEWAY_AUTO_RESTART_DELAY_MS:-5000}
+    expose:
+      - "3001"
+    volumes:
+      - whatsapp_web_gateway_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:
   backend_storage:
+  whatsapp_web_gateway_data:

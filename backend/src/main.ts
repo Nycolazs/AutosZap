@@ -23,6 +23,8 @@ async function bootstrap() {
     rawBody: true,
   });
   const configService = app.get(ConfigService);
+  const jsonBodyLimit =
+    configService.get<string>('JSON_BODY_LIMIT')?.trim() || '50mb';
   const allowedOrigins = parseFrontendOrigins(
     configService.get<string>('FRONTEND_URL'),
     configService.get<string>('NODE_ENV') ?? 'development',
@@ -33,13 +35,13 @@ async function bootstrap() {
   // Limit request body size to prevent payload-based DoS attacks
   app.use(
     json({
-      limit: '2mb',
+      limit: jsonBodyLimit,
       verify: (req, _res, buf) => {
         (req as unknown as { rawBody?: Buffer }).rawBody = buf;
       },
     }),
   );
-  app.use(urlencoded({ extended: true, limit: '2mb' }));
+  app.use(urlencoded({ extended: true, limit: jsonBodyLimit }));
   app.enableCors({
     origin: (origin: string | undefined, callback: CorsOriginCallback) => {
       if (!origin || allowedOrigins.includes(origin)) {

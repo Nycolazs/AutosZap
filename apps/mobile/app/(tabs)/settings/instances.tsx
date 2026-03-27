@@ -65,7 +65,7 @@ export default function InstancesModuleScreen() {
   const queryClient = useQueryClient();
   const isAdmin =
     (me as any)?.role === 'ADMIN' || (me as any)?.normalizedRole === 'ADMIN';
-  const [showDiagnostics, setShowDiagnostics] = useState<any>(null);
+  const [showInstanceDetails, setShowInstanceDetails] = useState<any>(null);
   const instancesWebUrl = useMemo(() => buildInstancesWebUrl(), []);
 
   const instancesQuery = useQuery({
@@ -75,9 +75,9 @@ export default function InstancesModuleScreen() {
   });
 
   const diagnosticsQuery = useQuery({
-    queryKey: ['mobile-instance-diagnostics', showDiagnostics?.id],
-    queryFn: () => api.getInstanceDiagnostics(showDiagnostics!.id),
-    enabled: !!showDiagnostics?.id,
+    queryKey: ['mobile-instance-connection-state', showInstanceDetails?.id],
+    queryFn: () => api.getInstanceConnectionState(showInstanceDetails!.id),
+    enabled: !!showInstanceDetails?.id,
   });
 
   const syncMutation = useMutation({
@@ -105,7 +105,7 @@ export default function InstancesModuleScreen() {
     if (!isAdmin) {
       Alert.alert(
         'Conexao gerenciada pelo admin',
-        'Um administrador precisa conectar novos numeros pelo painel web usando o Embedded Signup da Meta.',
+        'Um administrador precisa conectar novos numeros pelo painel web, via Meta oficial ou QR self-hosted.',
       );
       return;
     }
@@ -129,7 +129,7 @@ export default function InstancesModuleScreen() {
   function confirmDelete(item: any) {
     Alert.alert(
       'Remover instancia',
-      `Deseja remover "${item.name}"? Para usar esse numero novamente, conecte-o outra vez pelo Embedded Signup.`,
+      `Deseja remover "${item.name}"? Para usar esse numero novamente, conecte-o outra vez pelo fluxo correspondente.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -159,13 +159,13 @@ export default function InstancesModuleScreen() {
             <View style={styles.headerStack}>
               <View style={styles.heroCard}>
                 <View style={styles.heroBadge}>
-                  <Text style={styles.heroBadgeText}>Embedded Signup oficial</Text>
+                  <Text style={styles.heroBadgeText}>Meta oficial + QR Web</Text>
                 </View>
                 <Text style={styles.heroTitle}>
-                  Conecte novos numeros somente pelo fluxo seguro da Meta.
+                  Conecte novos numeros pela Meta oficial ou por QR self-hosted.
                 </Text>
                 <Text style={styles.heroDescription}>
-                  O cadastro manual de tokens e segredos foi removido. Agora o workspace usa o Embedded Signup para reduzir erros e proteger credenciais sensiveis.
+                  O workspace suporta dois fluxos: Embedded Signup da Meta e sessao WhatsApp Web gerenciada pelo gateway interno.
                 </Text>
                 <Pressable style={styles.heroButton} onPress={openEmbeddedSignupGuide}>
                   <Text style={styles.heroButtonText}>
@@ -177,8 +177,8 @@ export default function InstancesModuleScreen() {
               <View style={styles.infoRow}>
                 <View style={styles.infoCard}>
                   <Text style={styles.infoLabel}>Fluxo</Text>
-                  <Text style={styles.infoValue}>100% Meta</Text>
-                  <Text style={styles.infoHelper}>Sem access token manual no app.</Text>
+                  <Text style={styles.infoValue}>Meta + QR</Text>
+                  <Text style={styles.infoHelper}>Sem token manual no app mobile.</Text>
                 </View>
                 <View style={styles.infoCard}>
                   <Text style={styles.infoLabel}>Instancias</Text>
@@ -191,11 +191,11 @@ export default function InstancesModuleScreen() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>Nenhuma instancia conectada</Text>
-              <Text style={styles.emptyDescription}>
-                {isAdmin
-                  ? 'Abra o painel web e use o Embedded Signup da Meta para conectar o primeiro numero oficial.'
+                <Text style={styles.emptyDescription}>
+                  {isAdmin
+                  ? 'Abra o painel web e conecte o primeiro numero oficial ou uma instancia QR.'
                   : 'Quando um administrador conectar um numero oficial, ele aparecera aqui.'}
-              </Text>
+                </Text>
             </View>
           }
           renderItem={({ item }: { item: any }) => {
@@ -219,10 +219,17 @@ export default function InstancesModuleScreen() {
                       {MODE_LABELS[item.mode] ?? item.mode}
                     </Text>
                   </View>
+                  <View style={styles.modePill}>
+                    <Text style={styles.modeText}>
+                      {item.provider === 'WHATSAPP_WEB' ? 'QR Web' : 'Meta'}
+                    </Text>
+                  </View>
                   {item.phoneNumber ? <Text style={styles.meta}>{item.phoneNumber}</Text> : null}
                 </View>
 
-                <Text style={styles.meta}>Cadastro: Embedded Signup oficial</Text>
+                <Text style={styles.meta}>
+                  Cadastro: {item.provider === 'WHATSAPP_WEB' ? 'QR self-hosted' : 'Embedded Signup oficial'}
+                </Text>
                 {item.phoneNumberId ? (
                   <Text style={styles.meta}>Phone ID: {item.phoneNumberId}</Text>
                 ) : null}
@@ -256,9 +263,9 @@ export default function InstancesModuleScreen() {
                 <View style={styles.actions}>
                   <Pressable
                     style={styles.actionButton}
-                    onPress={() => setShowDiagnostics(item)}
+                    onPress={() => setShowInstanceDetails(item)}
                   >
-                    <Text style={styles.actionText}>Diagnostico</Text>
+                    <Text style={styles.actionText}>Conexao</Text>
                   </Pressable>
                   {isAdmin ? (
                     <Pressable
@@ -275,10 +282,10 @@ export default function InstancesModuleScreen() {
         />
       </View>
 
-      <Modal visible={!!showDiagnostics} animationType="slide" presentationStyle="pageSheet">
+      <Modal visible={!!showInstanceDetails} animationType="slide" presentationStyle="pageSheet">
         <View style={styles.modalContainer}>
           <ScrollView contentContainerStyle={styles.modalContent}>
-            <Text style={styles.modalTitle}>Diagnostico: {showDiagnostics?.name}</Text>
+            <Text style={styles.modalTitle}>Conexao: {showInstanceDetails?.name}</Text>
 
             {diagnosticsQuery.isLoading ? (
               <ActivityIndicator color={palette.primary} style={{ marginTop: 20 }} />
@@ -298,10 +305,10 @@ export default function InstancesModuleScreen() {
                 )}
               </View>
             ) : (
-              <Text style={styles.meta}>Sem dados de diagnostico disponiveis.</Text>
+              <Text style={styles.meta}>Sem dados de conexao disponiveis.</Text>
             )}
 
-            <Pressable style={styles.cancelButton} onPress={() => setShowDiagnostics(null)}>
+            <Pressable style={styles.cancelButton} onPress={() => setShowInstanceDetails(null)}>
               <Text style={styles.cancelText}>Fechar</Text>
             </Pressable>
           </ScrollView>

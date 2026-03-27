@@ -186,6 +186,7 @@ enum EntityStatus {
 
 enum InstanceProvider {
   META_WHATSAPP
+  WHATSAPP_WEB
 }
 
 enum InstanceStatus {
@@ -1052,6 +1053,7 @@ model Instance {
   provider                    InstanceProvider        @default(META_WHATSAPP)
   status                      InstanceStatus          @default(DISCONNECTED)
   mode                        InstanceMode            @default(DEV)
+  externalInstanceId          String?
   appId                       String?
   phoneNumber                 String?
   businessAccountId           String?
@@ -1059,6 +1061,14 @@ model Instance {
   accessTokenEncrypted        String?
   webhookVerifyTokenEncrypted String?
   appSecretEncrypted          String?
+  internalWebhookSecretEncrypted String?
+  providerConfig              Json?
+  providerMetadata            Json?
+  providerSessionState        Json?
+  qrCode                      String?
+  qrCodeExpiresAt             DateTime?
+  connectedAt                 DateTime?
+  lastSeenAt                  DateTime?
   profilePictureUrl           String?
   profilePictureUpdatedAt     DateTime?
   lastSyncAt                  DateTime?
@@ -1074,6 +1084,7 @@ model Instance {
   deliveryStatuses            MessageDeliveryStatus[]
 
   @@unique([workspaceId, name])
+  @@unique([workspaceId, externalInstanceId])
   @@index([workspaceId, provider, status])
 }
 

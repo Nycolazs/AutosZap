@@ -1,9 +1,11 @@
-import { InstanceMode } from '@prisma/client';
+import { InstanceMode, InstanceProvider } from '@prisma/client';
 
 export interface MessagingInstanceConfig {
   id: string;
   workspaceId: string;
+  provider: InstanceProvider;
   mode: InstanceMode;
+  externalInstanceId?: string | null;
   appId?: string | null;
   phoneNumber?: string | null;
   phoneNumberId?: string | null;
@@ -11,6 +13,10 @@ export interface MessagingInstanceConfig {
   accessToken?: string | null;
   verifyToken?: string | null;
   appSecret?: string | null;
+  internalWebhookSecret?: string | null;
+  providerConfig?: Record<string, unknown> | null;
+  providerMetadata?: Record<string, unknown> | null;
+  providerSessionState?: Record<string, unknown> | null;
 }
 
 export interface ProviderSendResult {
@@ -141,6 +147,7 @@ export interface ProviderProfileUpdateResult {
 
 export interface ParsedWebhookPayload {
   messages: Array<{
+    instanceId?: string;
     phoneNumberId?: string;
     from: string;
     profileName?: string;
@@ -151,6 +158,7 @@ export interface ParsedWebhookPayload {
     metadata?: Record<string, unknown>;
   }>;
   statuses: Array<{
+    instanceId?: string;
     phoneNumberId?: string;
     externalMessageId: string;
     status: string;
@@ -212,9 +220,12 @@ export interface MessagingProvider {
     to: string,
     payload: {
       type: 'image' | 'audio' | 'video' | 'document' | 'sticker';
-      mediaId: string;
+      mediaId?: string;
+      mediaBufferBase64?: string;
+      mimeType?: string;
       caption?: string;
       fileName?: string;
+      voice?: boolean;
       quotedExternalMessageId?: string;
     },
   ): Promise<ProviderSendResult>;

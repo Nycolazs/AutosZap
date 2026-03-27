@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { InstanceMode } from '@prisma/client';
+import { InstanceMode, InstanceProvider } from '@prisma/client';
 import axios from 'axios';
 import { MetaWhatsAppProvider } from './meta-whatsapp.provider';
 
@@ -21,6 +21,7 @@ describe('MetaWhatsAppProvider', () => {
       {
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: InstanceMode.DEV,
         accessToken: null,
         phoneNumberId: null,
@@ -51,6 +52,7 @@ describe('MetaWhatsAppProvider', () => {
       {
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: InstanceMode.DEV,
         accessToken: 'token',
         phoneNumberId: 'phone-1',
@@ -101,6 +103,7 @@ describe('MetaWhatsAppProvider', () => {
       {
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: InstanceMode.DEV,
         accessToken: 'token',
         phoneNumberId: 'phone-1',
@@ -210,6 +213,7 @@ describe('MetaWhatsAppProvider', () => {
       {
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: InstanceMode.DEV,
         accessToken: 'token',
         businessAccountId: 'business-1',
@@ -255,6 +259,7 @@ describe('MetaWhatsAppProvider', () => {
       provider.subscribeApp({
         id: 'instance-1',
         workspaceId: 'ws-1',
+        provider: InstanceProvider.META_WHATSAPP,
         mode: InstanceMode.DEV,
         accessToken: null,
         businessAccountId: null,
@@ -327,6 +332,7 @@ describe('MetaWhatsAppProvider', () => {
     const diagnostics = await provider.getInstanceDiagnostics({
       id: 'instance-1',
       workspaceId: 'ws-1',
+      provider: InstanceProvider.META_WHATSAPP,
       mode: InstanceMode.DEV,
       accessToken: 'token',
       phoneNumberId: 'phone-1',

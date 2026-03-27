@@ -36,6 +36,10 @@ class ConversationsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   tagId?: string;
+
+  @IsOptional()
+  @IsString()
+  instanceId?: string;
 }
 
 class ConversationDetailQueryDto {
@@ -80,6 +84,11 @@ export class ConversationsController {
     return this.conversationsService.summary(user, query);
   }
 
+  @Get('instances')
+  listInboxInstances(@CurrentUser() user: CurrentAuthUser) {
+    return this.conversationsService.listInboxInstances(user);
+  }
+
   @Sse('stream')
   stream(@CurrentUser() user: CurrentAuthUser) {
     return this.conversationsService.stream(user);
@@ -92,6 +101,11 @@ export class ConversationsController {
     @Query() query: ConversationDetailQueryDto,
   ) {
     return this.conversationsService.findOne(id, user, query.include);
+  }
+
+  @Post(':id/read')
+  markAsRead(@CurrentUser() user: CurrentAuthUser, @Param('id') id: string) {
+    return this.conversationsService.markAsRead(id, user);
   }
 
   @AnyPermissions(PermissionKey.INBOX_VIEW, PermissionKey.TRANSFER_CONVERSATION)

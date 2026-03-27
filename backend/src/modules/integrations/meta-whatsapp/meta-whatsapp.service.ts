@@ -44,6 +44,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { AccessControlService } from '../../access-control/access-control.service';
 import { normalizeRole } from '../../access-control/permissions.constants';
 import { normalizeConversationStatus } from '../../conversations/conversation-workflow.utils';
+import { WhatsAppMessagingService } from '../whatsapp/whatsapp-messaging.service';
 
 type InteractiveMenuNodeRecord = {
   id: string;
@@ -97,6 +98,7 @@ export class MetaWhatsAppService {
     private readonly notificationsService: NotificationsService,
     private readonly accessControlService: AccessControlService,
     private readonly redis: RedisService,
+    private readonly whatsappMessagingService: WhatsAppMessagingService,
   ) {}
 
   private cacheKey(scope: string, instanceId: string) {
@@ -486,23 +488,7 @@ export class MetaWhatsAppService {
       contactName?: string;
     },
   ) {
-    const contact = await this.ensureContact(
-      workspaceId,
-      payload.to,
-      payload.contactName,
-    );
-    const conversation = await this.ensureConversation(
-      workspaceId,
-      contact.id,
-      payload.instanceId,
-      payload.userId,
-    );
-    return this.sendConversationMessage(
-      workspaceId,
-      conversation.id,
-      payload.userId ?? null,
-      payload.body,
-    );
+    return this.whatsappMessagingService.sendDirectMessage(workspaceId, payload);
   }
 
   async sendDirectMediaMessage(
@@ -519,29 +505,9 @@ export class MetaWhatsAppService {
       contactName?: string;
     },
   ) {
-    const contact = await this.ensureContact(
+    return this.whatsappMessagingService.sendDirectMediaMessage(
       workspaceId,
-      payload.to,
-      payload.contactName,
-    );
-    const conversation = await this.ensureConversation(
-      workspaceId,
-      contact.id,
-      payload.instanceId,
-      payload.userId,
-    );
-
-    return this.sendConversationMediaMessage(
-      workspaceId,
-      conversation.id,
-      payload.userId ?? null,
-      {
-        buffer: payload.buffer,
-        fileName: payload.fileName,
-        mimeType: payload.mimeType,
-        caption: payload.caption,
-        voice: payload.voice,
-      },
+      payload,
     );
   }
 
@@ -558,29 +524,9 @@ export class MetaWhatsAppService {
       bodyParameters?: string[];
     },
   ) {
-    const contact = await this.ensureContact(
+    return this.whatsappMessagingService.sendTemplateDirectMessage(
       workspaceId,
-      payload.to,
-      payload.contactName,
-    );
-    const conversation = await this.ensureConversation(
-      workspaceId,
-      contact.id,
-      payload.instanceId,
-      payload.userId,
-    );
-
-    return this.sendTemplateConversationMessage(
-      workspaceId,
-      conversation.id,
-      payload.userId ?? null,
-      {
-        instanceId: payload.instanceId,
-        templateName: payload.templateName,
-        languageCode: payload.languageCode,
-        headerParameters: payload.headerParameters,
-        bodyParameters: payload.bodyParameters,
-      },
+      payload,
     );
   }
 
@@ -596,97 +542,13 @@ export class MetaWhatsAppService {
       quotedMessageId?: string;
     },
   ) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        workspaceId,
-        deletedAt: null,
-      },
-      include: {
-        contact: true,
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversa nao encontrada.');
-    }
-
-    const instanceId = conversation.instanceId
-      ? conversation.instanceId
-      : (
-          await this.prisma.instance.findFirst({
-            where: {
-              workspaceId,
-              deletedAt: null,
-            },
-            orderBy: {
-              updatedAt: 'desc',
-            },
-          })
-        )?.id;
-
-    if (!instanceId) {
-      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
-    }
-
-    const config = await this.getInstanceConfig(instanceId, workspaceId);
-    const windowStatus = await this.getCustomerServiceWindowStatus(
-      conversation.id,
+    return this.whatsappMessagingService.sendConversationMessage(
       workspaceId,
-      config,
-    );
-
-    if (!windowStatus.isOpen) {
-      const templateFallbackMessage =
-        await this.trySendClosedWindowTemplateReply({
-          workspaceId,
-          conversationId: conversation.id,
-          senderUserId,
-          instanceId,
-          content,
-        });
-
-      if (templateFallbackMessage) {
-        return templateFallbackMessage;
-      }
-
-      throw new BadRequestException(
-        'A janela de atendimento de 24 horas nao esta aberta. Configure um template aprovado para envio automatico fora da janela ou use envio manual por template aprovado.',
-      );
-    }
-
-    const quoteContext = await this.resolveQuotedMessageContext({
-      workspaceId,
-      conversationId: conversation.id,
-      quotedMessageId: options?.quotedMessageId,
-    });
-
-    const providerResult = await this.provider.sendTextMessage(
-      config,
-      conversation.contact.phone,
-      content,
-      {
-        quotedExternalMessageId: quoteContext?.externalMessageId,
-      },
-    );
-
-    return this.persistOutboundMessage({
-      workspaceId,
-      conversationId: conversation.id,
+      conversationId,
       senderUserId,
-      instanceId,
       content,
-      direction: options?.direction,
-      isAutomated: options?.isAutomated,
-      autoMessageType: options?.autoMessageType,
-      providerResult: {
-        ...providerResult,
-        metadata: {
-          ...(providerResult.metadata ?? {}),
-          ...(quoteContext?.metadata ?? {}),
-        },
-      },
-    });
+      options,
+    );
   }
 
   async sendConversationMediaMessage(
@@ -702,96 +564,12 @@ export class MetaWhatsAppService {
       quotedMessageId?: string;
     },
   ) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        workspaceId,
-        deletedAt: null,
-      },
-      include: {
-        contact: true,
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversa nao encontrada.');
-    }
-
-    const instanceId = conversation.instanceId
-      ? conversation.instanceId
-      : (
-          await this.prisma.instance.findFirst({
-            where: {
-              workspaceId,
-              deletedAt: null,
-            },
-            orderBy: {
-              updatedAt: 'desc',
-            },
-          })
-        )?.id;
-
-    if (!instanceId) {
-      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
-    }
-
-    const config = await this.getInstanceConfig(instanceId, workspaceId);
-    await this.assertCustomerServiceWindow(
-      conversation.id,
+    return this.whatsappMessagingService.sendConversationMediaMessage(
       workspaceId,
-      config,
-    );
-
-    const normalizedMessageType = this.resolveOutboundMediaType(
-      payload.mimeType,
-    );
-    const uploadResult = await this.provider.uploadMedia(config, {
-      buffer: payload.buffer,
-      fileName: payload.fileName,
-      mimeType: payload.mimeType,
-    });
-    const quoteContext = await this.resolveQuotedMessageContext({
-      workspaceId,
-      conversationId: conversation.id,
-      quotedMessageId: payload.quotedMessageId,
-    });
-
-    const providerResult = await this.provider.sendMediaMessage(
-      config,
-      conversation.contact.phone,
-      {
-        type: normalizedMessageType,
-        mediaId: uploadResult.mediaId,
-        caption: payload.caption,
-        fileName: payload.fileName,
-        quotedExternalMessageId: quoteContext?.externalMessageId,
-      },
-    );
-
-    return this.persistOutboundMessage({
-      workspaceId,
-      conversationId: conversation.id,
+      conversationId,
       senderUserId,
-      instanceId,
-      content:
-        payload.caption?.trim() ||
-        this.buildMediaPlaceholder(normalizedMessageType, payload.fileName),
-      direction: MessageDirection.OUTBOUND,
-      isAutomated: false,
-      providerResult: {
-        ...providerResult,
-        messageType: normalizedMessageType,
-        metadata: {
-          ...(providerResult.metadata ?? {}),
-          mediaId: uploadResult.mediaId,
-          mimeType: payload.mimeType,
-          fileName: payload.fileName,
-          caption: payload.caption,
-          voice: payload.voice ?? false,
-          ...(quoteContext?.metadata ?? {}),
-        },
-      },
-    });
+      payload,
+    );
   }
 
   async sendTemplateConversationMessage(
@@ -808,74 +586,12 @@ export class MetaWhatsAppService {
       metadata?: Record<string, unknown>;
     },
   ) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        workspaceId,
-        deletedAt: null,
-      },
-      include: {
-        contact: true,
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversa nao encontrada.');
-    }
-
-    const instanceId =
-      payload.instanceId ??
-      conversation.instanceId ??
-      (
-        await this.prisma.instance.findFirst({
-          where: {
-            workspaceId,
-            deletedAt: null,
-          },
-          orderBy: {
-            updatedAt: 'desc',
-          },
-        })
-      )?.id;
-
-    if (!instanceId) {
-      throw new BadRequestException('Nenhuma instancia disponivel para envio.');
-    }
-
-    const config = await this.getInstanceConfig(instanceId, workspaceId);
-    const providerResult = await this.provider.sendTemplateMessage(
-      config,
-      conversation.contact.phone,
-      {
-        name: payload.templateName,
-        languageCode: payload.languageCode,
-        headerParameters: this.mapTemplateParameters(payload.headerParameters),
-        bodyParameters: this.mapTemplateParameters(payload.bodyParameters),
-      },
-    );
-
-    const content =
-      payload.contentPreview?.trim() ||
-      `Template ${payload.templateName} (${payload.languageCode})`;
-
-    return this.persistOutboundMessage({
+    return this.whatsappMessagingService.sendTemplateConversationMessage(
       workspaceId,
-      conversationId: conversation.id,
+      conversationId,
       senderUserId,
-      instanceId,
-      content,
-      providerResult: {
-        ...providerResult,
-        metadata: {
-          ...(providerResult.metadata ?? {}),
-          templateName: payload.templateName,
-          languageCode: payload.languageCode,
-          headerParameters: payload.headerParameters ?? [],
-          bodyParameters: payload.bodyParameters ?? [],
-          ...(payload.metadata ?? {}),
-        },
-      },
-    });
+      payload,
+    );
   }
 
   async verifyWebhook(query: {
@@ -980,184 +696,10 @@ export class MetaWhatsAppService {
       },
     });
 
-    for (const inbound of parsed.messages) {
-      const inboundInstance =
-        inbound.phoneNumberId &&
-        (await this.prisma.instance.findFirst({
-          where: {
-            phoneNumberId: inbound.phoneNumberId,
-            deletedAt: null,
-          },
-        }));
-
-      if (!inboundInstance) {
-        continue;
-      }
-
-      // Deduplicacao: se ja existe uma mensagem com esse externalMessageId, ignora
-      // (a Meta pode reenviar webhooks em caso de timeout ou falha de rede)
-      if (inbound.externalMessageId) {
-        const existingMessage = await this.prisma.conversationMessage.findFirst(
-          {
-            where: {
-              externalMessageId: inbound.externalMessageId,
-            },
-            select: { id: true },
-          },
-        );
-
-        if (existingMessage) {
-          this.logger.warn(
-            `Webhook duplicado ignorado: mensagem ${inbound.externalMessageId} ja existe no banco.`,
-          );
-          continue;
-        }
-      }
-
-      // Verifica se a mensagem e muito antiga (> 10 minutos)
-      // A Meta pode entregar webhooks de midia com atraso significativo;
-      // nesse caso salvamos a mensagem apenas como historico, sem tratar
-      // como atividade nova.
-      const messageSentAt = this.resolveInboundMessageSentAt(inbound.timestamp);
-      const messageAgeMs = Date.now() - messageSentAt.getTime();
-      const isStaleMessage = messageAgeMs > 10 * 60 * 1000; // 10 minutos
-
-      if (isStaleMessage) {
-        this.logger.warn(
-          `Webhook com mensagem antiga (${Math.round(messageAgeMs / 60_000)} min atras) de ${inbound.from}. Salvando apenas no historico.`,
-        );
-      }
-
-      const contact = await this.ensureContact(
-        inboundInstance.workspaceId,
-        inbound.from,
-        inbound.profileName,
-      );
-      const conversation = await this.ensureConversation(
-        inboundInstance.workspaceId,
-        contact.id,
-        inboundInstance.id,
-      );
-      const shouldTreatAsNewInboundActivity =
-        !isStaleMessage &&
-        (!conversation.lastMessageAt ||
-          messageSentAt.getTime() >= conversation.lastMessageAt.getTime());
-      const inboundMetadata = await this.enrichInboundMessageMetadata({
-        workspaceId: inboundInstance.workspaceId,
-        conversationId: conversation.id,
-        metadata: inbound.metadata,
-      });
-      const inboundPreview =
-        inbound.body || this.buildMediaPlaceholder(inbound.messageType);
-
-      await this.prisma.conversationMessage.create({
-        data: {
-          workspaceId: inboundInstance.workspaceId,
-          conversationId: conversation.id,
-          senderContactId: contact.id,
-          instanceId: inboundInstance.id,
-          externalMessageId: inbound.externalMessageId,
-          direction: MessageDirection.INBOUND,
-          messageType: inbound.messageType,
-          content: inbound.body,
-          metadata: inboundMetadata as Prisma.InputJsonValue | undefined,
-          status: MessageStatus.READ,
-          sentAt: messageSentAt,
-          deliveredAt: new Date(),
-          readAt: new Date(),
-        },
-      });
-
-      await this.updateConversationLastMessageSnapshot({
-        conversationId: conversation.id,
-        messageSentAt,
-        preview: inboundPreview,
-      });
-
-      if (shouldTreatAsNewInboundActivity) {
-        await this.conversationWorkflowService.registerInboundActivity(
-          conversation.id,
-          inboundInstance.workspaceId,
-        );
-        await this.notifyConversationRecipientsAboutInboundMessage({
-          workspaceId: inboundInstance.workspaceId,
-          conversationId: conversation.id,
-          contactName: contact.name,
-          preview: inboundPreview,
-        });
-      }
-
-      await this.conversationWorkflowService.emitConversationRealtimeEvent(
-        inboundInstance.workspaceId,
-        conversation.id,
-        'conversation.message.created',
-        'INBOUND',
-      );
-
-      // Nao dispara resposta automatica para mensagens antigas/atrasadas
-      if (shouldTreatAsNewInboundActivity) {
-        const menuReplySent = await this.maybeSendInteractiveMenuReply(
-          inboundInstance.workspaceId,
-          conversation.id,
-          inbound.body,
-          inboundMetadata,
-        );
-
-        if (!menuReplySent) {
-          await this.maybeSendAutomaticReply(
-            inboundInstance.workspaceId,
-            conversation.id,
-          );
-        }
-      }
-    }
-
-    for (const status of parsed.statuses) {
-      const message = await this.prisma.conversationMessage.findFirst({
-        where: {
-          externalMessageId: status.externalMessageId,
-        },
-      });
-
-      if (!message) {
-        continue;
-      }
-
-      const nextStatus = this.mapMetaStatus(status.status);
-
-      await this.prisma.conversationMessage.update({
-        where: { id: message.id },
-        data: {
-          status: nextStatus,
-          deliveredAt:
-            nextStatus === MessageStatus.DELIVERED ||
-            nextStatus === MessageStatus.READ
-              ? new Date()
-              : message.deliveredAt,
-          readAt:
-            nextStatus === MessageStatus.READ ? new Date() : message.readAt,
-        },
-      });
-
-      await this.prisma.messageDeliveryStatus.create({
-        data: {
-          workspaceId: message.workspaceId,
-          messageId: message.id,
-          instanceId: message.instanceId,
-          provider: (instance?.provider ?? 'META_WHATSAPP') as never,
-          externalMessageId: status.externalMessageId,
-          status: nextStatus,
-          payload: status as Prisma.InputJsonValue,
-        },
-      });
-
-      await this.conversationWorkflowService.emitConversationRealtimeEvent(
-        message.workspaceId,
-        message.conversationId,
-        'conversation.message.status.updated',
-        'OUTBOUND',
-      );
-    }
+    const result = await this.whatsappMessagingService.processIncomingPayload({
+      messages: parsed.messages,
+      statuses: parsed.statuses,
+    });
 
     await this.prisma.whatsAppWebhookEvent.update({
       where: { id: webhookEvent.id },
@@ -1166,11 +708,7 @@ export class MetaWhatsAppService {
       },
     });
 
-    return {
-      success: true,
-      processedMessages: parsed.messages.length,
-      processedStatuses: parsed.statuses.length,
-    };
+    return result;
   }
 
   private resolveInboundMessageSentAt(timestamp?: string) {
@@ -1219,43 +757,7 @@ export class MetaWhatsAppService {
     fileName?: string | null;
     contentLength?: number | null;
   }> {
-    const message = await this.prisma.conversationMessage.findFirst({
-      where: {
-        id: messageId,
-        workspaceId,
-      },
-      include: {
-        conversation: true,
-      },
-    });
-
-    if (!message) {
-      throw new NotFoundException('Mensagem nao encontrada.');
-    }
-
-    const metadata = this.readMessageMetadata(message.metadata);
-    const mediaId = metadata.mediaId;
-
-    if (!mediaId) {
-      throw new BadRequestException('A mensagem nao possui midia anexada.');
-    }
-
-    const instanceId = message.instanceId ?? message.conversation.instanceId;
-
-    if (!instanceId) {
-      throw new BadRequestException(
-        'A mensagem nao possui uma instancia associada para baixar a midia.',
-      );
-    }
-
-    const config = await this.getInstanceConfig(instanceId, workspaceId);
-    const download = await this.provider.downloadMedia(config, mediaId);
-
-    return {
-      ...download,
-      mimeType: download.mimeType ?? metadata.mimeType ?? null,
-      fileName: download.fileName ?? metadata.fileName ?? null,
-    };
+    return this.whatsappMessagingService.getMessageMedia(workspaceId, messageId);
   }
 
   private async maybeSendAutomaticReply(
