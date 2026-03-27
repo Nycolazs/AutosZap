@@ -2267,13 +2267,38 @@ export class WhatsAppMessagingService {
       }
     }
 
-    return this.prisma.contact.create({
-      data: {
-        workspaceId,
-        name: normalizedName ?? this.buildFallbackContactName(normalizedPhone),
-        phone: normalizedPhone,
-      },
-    });
+    try {
+      return await this.prisma.contact.create({
+        data: {
+          workspaceId,
+          name: normalizedName ?? this.buildFallbackContactName(normalizedPhone),
+          phone: normalizedPhone,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raceContact = await this.prisma.contact.findFirst({
+          where: {
+            workspaceId,
+            phone: {
+              in: equivalentPhones.length
+                ? equivalentPhones
+                : [normalizedPhone],
+            },
+            deletedAt: null,
+          },
+        });
+
+        if (raceContact) {
+          return raceContact;
+        }
+      }
+
+      throw error;
+    }
   }
 
   private async ensureConversation(
@@ -2286,7 +2311,6 @@ export class WhatsAppMessagingService {
       where: {
         workspaceId,
         contactId,
-        instanceId,
         deletedAt: null,
       },
       orderBy: {
@@ -2295,57 +2319,29 @@ export class WhatsAppMessagingService {
     });
 
     if (existing) {
-      return existing;
-    }
-
-    const legacyConversation = await this.prisma.conversation.findFirst({
-      where: {
-        workspaceId,
-        contactId,
-        instanceId: null,
-        deletedAt: null,
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-    });
-
-    if (legacyConversation) {
-      try {
-        return await this.prisma.conversation.update({
-          where: {
-            id: legacyConversation.id,
-          },
-          data: {
-            instanceId,
-          },
-        });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          const resolvedConversation = await this.prisma.conversation.findFirst(
-            {
-              where: {
-                workspaceId,
-                contactId,
-                instanceId,
-                deletedAt: null,
-              },
-              orderBy: {
-                updatedAt: 'desc',
-              },
+      if (existing.instanceId !== instanceId) {
+        try {
+          return await this.prisma.conversation.update({
+            where: {
+              id: existing.id,
             },
-          );
-
-          if (resolvedConversation) {
-            return resolvedConversation;
+            data: {
+              instanceId,
+            },
+          });
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002'
+          ) {
+            return existing;
           }
-        } else {
+
           throw error;
         }
       }
+
+      return existing;
     }
 
     try {
@@ -2372,7 +2368,6 @@ export class WhatsAppMessagingService {
           where: {
             workspaceId,
             contactId,
-            instanceId,
             deletedAt: null,
           },
           orderBy: {

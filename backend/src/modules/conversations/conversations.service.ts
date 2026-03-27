@@ -148,7 +148,7 @@ export class ConversationsService {
     const [data, groupedContacts] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
         where,
-        distinct: ['contactId', 'instanceId'],
+        distinct: ['contactId'],
         include: {
           contact: true,
           instance: {
@@ -184,7 +184,7 @@ export class ConversationsService {
       }),
       this.prisma.conversation.groupBy({
         where,
-        by: ['contactId', 'instanceId'],
+        by: ['contactId'],
         orderBy: {
           contactId: 'asc',
         },

@@ -1929,13 +1929,38 @@ export class MetaWhatsAppService {
       return existing;
     }
 
-    return this.prisma.contact.create({
-      data: {
-        workspaceId,
-        name: name ?? `Contato ${normalizedPhone.slice(-4)}`,
-        phone: normalizedPhone,
-      },
-    });
+    try {
+      return await this.prisma.contact.create({
+        data: {
+          workspaceId,
+          name: name ?? `Contato ${normalizedPhone.slice(-4)}`,
+          phone: normalizedPhone,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raceContact = await this.prisma.contact.findFirst({
+          where: {
+            workspaceId,
+            phone: {
+              in: equivalentPhones.length
+                ? equivalentPhones
+                : [normalizedPhone],
+            },
+            deletedAt: null,
+          },
+        });
+
+        if (raceContact) {
+          return raceContact;
+        }
+      }
+
+      throw error;
+    }
   }
 
   private async ensureConversation(
