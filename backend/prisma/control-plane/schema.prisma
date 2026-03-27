@@ -79,12 +79,18 @@ enum LeadInterestStatus {
   ARCHIVED
 }
 
+enum SocialAuthProvider {
+  GOOGLE
+  FACEBOOK
+}
+
 model GlobalUser {
   id                       String                     @id @default(cuid())
   email                    String                     @unique
   name                     String
   passwordHash             String
   avatarUrl                String?
+  avatarStoragePath        String?
   status                   GlobalUserStatus           @default(ACTIVE)
   platformRole             PlatformRole?
   blockedAt                DateTime?
@@ -95,10 +101,27 @@ model GlobalUser {
   memberships              CompanyMembership[]
   refreshTokens            GlobalRefreshToken[]
   passwordResetTokens      GlobalPasswordResetToken[]
+  socialAccounts           GlobalUserSocialAccount[]
   auditLogs                PlatformAuditLog[]         @relation("PlatformAuditActor")
   requestedProvisioningJobs TenantProvisioningJob[]   @relation("ProvisioningRequestedBy")
   supportTickets           SupportTicket[]
   supportTicketMessages    SupportTicketMessage[]     @relation("SupportTicketMessageSender")
+}
+
+model GlobalUserSocialAccount {
+  id             String             @id @default(cuid())
+  globalUserId   String
+  provider       SocialAuthProvider
+  providerUserId String
+  email          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  lastUsedAt     DateTime?
+  globalUser     GlobalUser         @relation(fields: [globalUserId], references: [id], onDelete: Cascade)
+
+  @@unique([globalUserId, provider])
+  @@unique([provider, providerUserId])
+  @@index([globalUserId, provider])
 }
 
 model Company {

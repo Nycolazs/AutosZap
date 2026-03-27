@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { loadFacebookSdk } from '@/lib/facebook-sdk';
+import {
+  assertFacebookLoginSupportedOnCurrentOrigin,
+  loadFacebookSdk,
+} from '@/lib/facebook-sdk';
 import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
 
 /* ── SVG Icons ── */
@@ -193,6 +196,17 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
   const handleFacebook = useCallback(() => {
     if (!FACEBOOK_APP_ID) {
       toast.error('Login com Facebook nao configurado.');
+      return;
+    }
+
+    try {
+      assertFacebookLoginSupportedOnCurrentOrigin();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'O Facebook exige HTTPS para o login web.',
+      );
       return;
     }
 

@@ -672,6 +672,10 @@ export interface AuthMeResponse {
     role?: string | null;
     isPlatformAdmin: boolean;
   };
+  socialConnections?: {
+    google: boolean;
+    facebook: boolean;
+  };
   companyId?: string;
   membershipId?: string;
   globalUserId?: string;

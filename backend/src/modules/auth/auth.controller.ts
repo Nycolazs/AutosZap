@@ -4,6 +4,7 @@ import type { CurrentAuthUser } from '../../common/decorators/current-user.decor
 import { Public } from '../../common/decorators/public.decorator';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import {
+  ConnectSocialProviderDto,
   ForgotPasswordDto,
   LoginDto,
   LogoutDto,
@@ -85,6 +86,14 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: CurrentAuthUser) {
     return this.authService.me(user);
+  }
+
+  @Post('connect-provider')
+  connectProvider(
+    @CurrentUser() user: CurrentAuthUser,
+    @Body() dto: ConnectSocialProviderDto,
+  ) {
+    return this.authService.connectProvider(user, dto);
   }
 
   @Post('switch-company')

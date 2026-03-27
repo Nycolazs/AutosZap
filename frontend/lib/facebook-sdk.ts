@@ -97,6 +97,32 @@ function ensureBrowserEnvironment() {
   }
 }
 
+export function isFacebookLoginSupportedOnCurrentOrigin() {
+  ensureBrowserEnvironment();
+  return window.location.protocol === 'https:';
+}
+
+export function getFacebookLoginHttpsSuggestion() {
+  ensureBrowserEnvironment();
+
+  const url = new URL(window.location.href);
+  url.protocol = 'https:';
+
+  return url.toString();
+}
+
+export function getFacebookLoginUnsupportedOriginMessage() {
+  ensureBrowserEnvironment();
+
+  return `O Facebook exige HTTPS para este login. Abra o app em ${getFacebookLoginHttpsSuggestion()} ou use um dominio HTTPS publico.`;
+}
+
+export function assertFacebookLoginSupportedOnCurrentOrigin() {
+  if (!isFacebookLoginSupportedOnCurrentOrigin()) {
+    throw new Error(getFacebookLoginUnsupportedOriginMessage());
+  }
+}
+
 function initFacebookSdk(appId: string, graphApiVersion: string) {
   if (!window.FB) {
     throw new Error('Facebook SDK nao carregado.');
@@ -313,6 +339,7 @@ function launchEmbeddedSignupWithFacebookSdk({
   configurationId,
 }: Pick<LaunchEmbeddedSignupOptions, 'configurationId'>): Promise<EmbeddedSignupResult> {
   ensureBrowserEnvironment();
+  assertFacebookLoginSupportedOnCurrentOrigin();
 
   return new Promise((resolve, reject) => {
     if (!window.FB) {

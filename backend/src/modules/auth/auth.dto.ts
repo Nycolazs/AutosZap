@@ -110,3 +110,11 @@ export class SocialLoginDto {
   @IsBoolean()
   loginOnly?: boolean;
 }
+
+export class ConnectSocialProviderDto {
+  @IsString()
+  provider!: 'google' | 'facebook';
+
+  @IsString()
+  token!: string;
+}
