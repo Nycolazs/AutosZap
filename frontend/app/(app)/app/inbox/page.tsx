@@ -434,8 +434,23 @@ function resolveMessageSenderUser(
 function shouldShowMessageSenderAvatar(
   message: ConversationMessage,
   senderUser?: ConversationMessageSender | null,
+  nextItem?: ConversationTimelineItem | null,
 ) {
-  return message.direction === "OUTBOUND" && Boolean(senderUser?.id);
+  if (message.direction !== "OUTBOUND" || !senderUser?.id) {
+    return false;
+  }
+
+  // Only show avatar on the last message of a consecutive group from the same sender
+  if (
+    nextItem &&
+    nextItem.kind === "message" &&
+    nextItem.message.direction === "OUTBOUND" &&
+    nextItem.message.senderUser?.id === senderUser.id
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function MessageSenderAvatar({
@@ -533,6 +548,7 @@ export function InboxPageContent({
   const pendingRecordingActionRef = useRef<"discard" | "send" | null>(null);
   const recordingMimeConfigRef = useRef<RecordingMimeConfig | null>(null);
   const pendingReadConversationIdsRef = useRef(new Map<string, number>());
+  const suppressMessageRefetchUntilRef = useRef(0);
   const requestedConversationId = searchParams.get("conversationId");
   const requestedInstanceId = searchParams.get("instanceId");
   const effectiveInstanceId = lockedInstanceId ?? requestedInstanceId;
@@ -1055,6 +1071,10 @@ export function InboxPageContent({
         return null;
       }
 
+      // Suppress SSE-triggered message refetches for 5 seconds to avoid
+      // replacing optimistic data before onSuccess can swap it
+      suppressMessageRefetchUntilRef.current = Date.now() + 5000;
+
       const formattedContent = formatManualMessageContent(
         meQuery.data?.name ?? "Equipe",
         messageDraft,
@@ -1161,9 +1181,17 @@ export function InboxPageContent({
         queryClient.invalidateQueries({
           queryKey: ["conversation", convId, "details"],
         });
+        // Schedule a delayed messages sync after cooldown expires
+        setTimeout(() => {
+          suppressMessageRefetchUntilRef.current = 0;
+          void queryClient.invalidateQueries({
+            queryKey: ["conversation", convId, "messages"],
+          });
+        }, 5500);
       }
     },
     onError: (error: Error, _variables, context) => {
+      suppressMessageRefetchUntilRef.current = 0;
       if (context?.activeConversationId) {
         for (const [queryKey, value] of context.conversationSnapshots) {
           queryClient.setQueryData(queryKey, value);
@@ -1361,6 +1389,8 @@ export function InboxPageContent({
       if (!activeConversationId) {
         return null;
       }
+
+      suppressMessageRefetchUntilRef.current = Date.now() + 5000;
 
       const trimmedContent = content.trim();
       const now = new Date().toISOString();
@@ -2166,11 +2196,15 @@ export function InboxPageContent({
           payload.conversationId &&
           payload.conversationId === activeConversationId
         ) {
-          // Refetch messages and conversation data separately to avoid
-          // broad prefix invalidation that causes flicker
-          void queryClient.invalidateQueries({
-            queryKey: ["conversation", activeConversationId, "messages"],
-          });
+          // Skip message refetch if a send mutation is in progress
+          // to avoid replacing optimistic data and causing flicker
+          const isSendCooldown =
+            Date.now() < suppressMessageRefetchUntilRef.current;
+          if (!isSendCooldown) {
+            void queryClient.invalidateQueries({
+              queryKey: ["conversation", activeConversationId, "messages"],
+            });
+          }
           void queryClient.invalidateQueries({
             queryKey: ["conversation", activeConversationId, "base"],
           });
@@ -2905,9 +2939,11 @@ export function InboxPageContent({
                     currentUser: meQuery.data,
                     users: usersQuery.data,
                   });
+                  const nextItem = conversationTimelineItems[index + 1] ?? null;
                   const showSenderAvatar = shouldShowMessageSenderAvatar(
                     message,
                     resolvedSenderUser,
+                    nextItem,
                   );
 
                   return (
@@ -3001,6 +3037,8 @@ export function InboxPageContent({
                         </div>
                         {showSenderAvatar ? (
                           <MessageSenderAvatar senderUser={resolvedSenderUser} />
+                        ) : message.direction === "OUTBOUND" && resolvedSenderUser?.id ? (
+                          <div className="h-6 w-6 shrink-0" />
                         ) : null}
                       </div>
                     </div>
