@@ -482,7 +482,6 @@ export default function SettingsPage() {
           })
           .finally(() => setConnectingProvider(null));
       },
-      { scope: 'email' },
     );
   }
 
@@ -491,6 +490,7 @@ export default function SettingsPage() {
       <PageHeader
         title="Configurações"
         description="Atualize perfil, dados da empresa e ajustes principais da conta."
+        hideDefaultAction
       />
 
       <div className="grid gap-5 xl:grid-cols-2">

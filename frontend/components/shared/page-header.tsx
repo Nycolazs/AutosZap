@@ -4,10 +4,12 @@ export function PageHeader({
   title,
   description,
   action,
+  hideDefaultAction = false,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  hideDefaultAction?: boolean;
 }) {
   return (
     <div className="desktop-low-height-page-header flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -25,7 +27,7 @@ export function PageHeader({
         <div className="w-full md:w-auto md:shrink-0 [&>*]:w-full md:[&>*]:w-auto">
           {action}
         </div>
-      ) : (
+      ) : hideDefaultAction ? null : (
         <Button className="hidden md:inline-flex">Nova ação</Button>
       )}
     </div>
