@@ -1,12 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   assertFacebookLoginSupportedOnCurrentOrigin,
+  loginWithFacebookSdk,
   loadFacebookSdk,
 } from '@/lib/facebook-sdk';
 import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
@@ -83,11 +84,12 @@ interface SocialLoginButtonsProps {
 
 export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLoginButtonsProps) {
   const router = useRouter();
-  const [loading, setLoading] = useState<string | null>(null);
-  const fbSdkReady = useRef(false);
-
   const hasGoogle = Boolean(GOOGLE_CLIENT_ID);
   const hasFacebook = Boolean(FACEBOOK_APP_ID);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [facebookSdkStatus, setFacebookSdkStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >(hasFacebook ? 'loading' : 'idle');
 
   /* ── Pre-load SDKs on mount so popups fire within the user gesture ── */
   useEffect(() => {
@@ -95,9 +97,14 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
       loadScript('https://accounts.google.com/gsi/client', 'google-gsi').catch(() => {});
     }
     if (hasFacebook) {
+      setFacebookSdkStatus(window.FB ? 'ready' : 'loading');
       loadFacebookSdk({ appId: FACEBOOK_APP_ID })
-        .then(() => { fbSdkReady.current = true; })
-        .catch(() => {});
+        .then(() => {
+          setFacebookSdkStatus('ready');
+        })
+        .catch(() => {
+          setFacebookSdkStatus('error');
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -211,14 +218,16 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
     }
 
     /* Se o SDK ainda nao foi carregado, iniciar agora e pedir para tentar novamente */
-    if (!window.FB) {
+    if (!window.FB || facebookSdkStatus !== 'ready') {
+      setFacebookSdkStatus('loading');
       setLoading('facebook');
       loadFacebookSdk({ appId: FACEBOOK_APP_ID })
         .then(() => {
-          fbSdkReady.current = true;
+          setFacebookSdkStatus('ready');
           toast.info('Facebook carregado. Clique novamente para continuar.');
         })
         .catch(() => {
+          setFacebookSdkStatus('error');
           toast.error('Nao foi possivel carregar o Facebook. Tente novamente.');
         })
         .finally(() => setLoading(null));
@@ -227,24 +236,18 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
 
     setLoading('facebook');
 
-    /* FB.login() deve ser chamado de forma sincrona dentro do evento de clique */
-    window.FB.login(
-      (response) => {
-        if (!response.authResponse?.accessToken) {
-          setLoading(null);
-          return;
+    loginWithFacebookSdk()
+      .then((accessToken) => sendToBackend('facebook', accessToken))
+      .catch((error) => {
+        if (
+          error instanceof Error &&
+          error.message !== 'Login com Facebook cancelado.'
+        ) {
+          toast.error(error.message);
         }
-        sendToBackend('facebook', response.authResponse.accessToken)
-          .catch((error) => {
-            if (error instanceof Error) {
-              toast.error(error.message);
-            }
-          })
-          .finally(() => setLoading(null));
-      },
-      {},
-    );
-  }, [sendToBackend]);
+      })
+      .finally(() => setLoading(null));
+  }, [facebookSdkStatus, sendToBackend]);
 
   const hasAny = hasGoogle || hasFacebook;
   if (!hasAny) return null;
@@ -282,15 +285,17 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
             type="button"
             variant="ghost"
             className="h-10 w-full rounded-xl border border-border/70 bg-white/[0.03] text-[12px] font-medium hover:bg-white/[0.06]"
-            disabled={loading !== null}
+            disabled={loading !== null || facebookSdkStatus === 'loading'}
             onClick={handleFacebook}
           >
-            {loading === 'facebook' ? (
+            {loading === 'facebook' || facebookSdkStatus === 'loading' ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <FacebookIcon className="mr-2 h-4 w-4" />
             )}
-            Continuar com Facebook
+            {facebookSdkStatus === 'loading'
+              ? 'Carregando Facebook...'
+              : 'Continuar com Facebook'}
           </Button>
         ) : null}
       </div>

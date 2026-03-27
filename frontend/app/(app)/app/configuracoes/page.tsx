@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { apiRequest } from '@/lib/api-client';
 import {
   assertFacebookLoginSupportedOnCurrentOrigin,
+  loginWithFacebookSdk,
   loadFacebookSdk,
 } from '@/lib/facebook-sdk';
 import { AuthMeResponse } from '@/lib/types';
@@ -177,6 +178,9 @@ export default function SettingsPage() {
   const [avatarInputKey, setAvatarInputKey] = useState(0);
   const [connectingProvider, setConnectingProvider] =
     useState<SocialProvider | null>(null);
+  const [facebookSdkStatus, setFacebookSdkStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >(hasFacebook ? 'loading' : 'idle');
 
   const resolvedProfileValues = useMemo(
     () => ({
@@ -221,6 +225,13 @@ export default function SettingsPage() {
     google: false,
     facebook: false,
   };
+  const facebookConnectionDescription = socialConnections.facebook
+    ? 'Conta Facebook já conectada.'
+    : facebookSdkStatus === 'loading'
+      ? 'Carregando integração do Facebook.'
+      : facebookSdkStatus === 'error'
+        ? 'Falha ao carregar o Facebook. Clique para tentar novamente.'
+        : 'Conectar sua conta Facebook.';
 
   useEffect(() => {
     if (!avatarFile) {
@@ -244,9 +255,10 @@ export default function SettingsPage() {
     }
 
     if (hasFacebook) {
+      setFacebookSdkStatus(window.FB ? 'ready' : 'loading');
       loadFacebookSdk({ appId: FACEBOOK_APP_ID })
-        .then(() => {})
-        .catch(() => {});
+        .then(() => setFacebookSdkStatus('ready'))
+        .catch(() => setFacebookSdkStatus('error'));
     }
   }, [hasFacebook, hasGoogle]);
 
@@ -446,13 +458,16 @@ export default function SettingsPage() {
       return;
     }
 
-    if (!window.FB) {
+    if (!window.FB || facebookSdkStatus !== 'ready') {
+      setFacebookSdkStatus('loading');
       setConnectingProvider('facebook');
       loadFacebookSdk({ appId: FACEBOOK_APP_ID })
         .then(() => {
+          setFacebookSdkStatus('ready');
           toast.info('Facebook carregado. Clique novamente para continuar.');
         })
         .catch(() => {
+          setFacebookSdkStatus('error');
           toast.error('Nao foi possivel carregar o Facebook. Tente novamente.');
         })
         .finally(() => setConnectingProvider(null));
@@ -461,29 +476,22 @@ export default function SettingsPage() {
 
     setConnectingProvider('facebook');
 
-    window.FB.login(
-      (response) => {
-        const token = response.authResponse?.accessToken;
-
-        if (!token) {
-          setConnectingProvider(null);
-          return;
+    loginWithFacebookSdk()
+      .then((token) =>
+        connectProviderMutation.mutateAsync({
+          provider: 'facebook',
+          token,
+        }),
+      )
+      .catch((error) => {
+        if (
+          error instanceof Error &&
+          error.message !== 'Login com Facebook cancelado.'
+        ) {
+          toast.error(error.message);
         }
-
-        connectProviderMutation
-          .mutateAsync({
-            provider: 'facebook',
-            token,
-          })
-          .catch((error) => {
-            if (error instanceof Error) {
-              toast.error(error.message);
-            }
-          })
-          .finally(() => setConnectingProvider(null));
-      },
-      {},
-    );
+      })
+      .finally(() => setConnectingProvider(null));
   }
 
   return (
@@ -625,13 +633,12 @@ export default function SettingsPage() {
               {hasFacebook ? (
                 <SocialConnectionButton
                   label="Facebook"
-                  description={
-                    socialConnections.facebook
-                      ? 'Conta Facebook já conectada.'
-                      : 'Conectar sua conta Facebook.'
-                  }
+                  description={facebookConnectionDescription}
                   connected={socialConnections.facebook}
-                  pending={connectingProvider === 'facebook'}
+                  pending={
+                    connectingProvider === 'facebook' ||
+                    (!socialConnections.facebook && facebookSdkStatus === 'loading')
+                  }
                   icon={<FacebookIcon className="h-4 w-4" />}
                   onClick={handleFacebookConnect}
                 />

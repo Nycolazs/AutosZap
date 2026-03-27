@@ -26,6 +26,15 @@ declare global {
   }
 }
 
+export type FacebookLoginOptions = {
+  config_id?: string;
+  auth_type?: string;
+  response_type?: string;
+  override_default_response_type?: boolean;
+  scope?: string;
+  extras?: Record<string, unknown>;
+};
+
 export interface EmbeddedSignupResult {
   code: string;
   phoneNumberId: string;
@@ -332,6 +341,82 @@ export function loadFacebookSdk({
 
   return sdkLoadPromise.then(() => {
     initFacebookSdk(appId, graphApiVersion);
+  });
+}
+
+export function loginWithFacebookSdk({
+  options = {},
+  timeoutMs = 20000,
+}: {
+  options?: FacebookLoginOptions;
+  timeoutMs?: number;
+} = {}): Promise<string> {
+  ensureBrowserEnvironment();
+
+  const facebookSdk = window.FB;
+
+  if (!facebookSdk) {
+    return Promise.reject(new Error('Facebook SDK nao carregado.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const settle = (result: { token?: string; error?: Error }) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.clearTimeout(timeoutId);
+
+      if (result.token) {
+        resolve(result.token);
+        return;
+      }
+
+      reject(
+        result.error ?? new Error('Nao foi possivel concluir o login com Facebook.'),
+      );
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      settle({
+        error: new Error(
+          'O Facebook nao respondeu ao pedido de login. Tente novamente.',
+        ),
+      });
+    }, timeoutMs);
+
+    try {
+      facebookSdk.login((response) => {
+        const token = response.authResponse?.accessToken?.trim();
+
+        if (token) {
+          settle({ token });
+          return;
+        }
+
+        if (
+          response.status === 'unknown' ||
+          response.status === 'not_authorized'
+        ) {
+          settle({ error: new Error('Login com Facebook cancelado.') });
+          return;
+        }
+
+        settle({
+          error: new Error('Nao foi possivel concluir o login com Facebook.'),
+        });
+      }, options);
+    } catch (error) {
+      settle({
+        error:
+          error instanceof Error
+            ? error
+            : new Error('Falha ao abrir o login do Facebook.'),
+      });
+    }
   });
 }
 
