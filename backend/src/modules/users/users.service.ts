@@ -232,6 +232,50 @@ export class UsersService {
     };
   }
 
+  async getUserAvatar(userId: string, workspaceId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, workspaceId, deletedAt: null },
+      select: {
+        id: true,
+        globalUserId: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario nao encontrado.');
+    }
+
+    if (!user.globalUserId) {
+      throw new NotFoundException(
+        'O usuario informado nao possui avatar salvo.',
+      );
+    }
+
+    const globalUser = await this.controlPlanePrisma.globalUser.findUnique({
+      where: { id: user.globalUserId },
+      select: {
+        avatarStoragePath: true,
+      },
+    });
+
+    if (!globalUser?.avatarStoragePath) {
+      throw new NotFoundException(
+        'O usuario informado nao possui avatar salvo.',
+      );
+    }
+
+    const buffer = await this.userAvatarStorageService.read(
+      globalUser.avatarStoragePath,
+    );
+
+    return {
+      buffer,
+      mimeType: this.userAvatarStorageService.getMimeType(
+        globalUser.avatarStoragePath,
+      ),
+    };
+  }
+
   async changePassword(
     userId: string,
     workspaceId: string,

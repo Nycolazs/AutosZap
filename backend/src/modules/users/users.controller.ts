@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Patch,
   Post,
   StreamableFile,
@@ -181,6 +182,25 @@ export class UsersController {
     return new StreamableFile(avatar.buffer, {
       type: avatar.mimeType,
       disposition: 'inline; filename="profile-avatar"',
+      length: avatar.buffer.length,
+    });
+  }
+
+  @AnyPermissions(
+    PermissionKey.INBOX_VIEW,
+    PermissionKey.CRM_VIEW,
+    PermissionKey.TEAM_VIEW,
+  )
+  @Get(':id/avatar')
+  async getUserAvatar(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('id') id: string,
+  ) {
+    const avatar = await this.usersService.getUserAvatar(id, user.workspaceId);
+
+    return new StreamableFile(avatar.buffer, {
+      type: avatar.mimeType,
+      disposition: 'inline; filename="user-avatar"',
       length: avatar.buffer.length,
     });
   }

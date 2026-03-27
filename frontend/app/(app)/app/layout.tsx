@@ -33,14 +33,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const requiredPermission = getRequiredPermissionForPath(pathname);
   const hasAccess = canAccessRequirement(me?.permissionMap, requiredPermission);
   const fallbackHref = getFirstAccessibleAppPath(me?.permissionMap);
+  const shouldRedirectRoot = Boolean(me && pathname === '/app' && !hasAccess);
 
   useEffect(() => {
-    if (!me || hasAccess || pathname !== '/app') {
+    if (!shouldRedirectRoot) {
       return;
     }
 
     router.replace(fallbackHref);
-  }, [fallbackHref, hasAccess, me, pathname, router]);
+  }, [fallbackHref, router, shouldRedirectRoot]);
 
   if (meQuery.isLoading) {
     return (
@@ -94,6 +95,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Button className="rounded-xl" onClick={() => void meQuery.refetch()}>
             Tentar novamente
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (shouldRedirectRoot) {
+    return (
+      <div className="flex h-dvh min-h-dvh items-center justify-center bg-background text-foreground">
+        <div className="mx-auto max-w-sm space-y-3 px-4 text-center">
+          <RefreshCw className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Redirecionando para uma área disponível...
+          </p>
         </div>
       </div>
     );

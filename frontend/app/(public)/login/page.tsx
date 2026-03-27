@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
 
 const schema = z.object({
   email: z.string().email('Informe um email valido.'),
@@ -93,7 +94,10 @@ export default function LoginPage() {
                   }
 
                   toast.success('Sessao iniciada com sucesso.');
-                  router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
+                  const nextPath = data.user?.isPlatformAdmin
+                    ? '/platform'
+                    : await resolvePostAuthRedirect();
+                  router.push(nextPath);
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : 'Falha no login.');
                 }

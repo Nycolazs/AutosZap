@@ -50,6 +50,7 @@ import {
   RotateCcw,
   ZoomIn,
   ZoomOut,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -82,6 +83,7 @@ import {
   Conversation,
   ConversationEvent,
   ConversationMessage,
+  ConversationMessageSender,
   ConversationMessagesPage,
   ConversationReminder,
   ConversationStatusSummary,
@@ -259,10 +261,14 @@ function getConversationStatusLabel(
 }
 
 function getContactInitials(name?: string | null) {
+  return getNameInitials(name, "CT");
+}
+
+function getNameInitials(name?: string | null, fallback = "??") {
   const normalized = name?.trim();
 
   if (!normalized) {
-    return "CT";
+    return fallback;
   }
 
   const parts = normalized.split(/\s+/).filter(Boolean);
@@ -345,6 +351,107 @@ function ConversationContactAvatar({
         )}
       >
         {getContactInitials(conversation?.contact.name)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+function normalizeMessageSenderAvatarUrl(
+  userId: string,
+  avatarUrl?: string | null,
+  currentUserId?: string | null,
+) {
+  const normalizedAvatarUrl = avatarUrl?.trim();
+
+  if (!normalizedAvatarUrl) {
+    return null;
+  }
+
+  if (
+    normalizedAvatarUrl.startsWith("/api/proxy/users/profile/avatar") &&
+    currentUserId &&
+    userId !== currentUserId
+  ) {
+    return null;
+  }
+
+  return normalizedAvatarUrl;
+}
+
+function resolveMessageSenderUser(
+  message: ConversationMessage,
+  options: {
+    currentUser?: Pick<AuthMeResponse, "id" | "name" | "avatarUrl"> | null;
+    users?: UserSummary[];
+  },
+): ConversationMessageSender | null {
+  if (message.senderUser?.id) {
+    return {
+      ...message.senderUser,
+      avatarUrl: normalizeMessageSenderAvatarUrl(
+        message.senderUser.id,
+        message.senderUser.avatarUrl,
+        options.currentUser?.id,
+      ),
+    };
+  }
+
+  const senderUserId = message.senderUserId?.trim();
+
+  if (!senderUserId) {
+    return null;
+  }
+
+  if (options.currentUser?.id === senderUserId) {
+    return {
+      id: options.currentUser.id,
+      name: options.currentUser.name,
+      avatarUrl: normalizeMessageSenderAvatarUrl(
+        options.currentUser.id,
+        options.currentUser.avatarUrl,
+        options.currentUser.id,
+      ),
+    };
+  }
+
+  const matchedUser = options.users?.find((user) => user.id === senderUserId);
+
+  if (!matchedUser) {
+    return null;
+  }
+
+  return {
+    id: matchedUser.id,
+    name: matchedUser.name,
+    avatarUrl: normalizeMessageSenderAvatarUrl(
+      matchedUser.id,
+      matchedUser.avatarUrl,
+      options.currentUser?.id,
+    ),
+  };
+}
+
+function shouldShowMessageSenderAvatar(
+  message: ConversationMessage,
+  senderUser?: ConversationMessageSender | null,
+) {
+  return message.direction === "OUTBOUND" && Boolean(senderUser?.id);
+}
+
+function MessageSenderAvatar({
+  senderUser,
+}: {
+  senderUser?: ConversationMessage["senderUser"];
+}) {
+  if (!senderUser) {
+    return null;
+  }
+
+  return (
+    <Avatar className="h-6 w-6 shrink-0 border border-white/10 bg-[#132032] shadow-sm">
+      <AvatarImage src={senderUser.avatarUrl ?? undefined} alt={senderUser.name} />
+      <AvatarFallback className="bg-[#132032] text-[9px] font-semibold text-white/88">
+        {getNameInitials(senderUser.name, "EQ")}
       </AvatarFallback>
     </Avatar>
   );
@@ -764,7 +871,7 @@ export function InboxPageContent({
 
   const usersQuery = useQuery({
     queryKey: ["users"],
-    enabled: detailsOpen || isDesktopLayout,
+    enabled: Boolean(activeConversationId) || detailsOpen || isDesktopLayout,
     queryFn: () => apiRequest<UserSummary[]>("users"),
   });
 
@@ -965,6 +1072,11 @@ export function InboxPageContent({
         messageType: "text",
         content: formattedContent,
         metadata: buildQuoteMetadataForComposer(optimisticQuotedMessage),
+        senderUser: {
+          id: meQuery.data?.id ?? "me",
+          name: meQuery.data?.name ?? "Equipe",
+          avatarUrl: meQuery.data?.avatarUrl ?? null,
+        },
         status: "QUEUED",
         sentAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
@@ -1195,6 +1307,11 @@ export function InboxPageContent({
         direction: "SYSTEM",
         messageType: "internal_note",
         content: trimmedContent,
+        senderUser: {
+          id: meQuery.data?.id ?? "me",
+          name: meQuery.data?.name ?? "Equipe",
+          avatarUrl: meQuery.data?.avatarUrl ?? null,
+        },
         metadata: {
           internalMessage: {
             scope: "WORKSPACE",
@@ -2264,9 +2381,19 @@ export function InboxPageContent({
           </CardContent>
         ) : (
           <CardContent className="flex h-full min-h-0 flex-col p-0">
-            <div className="shrink-0 border-b border-border p-3.5 sm:p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
+            <div className="relative shrink-0 border-b border-border p-3.5 sm:p-4">
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="absolute right-3.5 top-3.5 hidden h-10 w-10 shrink-0 rounded-2xl xl:inline-flex"
+                onClick={() => setConversationsPanelCollapsed(true)}
+                title="Minimizar conversas"
+                aria-label="Minimizar conversas"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div>
                   <ConversationStatusFilter
                     value={statusFilter}
                     onValueChange={setStatusFilter}
@@ -2279,18 +2406,6 @@ export function InboxPageContent({
                       }
                     }
                   />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="mt-1 hidden h-10 w-10 shrink-0 rounded-2xl xl:inline-flex"
-                  onClick={() => setConversationsPanelCollapsed(true)}
-                  title="Minimizar conversas"
-                  aria-label="Minimizar conversas"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
               </div>
               {shouldShowInstanceFilter ? (
                 <div className="mt-3">
@@ -2666,6 +2781,14 @@ export function InboxPageContent({
                   const internalMessage = resolveInternalMessageMetadata(
                     message.metadata,
                   );
+                  const resolvedSenderUser = resolveMessageSenderUser(message, {
+                    currentUser: meQuery.data,
+                    users: usersQuery.data,
+                  });
+                  const showSenderAvatar = shouldShowMessageSenderAvatar(
+                    message,
+                    resolvedSenderUser,
+                  );
 
                   return (
                     <div key={item.key}>
@@ -2681,70 +2804,84 @@ export function InboxPageContent({
                       )}
                       <div
                         className={cn(
-                          "group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]",
+                          "flex items-end gap-2",
                           message.direction === "OUTBOUND"
-                            ? "ml-auto"
+                            ? "justify-end"
                             : message.direction === "SYSTEM"
-                              ? internalMessage
-                                ? "mx-auto max-w-[min(92%,36rem)] sm:max-w-[min(72%,36rem)]"
-                                : "mx-auto"
-                              : "",
+                              ? "justify-center"
+                              : "justify-start",
                         )}
                       >
                         <div
                           className={cn(
-                            "relative rounded-lg px-2.5 py-1.5 shadow-sm",
+                            "group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]",
                             message.direction === "OUTBOUND"
-                              ? "rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]"
+                              ? "ml-auto"
                               : message.direction === "SYSTEM"
                                 ? internalMessage
-                                  ? "rounded-2xl border border-violet-400/20 bg-violet-500/10 text-left text-violet-50"
-                                  : "rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground"
-                                : "rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]",
+                                  ? "mx-auto max-w-[min(92%,36rem)] sm:max-w-[min(72%,36rem)]"
+                                  : "mx-auto"
+                                : "",
                           )}
-                          onDoubleClick={() => {
-                            if (canQuoteMessage(message)) {
-                              setQuotedMessageId(message.id);
-                              composerTextareaRef.current?.focus();
-                            }
-                          }}
                         >
-                          {canQuoteMessage(message) ? (
-                            <button
-                              type="button"
-                              className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
-                              onClick={() => {
-                                setQuotedMessageId(message.id);
-                                composerTextareaRef.current?.focus();
-                              }}
-                              title="Responder"
-                              aria-label="Responder"
-                            >
-                              <Reply className="h-3.5 w-3.5" />
-                            </button>
-                          ) : null}
-                          <MessageBubbleContent message={message} />
-                          <span
+                          <div
                             className={cn(
-                              "mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none",
+                              "relative rounded-lg px-2.5 py-1.5 shadow-sm",
                               message.direction === "OUTBOUND"
-                                ? "text-[#ffffff99]"
+                                ? "rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]"
                                 : message.direction === "SYSTEM"
                                   ? internalMessage
-                                    ? "text-violet-100/70"
-                                    : "text-muted-foreground/60"
-                                  : "text-[#ffffff66]",
+                                    ? "rounded-2xl border border-violet-400/20 bg-violet-500/10 text-left text-violet-50"
+                                    : "rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground"
+                                  : "rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]",
                             )}
+                            onDoubleClick={() => {
+                              if (canQuoteMessage(message)) {
+                                setQuotedMessageId(message.id);
+                                composerTextareaRef.current?.focus();
+                              }
+                            }}
                           >
-                            {formatMessageTime(
-                              getConversationMessageTimestamp(message),
-                            )}
-                            {message.direction === "OUTBOUND" &&
-                            message.status !== "QUEUED" ? (
-                              <MessageStatusIcon status={message.status} />
+                            {canQuoteMessage(message) ? (
+                              <button
+                                type="button"
+                                className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
+                                onClick={() => {
+                                  setQuotedMessageId(message.id);
+                                  composerTextareaRef.current?.focus();
+                                }}
+                                title="Responder"
+                                aria-label="Responder"
+                              >
+                                <Reply className="h-3.5 w-3.5" />
+                              </button>
                             ) : null}
-                          </span>
+                            <MessageBubbleContent message={message} />
+                            <span
+                              className={cn(
+                                "mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none",
+                                message.direction === "OUTBOUND"
+                                  ? "text-[#ffffff99]"
+                                  : message.direction === "SYSTEM"
+                                    ? internalMessage
+                                      ? "text-violet-100/70"
+                                      : "text-muted-foreground/60"
+                                    : "text-[#ffffff66]",
+                              )}
+                            >
+                              {formatMessageTime(
+                                getConversationMessageTimestamp(message),
+                              )}
+                              {message.direction === "OUTBOUND" &&
+                              message.status !== "QUEUED" ? (
+                                <MessageStatusIcon status={message.status} />
+                              ) : null}
+                            </span>
+                          </div>
                         </div>
+                        {showSenderAvatar ? (
+                          <MessageSenderAvatar senderUser={resolvedSenderUser} />
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -3064,25 +3201,15 @@ export function InboxPageContent({
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-white/10 bg-white/[0.02] px-2 py-4 text-center">
-              {selectedConversation && isQrConversation(selectedConversation) ? (
-                <ConversationContactAvatar
-                  conversation={selectedConversation}
-                  className="h-11 w-11"
-                  fallbackClassName="text-sm"
-                />
-              ) : (
-                <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-white/[0.05] text-foreground">
-                  <span className="text-sm font-semibold">
-                    {getContactInitials(selectedConversation?.contact.name)}
-                  </span>
-                </div>
-              )}
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-2 overflow-hidden py-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-primary/10 ring-1 ring-primary/20">
+                <UserRound className="h-5 w-5 text-primary" />
+              </div>
+              <div className="w-full overflow-hidden text-center">
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Contato
                 </p>
-                <p className="text-[11px] text-foreground/72">
+                <p className="truncate text-[10px] text-foreground/60">
                   {selectedConversation ? "Detalhes" : "Vazio"}
                 </p>
               </div>

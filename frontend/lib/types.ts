@@ -21,9 +21,16 @@ export interface UserSummary {
   id: string;
   name: string;
   email?: string;
+  avatarUrl?: string | null;
   role?: string;
   normalizedRole?: "ADMIN" | "SELLER";
   title?: string | null;
+}
+
+export interface ConversationMessageSender {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
 }
 
 export interface NotificationItem {
@@ -147,6 +154,8 @@ export interface ConversationMessage {
     } | null;
     contactPhone?: string | null;
   } | null;
+  senderUserId?: string | null;
+  senderUser?: ConversationMessageSender | null;
   status: string;
   sentAt?: string | null;
   createdAt: string;

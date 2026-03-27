@@ -6,6 +6,6 @@ import { UserAvatarStorageService } from './user-avatar-storage.service';
 @Module({
   controllers: [UsersController],
   providers: [UsersService, UserAvatarStorageService],
-  exports: [UsersService],
+  exports: [UsersService, UserAvatarStorageService],
 })
 export class UsersModule {}

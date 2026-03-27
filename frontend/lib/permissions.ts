@@ -42,7 +42,7 @@ export type PermissionRequirement = {
 
 const ROUTE_PERMISSION_RULES: Array<{
   prefix: string;
-  requirement: PermissionRequirement;
+  requirement?: PermissionRequirement;
 }> = [
   {
     prefix: '/app/desenvolvimento',
@@ -60,6 +60,18 @@ const ROUTE_PERMISSION_RULES: Array<{
       mode: 'any',
     },
   },
+  {
+    prefix: '/app/menu-interativo',
+    requirement: {
+      permissions: [
+        'SETTINGS_VIEW',
+        'CONFIGURE_AUTO_MESSAGES',
+      ],
+      mode: 'any',
+    },
+  },
+  { prefix: '/app/boas-vindas', requirement: undefined },
+  { prefix: '/app/suporte', requirement: undefined },
   {
     prefix: '/app/fluxo-de-atendimento',
     requirement: {
@@ -127,7 +139,6 @@ export function getRequiredPermissionForPath(pathname: string) {
 
 export function getFirstAccessibleAppPath(permissionMap: PermissionMap | undefined) {
   const preferredRoutes = [
-    '/app',
     '/app/inbox',
     '/app/crm',
     '/app/disparos',
@@ -142,9 +153,13 @@ export function getFirstAccessibleAppPath(permissionMap: PermissionMap | undefin
     '/app/equipe',
     '/app/papeis',
     '/app/configuracoes',
+    '/app/menu-interativo',
     '/app/horarios-de-funcionamento',
     '/app/fluxo-de-atendimento',
     '/app/desenvolvimento',
+    '/app',
+    '/app/boas-vindas',
+    '/app/suporte',
   ].map((href) => ({
     href,
     requirement: ROUTE_PERMISSION_RULES.find((rule) => rule.prefix === href)

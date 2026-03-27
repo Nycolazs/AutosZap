@@ -279,7 +279,10 @@ export function AuthExperience({
       }
 
       toast.success('Sessao iniciada com sucesso.');
-      router.push(data.user?.isPlatformAdmin ? '/platform' : '/app');
+      const nextPath = data.user?.isPlatformAdmin
+        ? '/platform'
+        : await resolvePostAuthRedirect();
+      router.push(nextPath);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha no login.');
     }

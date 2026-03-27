@@ -50,6 +50,7 @@ import {
 } from './auth.dto';
 import { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
 import { TenantConnectionService } from '../../common/tenancy/tenant-connection.service';
+import { UserAvatarStorageService } from '../users/user-avatar-storage.service';
 
 interface AuthUserPayload {
   sub: string;
@@ -88,6 +89,7 @@ export class AuthService {
     private readonly controlPlaneAuditService: ControlPlaneAuditService,
     private readonly tenantProvisioningService: TenantProvisioningService,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly userAvatarStorageService: UserAvatarStorageService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -497,6 +499,7 @@ export class AuthService {
           ...this.buildSocialAvatarUpdateData(globalUser, avatarUrl),
         },
       });
+      globalUser = await this.persistManagedSocialAvatar(globalUser, avatarUrl);
 
       await this.controlPlaneAuditService.log({
         actorId: globalUser.id,
@@ -556,7 +559,7 @@ export class AuthService {
     const {
       company,
       membership,
-      globalUser: newGlobalUser,
+      globalUser: createdGlobalUser,
     } = await this.controlPlanePrisma.$transaction(async (tx) => {
       const createdCompany = await tx.company.create({
         data: {
@@ -594,6 +597,7 @@ export class AuthService {
         globalUser: createdGlobalUser,
       };
     });
+    let newGlobalUser = createdGlobalUser;
 
     await this.linkSocialAccount(
       newGlobalUser.id,
@@ -632,6 +636,11 @@ export class AuthService {
       entityId: company.id,
       metadata: { slug: company.slug, provider: dto.provider },
     });
+
+    newGlobalUser = await this.persistManagedSocialAvatar(
+      newGlobalUser,
+      avatarUrl,
+    );
 
     const hydratedMembership = {
       ...membership,
@@ -694,13 +703,17 @@ export class AuthService {
       true,
     );
 
-    const updatedGlobalUser = await this.controlPlanePrisma.globalUser.update({
+    let updatedGlobalUser = await this.controlPlanePrisma.globalUser.update({
       where: { id: globalUser.id },
       data: this.buildSocialAvatarUpdateData(
         globalUser,
         this.normalizeOptionalString(profile.picture),
       ),
     });
+    updatedGlobalUser = await this.persistManagedSocialAvatar(
+      updatedGlobalUser,
+      profile.picture,
+    );
 
     return {
       connected: true,
@@ -747,7 +760,7 @@ export class AuthService {
     const tenantRole = invite.role;
     const prismaRole = this.mapTenantRoleToTenantRoleEnum(tenantRole);
 
-    const { globalUser, membership } =
+    const { membership, globalUser: createdOrUpdatedGlobalUser } =
       await this.controlPlanePrisma.$transaction(async (tx) => {
         const createdGlobalUser = existingGlobalUser
           ? await tx.globalUser.update({
@@ -805,6 +818,7 @@ export class AuthService {
           membership: createdMembership,
         };
       });
+    let globalUser = createdOrUpdatedGlobalUser;
 
     await this.linkSocialAccount(
       globalUser.id,
@@ -868,6 +882,8 @@ export class AuthService {
         provider: dto.provider,
       },
     });
+
+    globalUser = await this.persistManagedSocialAvatar(globalUser, avatarUrl);
 
     const hydratedMembership = {
       ...membership,
@@ -941,6 +957,119 @@ export class AuthService {
     return {
       avatarUrl: normalizedAvatarUrl,
     };
+  }
+
+  private async persistManagedSocialAvatar(
+    globalUser: GlobalUser,
+    avatarUrl?: string | null,
+  ) {
+    const normalizedAvatarUrl = this.normalizeOptionalString(avatarUrl);
+
+    if (!normalizedAvatarUrl || globalUser.avatarStoragePath) {
+      return globalUser;
+    }
+
+    const downloadedAvatar =
+      await this.downloadSocialAvatar(normalizedAvatarUrl);
+
+    if (!downloadedAvatar) {
+      return globalUser;
+    }
+
+    const savedAvatar = await this.userAvatarStorageService.save(
+      globalUser.id,
+      downloadedAvatar,
+    );
+    const updatedGlobalUser = await this.controlPlanePrisma.globalUser.update({
+      where: { id: globalUser.id },
+      data: {
+        avatarStoragePath: savedAvatar.storagePath,
+        avatarUrl: this.buildManagedUserAvatarUrl(Date.now()),
+      },
+    });
+
+    return updatedGlobalUser;
+  }
+
+  private async downloadSocialAvatar(avatarUrl: string) {
+    try {
+      const response = await fetch(avatarUrl, {
+        redirect: 'follow',
+      });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Falha ao baixar avatar social (${response.status}) de ${avatarUrl}.`,
+        );
+        return null;
+      }
+
+      const mimeType = this.normalizeAvatarMimeType(
+        response.headers.get('content-type'),
+      );
+
+      if (!mimeType) {
+        this.logger.warn(
+          `Avatar social ignorado por MIME type nao suportado: ${response.headers.get('content-type') ?? 'desconhecido'}.`,
+        );
+        return null;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      if (!buffer.length) {
+        return null;
+      }
+
+      if (buffer.length > 5 * 1024 * 1024) {
+        this.logger.warn(
+          `Avatar social ignorado por exceder 5MB (${buffer.length} bytes).`,
+        );
+        return null;
+      }
+
+      return {
+        buffer,
+        fileName: this.buildSocialAvatarFileName(mimeType),
+        mimeType,
+        size: buffer.length,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao persistir avatar social em storage: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private normalizeAvatarMimeType(value?: string | null) {
+    const mimeType = value?.split(';', 1)[0]?.trim().toLowerCase();
+
+    if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+      return 'image/jpeg';
+    }
+
+    if (mimeType === 'image/png') {
+      return 'image/png';
+    }
+
+    if (mimeType === 'image/webp') {
+      return 'image/webp';
+    }
+
+    return null;
+  }
+
+  private buildSocialAvatarFileName(mimeType: string) {
+    if (mimeType === 'image/png') {
+      return 'social-avatar.png';
+    }
+
+    if (mimeType === 'image/webp') {
+      return 'social-avatar.webp';
+    }
+
+    return 'social-avatar.jpg';
   }
 
   private async findGlobalUserBySocialAccount(

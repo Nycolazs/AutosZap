@@ -13,6 +13,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import type { CurrentAuthUser } from '../../common/decorators/current-user.decorator';
+import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { InboxEventsService } from '../../common/realtime/inbox-events.service';
@@ -47,6 +48,17 @@ const INBOX_INSTANCE_SELECT = {
   profilePictureUrl: true,
   profilePictureUpdatedAt: true,
 } satisfies Prisma.InstanceSelect;
+const MESSAGE_SENDER_USER_SELECT = {
+  id: true,
+  globalUserId: true,
+  name: true,
+  avatarUrl: true,
+} satisfies Prisma.UserSelect;
+const INBOX_MESSAGE_INCLUDE = {
+  senderUser: {
+    select: MESSAGE_SENDER_USER_SELECT,
+  },
+} satisfies Prisma.ConversationMessageInclude;
 
 type InboxInstanceActivitySummary = {
   visibleConversationsCount: number;
@@ -99,12 +111,17 @@ type LockedFinalizationConversationRecord = {
   closedAutoMessageDispatchStartedAt: Date | null;
 };
 
+type InboxMessageRecord = Prisma.ConversationMessageGetPayload<{
+  include: typeof INBOX_MESSAGE_INCLUDE;
+}>;
+
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly controlPlanePrisma: ControlPlanePrismaService,
     private readonly whatsappMessagingService: WhatsAppMessagingService,
     private readonly inboxEventsService: InboxEventsService,
     private readonly conversationWorkflowService: ConversationWorkflowService,
@@ -398,6 +415,7 @@ export class ConversationsService {
                 createdAt: 'desc',
               },
               take: INBOX_MESSAGES_PRELOAD_LIMIT,
+              include: INBOX_MESSAGE_INCLUDE,
             }
           : {
               orderBy: {
@@ -472,15 +490,13 @@ export class ConversationsService {
     }
 
     const fullConversationMessages = shouldIncludeFullMessages
-      ? (conversation.messages as Array<{
-          sentAt?: Date | null;
-          createdAt: Date;
-          metadata?: Prisma.JsonValue | null;
-        }>)
+      ? (conversation.messages as InboxMessageRecord[])
       : undefined;
     const visibleConversationMessages = fullConversationMessages
-      ? this.sortConversationMessages(
-          this.filterConversationMessagesForUser(fullConversationMessages),
+      ? await this.decorateConversationMessages(
+          this.sortConversationMessages(
+            this.filterConversationMessagesForUser(fullConversationMessages),
+          ),
         )
       : undefined;
 
@@ -1164,9 +1180,7 @@ export class ConversationsService {
     const pageSize = limit + 1;
     const batchSize = Math.max(pageSize, Math.min(limit * 3, 200));
     let cursor = this.parseMessageCursor(query?.cursor);
-    const visibleMessages: Awaited<
-      ReturnType<typeof this.prisma.conversationMessage.findMany>
-    > = [];
+    const visibleMessages: InboxMessageRecord[] = [];
 
     while (visibleMessages.length < pageSize) {
       const batch = await this.prisma.conversationMessage.findMany({
@@ -1199,6 +1213,7 @@ export class ConversationsService {
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: batchSize,
+        include: INBOX_MESSAGE_INCLUDE,
       });
 
       if (!batch.length) {
@@ -1230,7 +1245,9 @@ export class ConversationsService {
     const oldestMessage = items[items.length - 1];
 
     return {
-      items: this.sortConversationMessages(items),
+      items: await this.decorateConversationMessages(
+        this.sortConversationMessages(items),
+      ),
       hasMore,
       nextCursor:
         hasMore && oldestMessage
@@ -1312,6 +1329,97 @@ export class ConversationsService {
     }
 
     return true;
+  }
+
+  private async decorateConversationMessages(messages: InboxMessageRecord[]) {
+    if (!messages.length) {
+      return [];
+    }
+
+    const globalUserIds = Array.from(
+      new Set(
+        messages
+          .map((message) => message.senderUser?.globalUserId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const globalUsers =
+      globalUserIds.length > 0
+        ? await this.controlPlanePrisma.globalUser.findMany({
+            where: {
+              id: {
+                in: globalUserIds,
+              },
+            },
+            select: {
+              id: true,
+              avatarStoragePath: true,
+              avatarUrl: true,
+              updatedAt: true,
+            },
+          })
+        : [];
+    const globalUserMap = new Map(
+      globalUsers.map((globalUser) => [globalUser.id, globalUser]),
+    );
+
+    return messages.map((message) => {
+      if (!message.senderUser) {
+        return {
+          ...message,
+          senderUser: null,
+        };
+      }
+
+      const globalUser = message.senderUser.globalUserId
+        ? (globalUserMap.get(message.senderUser.globalUserId) ?? null)
+        : null;
+
+      return {
+        ...message,
+        senderUser: {
+          id: message.senderUser.id,
+          name: message.senderUser.name,
+          avatarUrl: this.resolveInboxSenderAvatarUrl(
+            message.senderUser.id,
+            globalUser,
+            message.senderUser.avatarUrl,
+          ),
+        },
+      };
+    });
+  }
+
+  private resolveInboxSenderAvatarUrl(
+    userId: string,
+    globalUser?: {
+      avatarStoragePath: string | null;
+      avatarUrl: string | null;
+      updatedAt: Date;
+    } | null,
+    fallback?: string | null,
+  ) {
+    if (globalUser?.avatarStoragePath) {
+      return this.buildWorkspaceUserAvatarUrl(userId, globalUser.updatedAt);
+    }
+
+    return globalUser?.avatarUrl ?? fallback ?? null;
+  }
+
+  private buildWorkspaceUserAvatarUrl(
+    userId: string,
+    cacheKey?: string | number | Date | null,
+  ) {
+    const normalizedCacheKey =
+      cacheKey instanceof Date ? cacheKey.getTime() : cacheKey;
+
+    if (!normalizedCacheKey) {
+      return `/api/proxy/users/${userId}/avatar`;
+    }
+
+    return `/api/proxy/users/${userId}/avatar?v=${encodeURIComponent(
+      String(normalizedCacheKey),
+    )}`;
   }
 
   async sendMessage(

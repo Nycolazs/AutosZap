@@ -163,7 +163,7 @@ export function ConversationStatusFilter({
             }
           }}
           className={cn(
-            'flex w-full items-center gap-3 rounded-[18px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(14,31,54,0.94),rgba(10,23,41,0.98))] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(2,10,22,0.22)] transition-all hover:border-white/[0.1] hover:bg-[linear-gradient(180deg,rgba(16,35,60,0.96),rgba(10,24,44,1))] focus:outline-none focus:ring-2 focus:ring-primary/35',
+            'flex w-full cursor-pointer items-center gap-3 rounded-[18px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(14,31,54,0.94),rgba(10,23,41,0.98))] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_24px_rgba(2,10,22,0.22)] transition-all hover:border-white/[0.1] hover:bg-[linear-gradient(180deg,rgba(16,35,60,0.96),rgba(10,24,44,1))] focus:outline-none focus:ring-2 focus:ring-primary/35',
             open && 'border-primary/25',
           )}
         >
@@ -197,7 +197,7 @@ export function ConversationStatusFilter({
             id={listboxId}
             role="listbox"
             aria-label="Filtrar conversas por status"
-            className="absolute inset-x-2 top-[calc(100%+0.5rem)] z-30 rounded-[24px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(10,24,43,0.98),rgba(7,18,31,1))] p-2.5 shadow-[0_24px_60px_rgba(2,10,22,0.42)]"
+            className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-30 rounded-[24px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(10,24,43,0.98),rgba(7,18,31,1))] p-2.5 shadow-[0_24px_60px_rgba(2,10,22,0.42)]"
           >
             <div className="px-2 pb-2">
               <p className="text-[11px] uppercase tracking-[0.18em] text-primary/70">
@@ -253,7 +253,7 @@ export function ConversationStatusFilter({
                       }
                     }}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/35',
+                      'flex w-full cursor-pointer items-center gap-3 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/35',
                       isSelected
                         ? 'border-primary/25 bg-[linear-gradient(180deg,rgba(71,148,255,0.24),rgba(34,86,158,0.12))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
                         : 'border-transparent bg-white/[0.02] text-white/88 hover:border-white/[0.08] hover:bg-white/[0.05]',
