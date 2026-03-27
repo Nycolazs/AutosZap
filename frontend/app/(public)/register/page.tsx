@@ -16,7 +16,7 @@ import {
   Sparkles,
   UserPlus,
 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { AuthPageSwitch } from '@/components/auth/auth-page-switch';
@@ -121,7 +121,7 @@ const registerOptions = [
       'Ativacao rapida com 7 dias gratis',
     ],
     helper:
-      'Se preferir, voce tambem pode criar a conta usando Google ou Facebook.',
+      'Informe o nome da empresa no formulario para ativar o cadastro rapido com Google ou Facebook.',
   },
   {
     mode: 'join' as const,
@@ -202,6 +202,8 @@ export default function RegisterPage() {
       acceptTerms: undefined as unknown as true,
     },
   });
+
+  const watchedCompanyName = useWatch({ control: createForm.control, name: 'companyName', defaultValue: '' });
 
   const joinForm = useForm<JoinCompanyValues>({
     resolver: zodResolver(joinCompanySchema),
@@ -416,19 +418,11 @@ export default function RegisterPage() {
                 </p>
               </div>
 
-              {selectedMode === 'create' ? (
-                <>
-                  <SocialLoginButtons mode="register" />
-                  <p className="text-center text-[9px] text-muted-foreground">
-                    7 dias de acesso completo. Sem cartao de credito.
-                  </p>
-                </>
-              ) : (
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[10px] leading-[1.5] text-muted-foreground">
-                  Depois de validar o convite, voce pode entrar com email e
-                  senha ou usar um provedor social.
-                </div>
-              )}
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[10px] leading-[1.5] text-muted-foreground">
+                {selectedMode === 'create'
+                  ? 'Clique em "Continuar cadastro" para preencher os dados da empresa. O login social fica disponivel dentro do formulario.'
+                  : 'Depois de validar o convite, voce pode entrar com email e senha ou usar um provedor social.'}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -525,6 +519,25 @@ export default function RegisterPage() {
                     ) : null}
                   </div>
                 </div>
+
+                {/* Social login — disponivel apos informar nome da empresa */}
+                {watchedCompanyName.trim().length >= 2 ? (
+                  <>
+                    <SocialLoginButtons
+                      mode="register"
+                      companyName={watchedCompanyName.trim()}
+                    />
+                    <div className="relative flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-[10px] text-muted-foreground">ou preencha manualmente</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-center text-[10px] text-muted-foreground">
+                    Informe o nome da empresa acima para ativar o cadastro com Google ou Facebook.
+                  </p>
+                )}
 
                 {/* User info */}
                 <div className="grid gap-2.5 sm:grid-cols-2">

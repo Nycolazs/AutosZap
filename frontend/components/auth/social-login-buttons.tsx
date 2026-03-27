@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { loadFacebookSdk } from '@/lib/facebook-sdk';
 import { resolvePostAuthRedirect } from '@/lib/auth-redirect';
 
 /* ── SVG Icons ── */
@@ -80,6 +81,23 @@ interface SocialLoginButtonsProps {
 export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLoginButtonsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+  const fbSdkReady = useRef(false);
+
+  const hasGoogle = Boolean(GOOGLE_CLIENT_ID);
+  const hasFacebook = Boolean(FACEBOOK_APP_ID);
+
+  /* ── Pre-load SDKs on mount so popups fire within the user gesture ── */
+  useEffect(() => {
+    if (hasGoogle) {
+      loadScript('https://accounts.google.com/gsi/client', 'google-gsi').catch(() => {});
+    }
+    if (hasFacebook) {
+      loadFacebookSdk({ appId: FACEBOOK_APP_ID })
+        .then(() => { fbSdkReady.current = true; })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendToBackend = useCallback(
     async (provider: string, token: string, name?: string) => {
@@ -92,6 +110,7 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
           name,
           companyName: companyName || undefined,
           inviteCode: inviteCode || undefined,
+          loginOnly: mode === 'login' ? true : undefined,
         }),
       });
 
@@ -101,6 +120,11 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
       };
 
       if (!response.ok) {
+        if (mode === 'login') {
+          toast.error('Nao encontramos sua conta. Cadastre-se para continuar.');
+          router.push('/register');
+          return;
+        }
         throw new Error(
           Array.isArray(data.message)
             ? data.message.join(', ')
@@ -165,71 +189,50 @@ export function SocialLoginButtons({ mode, companyName, inviteCode }: SocialLogi
     }
   }, [sendToBackend]);
 
-  const handleFacebook = useCallback(async () => {
-    const appId = FACEBOOK_APP_ID;
-    if (!appId) {
+  /* ── Facebook: SDK pre-carregado no mount; FB.login() chamado de forma sincrona ── */
+  const handleFacebook = useCallback(() => {
+    if (!FACEBOOK_APP_ID) {
       toast.error('Login com Facebook nao configurado.');
       return;
     }
-    setLoading('facebook');
-    try {
-      await loadScript('https://connect.facebook.net/pt_BR/sdk.js', 'facebook-jssdk');
-      await new Promise<void>((resolve) => {
-        const check = () => {
-          if ((window as unknown as Record<string, unknown>).FB) {
-            resolve();
-          } else {
-            setTimeout(check, 100);
-          }
-        };
-        check();
-      });
 
-      const FB = (window as unknown as Record<string, unknown>).FB as {
-        init(config: Record<string, unknown>): void;
-        login(
-          callback: (response: {
-            authResponse?: { accessToken: string };
-            status: string;
-          }) => void,
-          options: Record<string, unknown>,
-        ): void;
-      };
-
-      FB.init({
-        appId,
-        cookie: true,
-        xfbml: false,
-        version: 'v22.0',
-      });
-
-      const accessToken = await new Promise<string>((resolve, reject) => {
-        FB.login(
-          (response) => {
-            if (response.authResponse?.accessToken) {
-              resolve(response.authResponse.accessToken);
-            } else {
-              reject(new Error('Login Facebook cancelado.'));
-            }
-          },
-          { scope: 'email' },
-        );
-      });
-
-      await sendToBackend('facebook', accessToken);
-    } catch (error) {
-      if (error instanceof Error && error.message !== 'Login Facebook cancelado.') {
-        toast.error(error.message);
-      }
-    } finally {
-      setLoading(null);
+    /* Se o SDK ainda nao foi carregado, iniciar agora e pedir para tentar novamente */
+    if (!window.FB) {
+      setLoading('facebook');
+      loadFacebookSdk({ appId: FACEBOOK_APP_ID })
+        .then(() => {
+          fbSdkReady.current = true;
+          toast.info('Facebook carregado. Clique novamente para continuar.');
+        })
+        .catch(() => {
+          toast.error('Nao foi possivel carregar o Facebook. Tente novamente.');
+        })
+        .finally(() => setLoading(null));
+      return;
     }
+
+    setLoading('facebook');
+
+    /* FB.login() deve ser chamado de forma sincrona dentro do evento de clique */
+    window.FB.login(
+      (response) => {
+        if (!response.authResponse?.accessToken) {
+          setLoading(null);
+          return;
+        }
+        sendToBackend('facebook', response.authResponse.accessToken)
+          .catch((error) => {
+            if (error instanceof Error) {
+              toast.error(error.message);
+            }
+          })
+          .finally(() => setLoading(null));
+      },
+      { scope: 'email' },
+    );
   }, [sendToBackend]);
 
-  const hasGoogle = Boolean(GOOGLE_CLIENT_ID);
-  const hasFacebook = Boolean(FACEBOOK_APP_ID);
   const hasAny = hasGoogle || hasFacebook;
-
   if (!hasAny) return null;
 
   return (

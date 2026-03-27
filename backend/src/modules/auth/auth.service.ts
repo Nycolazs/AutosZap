@@ -499,9 +499,15 @@ export class AuthService {
       );
     }
 
+    if (dto.loginOnly) {
+      throw new BadRequestException(
+        'Nao encontramos uma conta com este email. Cadastre-se para continuar.',
+      );
+    }
+
     const allowPublicSignup = this.isPublicSignupEnabled();
 
-    if (!allowPublicSignup) {
+    if (!allowPublicSignup && !dto.companyName) {
       throw new BadRequestException(
         'Cadastro direto desativado. Entre em contato com o administrador.',
       );
