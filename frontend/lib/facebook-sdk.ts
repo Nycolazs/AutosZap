@@ -84,7 +84,7 @@ type EmbeddedSignupBridgeMessage =
     };
 
 const FACEBOOK_SCRIPT_ID = 'facebook-jssdk';
-const DEFAULT_GRAPH_API_VERSION = 'v22.0';
+const DEFAULT_GRAPH_API_VERSION = 'v23.0';
 const FACEBOOK_ORIGINS = new Set([
   'https://www.facebook.com',
   'https://web.facebook.com',
@@ -137,7 +137,8 @@ function initFacebookSdk(appId: string, graphApiVersion: string) {
     throw new Error('Facebook SDK nao carregado.');
   }
 
-  const sdkKey = `${appId}:${graphApiVersion}`;
+  const resolvedGraphApiVersion = normalizeFacebookGraphApiVersion(graphApiVersion);
+  const sdkKey = `${appId}:${resolvedGraphApiVersion}`;
   if (initializedSdkKey === sdkKey) {
     return;
   }
@@ -146,9 +147,19 @@ function initFacebookSdk(appId: string, graphApiVersion: string) {
     appId,
     cookie: true,
     xfbml: false,
-    version: graphApiVersion,
+    version: resolvedGraphApiVersion,
   });
   initializedSdkKey = sdkKey;
+}
+
+function normalizeFacebookGraphApiVersion(version?: string | null) {
+  const normalizedVersion = version?.trim();
+
+  if (normalizedVersion && /^v\d+\.\d+$/.test(normalizedVersion)) {
+    return normalizedVersion;
+  }
+
+  return DEFAULT_GRAPH_API_VERSION;
 }
 
 async function waitForFacebookSdk(timeoutMs = 10000) {
@@ -280,9 +291,10 @@ export function loadFacebookSdk({
   graphApiVersion = DEFAULT_GRAPH_API_VERSION,
 }: LoadFacebookSdkOptions): Promise<void> {
   ensureBrowserEnvironment();
+  const resolvedGraphApiVersion = normalizeFacebookGraphApiVersion(graphApiVersion);
 
   if (window.FB) {
-    initFacebookSdk(appId, graphApiVersion);
+    initFacebookSdk(appId, resolvedGraphApiVersion);
     return Promise.resolve();
   }
 
@@ -291,7 +303,7 @@ export function loadFacebookSdk({
       const previousAsyncInit = window.fbAsyncInit;
       const completeInitialization = () => {
         try {
-          initFacebookSdk(appId, graphApiVersion);
+          initFacebookSdk(appId, resolvedGraphApiVersion);
           resolve();
         } catch (error) {
           reject(
@@ -340,7 +352,7 @@ export function loadFacebookSdk({
   }
 
   return sdkLoadPromise.then(() => {
-    initFacebookSdk(appId, graphApiVersion);
+    initFacebookSdk(appId, resolvedGraphApiVersion);
   });
 }
 
