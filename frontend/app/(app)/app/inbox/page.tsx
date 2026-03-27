@@ -1121,16 +1121,47 @@ export function InboxPageContent({
         );
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversations-summary"] }),
+      // Replace optimistic message with real one in cache (no full refetch)
+      const convId = activeConversationId;
+      if (convId) {
+        queryClient.setQueryData<
+          InfiniteData<ConversationMessagesPage> | undefined
+        >(["conversation", convId, "messages"], (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.map((item) =>
+                item.id.startsWith("optimistic-") ? message : item,
+              ),
+            })),
+          };
+        });
+      }
+
+      // Mark conversations as stale (polling will refresh them)
+      queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-summary"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-instances"],
+        refetchType: "none",
+      });
+      // Refetch conversation base/details but NOT messages
+      if (convId) {
         queryClient.invalidateQueries({
-          queryKey: ["conversations-instances"],
-        }),
+          queryKey: ["conversation", convId, "base"],
+        });
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
-        }),
-      ]);
+          queryKey: ["conversation", convId, "details"],
+        });
+      }
     },
     onError: (error: Error, _variables, context) => {
       if (context?.activeConversationId) {
@@ -1182,16 +1213,26 @@ export function InboxPageContent({
       };
     },
     onSuccess: async (_result, conversationId) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversations-summary"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["conversations-instances"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["conversation", conversationId],
-        }),
-      ]);
+      // Mark as stale — polling picks up the change
+      queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-summary"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-instances"],
+        refetchType: "none",
+      });
+      // Only refresh base/details, not messages
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", conversationId, "base"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", conversationId, "details"],
+      });
     },
     onError: (error: Error, conversationId, context) => {
       if (context) {
@@ -1256,16 +1297,32 @@ export function InboxPageContent({
         fileInputRef.current.value = "";
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversations-summary"] }),
+      // Mark conversations as stale (polling will refresh them)
+      queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-summary"],
+        refetchType: "none",
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversations-instances"],
+        refetchType: "none",
+      });
+      // Refetch messages to pick up the new media message
+      if (activeConversationId) {
         queryClient.invalidateQueries({
-          queryKey: ["conversations-instances"],
-        }),
+          queryKey: ["conversation", activeConversationId, "base"],
+        });
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
-        }),
-      ]);
+          queryKey: ["conversation", activeConversationId, "details"],
+        });
+        // For media, we need to refetch messages since there's no optimistic update
+        await queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "messages"],
+        });
+      }
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1278,9 +1335,14 @@ export function InboxPageContent({
       }),
     onSuccess: async () => {
       setNoteDraft("");
-      await queryClient.invalidateQueries({
-        queryKey: ["conversation", activeConversationId],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
+        }),
+      ]);
       toast.success("Nota registrada.");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -1344,14 +1406,37 @@ export function InboxPageContent({
         conversationSnapshots,
       };
     },
-    onSuccess: async () => {
+    onSuccess: async (message) => {
       setComposerMode("reply");
       setMessageDraft("");
       setQuotedMessageId(null);
       shouldStickToBottomRef.current = true;
-      await queryClient.invalidateQueries({
-        queryKey: ["conversation", activeConversationId],
-      });
+
+      // Replace optimistic internal message with real one in cache
+      const convId = activeConversationId;
+      if (convId) {
+        queryClient.setQueryData<
+          InfiniteData<ConversationMessagesPage> | undefined
+        >(["conversation", convId, "messages"], (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.map((item) =>
+                item.id.startsWith("optimistic-") ? message : item,
+              ),
+            })),
+          };
+        });
+        // Refresh base/details but not messages
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", convId, "base"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", convId, "details"],
+        });
+      }
       toast.success("Mensagem interna registrada no chat.");
     },
     onError: (error: Error, _variables, context) => {
@@ -1399,7 +1484,10 @@ export function InboxPageContent({
       setEditingReminderId(null);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
       ]);
@@ -1421,7 +1509,10 @@ export function InboxPageContent({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
       ]);
@@ -1441,7 +1532,10 @@ export function InboxPageContent({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
       ]);
@@ -1464,7 +1558,10 @@ export function InboxPageContent({
           queryKey: ["conversations-instances"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
       ]);
       toast.success("Conversa atualizada.");
@@ -1484,7 +1581,10 @@ export function InboxPageContent({
           queryKey: ["conversations-instances"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-performance"] }),
       ]);
@@ -1505,7 +1605,10 @@ export function InboxPageContent({
           queryKey: ["conversations-instances"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard-performance"] }),
       ]);
@@ -1526,7 +1629,10 @@ export function InboxPageContent({
           queryKey: ["conversations-instances"],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["conversation", activeConversationId],
+          queryKey: ["conversation", activeConversationId, "base"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId, "details"],
         }),
       ]);
       toast.success("Conversa reaberta.");
@@ -2060,8 +2166,16 @@ export function InboxPageContent({
           payload.conversationId &&
           payload.conversationId === activeConversationId
         ) {
+          // Refetch messages and conversation data separately to avoid
+          // broad prefix invalidation that causes flicker
           void queryClient.invalidateQueries({
-            queryKey: ["conversation", activeConversationId],
+            queryKey: ["conversation", activeConversationId, "messages"],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["conversation", activeConversationId, "base"],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["conversation", activeConversationId, "details"],
           });
         }
       } catch {
@@ -2317,7 +2431,13 @@ export function InboxPageContent({
       queryClient.invalidateQueries({ queryKey: ["conversations-summary"] }),
       queryClient.invalidateQueries({ queryKey: ["conversations-instances"] }),
       queryClient.invalidateQueries({
-        queryKey: ["conversation", activeConversationId],
+        queryKey: ["conversation", activeConversationId, "base"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", activeConversationId, "details"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", activeConversationId, "messages"],
       }),
     ]);
   };
