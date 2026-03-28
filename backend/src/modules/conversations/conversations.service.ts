@@ -176,9 +176,10 @@ export class ConversationsService {
             },
           },
         },
-        orderBy: {
-          lastMessageAt: 'desc',
-        },
+        orderBy: [
+          { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
         skip,
         take,
       }),
