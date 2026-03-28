@@ -65,24 +65,37 @@ git reset --hard "origin/$BRANCH" 2>&1 | tee -a "$LOG_FILE"
 COMMIT=$(git log --oneline -1)
 log "Commit atual: $COMMIT"
 
-log "Passo 2/5: Rebuilding imagem Docker do backend..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build backend 2>&1 | tee -a "$LOG_FILE"
+gateway_container_id() {
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q whatsapp-web-gateway
+}
 
-log "Passo 3/5: Reiniciando servicos (zero-downtime quando possivel)..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --no-deps --remove-orphans backend 2>&1 | tee -a "$LOG_FILE"
+gateway_health_status() {
+  local container_id
+  container_id="$(gateway_container_id)"
+  [[ -n "$container_id" ]] || return 1
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null
+}
+
+log "Passo 2/5: Rebuilding imagens Docker do backend e gateway QR..."
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build backend whatsapp-web-gateway 2>&1 | tee -a "$LOG_FILE"
+
+log "Passo 3/5: Reiniciando backend e gateway QR..."
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans backend whatsapp-web-gateway 2>&1 | tee -a "$LOG_FILE"
 
 HEALTH_URL="$(public_health_url)"
-log "Passo 4/5: Aguardando backend ficar healthy e responder em $HEALTH_URL (ate 120s)..."
+log "Passo 4/5: Aguardando backend e gateway QR ficarem healthy (ate 120s)..."
 for i in $(seq 1 24); do
   STATUS="$(backend_health_status || true)"
-  if [[ "$STATUS" == "healthy" ]] && curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
-    log "  Backend healthy e endpoint publico respondendo apos ${i}x5s"
+  GATEWAY_STATUS="$(gateway_health_status || true)"
+  if [[ "$STATUS" == "healthy" ]] && [[ "$GATEWAY_STATUS" == "healthy" ]] && curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+    log "  Backend e gateway QR healthy; endpoint publico respondendo apos ${i}x5s"
     break
   fi
 
   if [[ $i -eq 24 ]]; then
     log "Status final do container backend: ${STATUS:-desconhecido}"
-    die "Backend nao ficou pronto em 120s. Verifique logs: docker compose -f $COMPOSE_FILE logs --tail=120 backend"
+    log "Status final do container whatsapp-web-gateway: ${GATEWAY_STATUS:-desconhecido}"
+    die "Backend/gateway QR nao ficaram prontos em 120s. Verifique logs: docker compose -f $COMPOSE_FILE logs --tail=120 backend whatsapp-web-gateway"
   fi
 
   sleep 5

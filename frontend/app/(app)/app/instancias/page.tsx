@@ -249,6 +249,10 @@ function buildPendingQrConnectionState(
   };
 }
 
+function buildQrDraftInstanceName() {
+  return `__qr_draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function buildConnectionStateFromQr(
   qrState?: InstanceQrState | null,
 ): InstanceConnectionState | null {
@@ -429,6 +433,7 @@ export default function InstancesPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingProfile, setUploadingProfile] = useState(false);
   const finalizingConnectedQrInstanceIdRef = useRef<string | null>(null);
+  const createQrDialogOpenRef = useRef(false);
   const activeQrConnectionInstance = useMemo(() => {
     if (connectionDialogOpen) {
       return selectedConnectionInstance;
@@ -455,8 +460,7 @@ export default function InstancesPage() {
     }
 
     return nextInstances.filter(
-      (instance) =>
-        instance.id !== pendingQrDraftInstanceId || instance.status === 'CONNECTED',
+      (instance) => instance.id !== pendingQrDraftInstanceId,
     );
   }, [instancesQuery.data, pendingQrDraftInstanceId]);
   const metaInstances = useMemo(
@@ -541,6 +545,10 @@ export default function InstancesPage() {
   }, [loadConnectionState, loadQrState]);
 
   useEffect(() => {
+    createQrDialogOpenRef.current = createQrDialogOpen;
+  }, [createQrDialogOpen]);
+
+  useEffect(() => {
     if (!selectedFile) {
       setPreviewUrl(null);
       return;
@@ -605,7 +613,7 @@ export default function InstancesPage() {
 
     const intervalId = window.setInterval(() => {
       void pollConnectionDialog();
-    }, createQrDialogOpen ? 2000 : 5000);
+    }, createQrDialogOpen ? 1200 : 5000);
 
     return () => {
       cancelled = true;
@@ -626,34 +634,13 @@ export default function InstancesPage() {
     queryClient,
   ]);
 
-  useEffect(() => {
-    if (
-      !pendingQrDraftInstanceId ||
-      createQrPreviewInstance?.id !== pendingQrDraftInstanceId ||
-      connectionState?.phase !== 'CONNECTED'
-    ) {
-      return;
-    }
-
-    if (finalizingConnectedQrInstanceIdRef.current === pendingQrDraftInstanceId) {
-      return;
-    }
-
-    finalizingConnectedQrInstanceIdRef.current = pendingQrDraftInstanceId;
-    void finalizeConnectedQrInstance(createQrPreviewInstance);
-  }, [
-    connectionState?.phase,
-    createQrPreviewInstance,
-    pendingQrDraftInstanceId,
-    finalizeConnectedQrInstance,
-  ]);
-
-  function resetCreateQrDialogState() {
+  const resetCreateQrDialogState = useCallback(() => {
     setCreateQrForm({ name: '' });
     setCreateQrPreviewInstance(null);
     setConnectionState(null);
     setQrState(null);
-  }
+    finalizingConnectedQrInstanceIdRef.current = null;
+  }, []);
 
   function resetProfileDialogState() {
     setSelectedFile(null);
@@ -717,8 +704,8 @@ export default function InstancesPage() {
     }
   }
 
-  async function waitForQrAvailability(instanceId: string) {
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+  const waitForQrAvailability = useCallback(async (instanceId: string) => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       try {
         const { state, qr } = await hydrateQrConnectionState(instanceId);
 
@@ -729,7 +716,7 @@ export default function InstancesPage() {
         // Keep retrying while the preview dialog is open.
       }
 
-      if (attempt === 2) {
+      if (attempt === 1 || attempt === 4) {
         try {
           await apiRequest(`instances/${instanceId}/qr/refresh`, {
             method: 'POST',
@@ -739,30 +726,52 @@ export default function InstancesPage() {
         }
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
     }
-  }
+  }, [hydrateQrConnectionState]);
 
   const finalizeConnectedQrInstance = useCallback(
     async (instance: Instance) => {
+      const name = createQrForm.name.trim();
+
+      if (!name) {
+        toast.error('Informe um nome para finalizar a instancia.');
+        return;
+      }
+
+      if (finalizingConnectedQrInstanceIdRef.current === instance.id) {
+        return;
+      }
+
+      finalizingConnectedQrInstanceIdRef.current = instance.id;
+      const actionKey = `finalize-qr:${instance.id}`;
       const syncToastId = toast.loading(
-        'Instancia conectada. Sincronizando conversas privadas do WhatsApp...',
+        'Salvando a instancia e sincronizando conversas privadas do WhatsApp...',
         {
           duration: Number.POSITIVE_INFINITY,
         },
       );
-
-      setCreateQrDialogOpen(false);
-      resetCreateQrDialogState();
-      setPendingQrDraftInstanceId((current) =>
-        current === instance.id ? null : current,
-      );
+      setInstanceActionKey(actionKey);
 
       try {
+        await apiRequest<Instance>(`instances/${instance.id}`, {
+          method: 'PATCH',
+          body: {
+            name,
+          },
+        });
+
+        setPendingQrDraftInstanceId((current) =>
+          current === instance.id ? null : current,
+        );
+        setCreateQrDialogOpen(false);
+        resetCreateQrDialogState();
+
+        await queryClient.invalidateQueries({ queryKey: ['instances'] });
+
         const response = await syncInstance(instance.id);
 
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['instances'] }),
           queryClient.removeQueries({ queryKey: ['conversations'] }),
           queryClient.removeQueries({ queryKey: ['conversations-summary'] }),
           queryClient.removeQueries({ queryKey: ['conversations-instances'] }),
@@ -776,11 +785,10 @@ export default function InstancesPage() {
           },
         );
       } catch (error) {
-        await queryClient.invalidateQueries({ queryKey: ['instances'] });
         toast.error(
           error instanceof Error
             ? error.message
-            : 'Instancia conectada, mas nao foi possivel sincronizar o historico inicial.',
+            : 'Nao foi possivel finalizar a instancia QR.',
           {
             id: syncToastId,
           },
@@ -789,15 +797,16 @@ export default function InstancesPage() {
         if (finalizingConnectedQrInstanceIdRef.current === instance.id) {
           finalizingConnectedQrInstanceIdRef.current = null;
         }
+        setInstanceActionKey((current) => (current === actionKey ? null : current));
       }
     },
-    [queryClient, syncInstance],
+    [createQrForm.name, queryClient, resetCreateQrDialogState, syncInstance],
   );
 
-  async function discardPendingQrDraftInstance(
+  const discardPendingQrDraftInstance = useCallback(async (
     instanceId: string,
     options?: { silent?: boolean },
-  ) {
+  ) => {
     try {
       await apiRequest(`instances/${instanceId}`, { method: 'DELETE' });
       await queryClient.invalidateQueries({ queryKey: ['instances'] });
@@ -823,7 +832,28 @@ export default function InstancesPage() {
         current === instanceId ? null : current,
       );
     }
-  }
+  }, [queryClient]);
+
+  const closeCreateQrDialog = useCallback(() => {
+    const previewInstanceId = createQrPreviewInstance?.id ?? null;
+
+    setCreateQrDialogOpen(false);
+    resetCreateQrDialogState();
+
+    if (
+      previewInstanceId &&
+      pendingQrDraftInstanceId === previewInstanceId
+    ) {
+      void discardPendingQrDraftInstance(previewInstanceId, {
+        silent: true,
+      });
+    }
+  }, [
+    createQrPreviewInstance?.id,
+    discardPendingQrDraftInstance,
+    pendingQrDraftInstanceId,
+    resetCreateQrDialogState,
+  ]);
 
   async function openConnectionDialog(instance: Instance) {
     setSelectedConnectionInstance(instance);
@@ -849,24 +879,35 @@ export default function InstancesPage() {
     setQrState(null);
   }
 
-  async function createQrInstance() {
-    const name = createQrForm.name.trim();
-    if (!name) {
-      toast.error('Informe um nome para a instancia QR.');
+  const startQrDraftSession = useCallback(async () => {
+    if (
+      createQrPreviewInstance ||
+      instanceActionKey === 'create-qr-draft'
+    ) {
       return;
     }
 
-    setInstanceActionKey(`create-qr:${name}`);
+    const draftName = buildQrDraftInstanceName();
+    const actionKey = 'create-qr-draft';
+
+    setInstanceActionKey(actionKey);
+    setConnectionState(buildPendingQrConnectionState());
+    setQrState(null);
     let createdInstance: Instance | null = null;
 
     try {
       createdInstance = await apiRequest<Instance>('instances', {
         method: 'POST',
         body: {
-          name,
+          name: draftName,
           provider: 'WHATSAPP_WEB',
         },
       });
+
+      if (!createQrDialogOpenRef.current) {
+        await discardPendingQrDraftInstance(createdInstance.id, { silent: true });
+        return;
+      }
 
       setCreateQrPreviewInstance(createdInstance);
       setPendingQrDraftInstanceId(createdInstance.id);
@@ -876,13 +917,18 @@ export default function InstancesPage() {
           buildPendingQrConnectionState(),
       );
       setQrState(createdInstance.qr ?? null);
-      setCreateQrForm({ name: '' });
       const connectedInstance = await apiRequest<Instance>(
         `instances/${createdInstance.id}/connect`,
         {
           method: 'POST',
         },
       );
+
+      if (!createQrDialogOpenRef.current) {
+        await discardPendingQrDraftInstance(createdInstance.id, { silent: true });
+        return;
+      }
+
       setCreateQrPreviewInstance(connectedInstance);
       setConnectionState(
         connectedInstance.connectionState ??
@@ -896,18 +942,47 @@ export default function InstancesPage() {
       );
     } catch (error) {
       if (createdInstance) {
-        void discardPendingQrDraftInstance(createdInstance.id, { silent: true });
+        await discardPendingQrDraftInstance(createdInstance.id, { silent: true });
       }
+
+      setCreateQrPreviewInstance(null);
+      setPendingQrDraftInstanceId(null);
+      setConnectionState(null);
+      setQrState(null);
 
       toast.error(
         error instanceof Error ? error.message : 'Nao foi possivel criar a instancia QR.',
       );
     } finally {
       setInstanceActionKey((current) =>
-        current === `create-qr:${name}` ? null : current,
+        current === actionKey ? null : current,
       );
     }
-  }
+  }, [
+    createQrPreviewInstance,
+    discardPendingQrDraftInstance,
+    instanceActionKey,
+    waitForQrAvailability,
+  ]);
+
+  useEffect(() => {
+    if (
+      !createQrDialogOpen ||
+      createQrPreviewInstance ||
+      pendingQrDraftInstanceId ||
+      instanceActionKey === 'create-qr-draft'
+    ) {
+      return;
+    }
+
+    void startQrDraftSession();
+  }, [
+    createQrDialogOpen,
+    createQrPreviewInstance,
+    instanceActionKey,
+    pendingQrDraftInstanceId,
+    startQrDraftSession,
+  ]);
 
   async function runQrAction(
     actionKey: string,
@@ -1820,27 +1895,12 @@ export default function InstancesPage() {
         open={createQrDialogOpen}
         onOpenChange={(open) => {
           if (open) {
+            resetCreateQrDialogState();
             setCreateQrDialogOpen(true);
             return;
           }
 
-          const previewInstanceId = createQrPreviewInstance?.id ?? null;
-          const isConnected = connectionState?.phase === 'CONNECTED';
-
-          setCreateQrDialogOpen(false);
-          resetCreateQrDialogState();
-
-          if (previewInstanceId && !isConnected) {
-            void discardPendingQrDraftInstance(previewInstanceId, {
-              silent: true,
-            });
-          } else if (
-            previewInstanceId &&
-            pendingQrDraftInstanceId === previewInstanceId
-          ) {
-            setPendingQrDraftInstanceId(null);
-            void queryClient.invalidateQueries({ queryKey: ['instances'] });
-          }
+          closeCreateQrDialog();
         }}
       >
         <DialogContent
@@ -1852,12 +1912,14 @@ export default function InstancesPage() {
         >
           <DialogHeader className={createQrPreviewInstance ? 'shrink-0' : undefined}>
             <DialogTitle>
-              {createQrPreviewInstance ? 'Escaneie o QR da instancia' : 'Conectar numero por QR'}
+              {connectionState?.phase === 'CONNECTED'
+                ? 'Defina o nome da instancia'
+                : 'Conectar numero por QR'}
             </DialogTitle>
             <DialogDescription>
-              {createQrPreviewInstance
-                ? 'Deixe este modal aberto enquanto o cliente escaneia o QR. A sincronizacao inicial sera disparada automaticamente depois da conexao.'
-                : 'A sessao QR sera iniciada agora e a instancia so aparece na lista depois que a conexao for concluida.'}
+              {connectionState?.phase === 'CONNECTED'
+                ? 'O numero ja conectou. Agora informe o nome final para salvar a instancia no workspace.'
+                : 'A sessao QR e iniciada imediatamente. O QR aparece assim que o gateway terminar de preparar a conexao.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1865,7 +1927,9 @@ export default function InstancesPage() {
             <div className="space-y-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:space-y-0 sm:gap-4">
               <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4 sm:shrink-0">
                 <p className="text-sm font-medium text-foreground">
-                  {createQrPreviewInstance.name}
+                  {connectionState?.phase === 'CONNECTED'
+                    ? 'Sessao conectada'
+                    : 'Sessao QR temporaria'}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Status: {getConnectionPhaseLabel(connectionState?.phase)}
@@ -1873,15 +1937,29 @@ export default function InstancesPage() {
               </div>
 
               {connectionState?.phase === 'CONNECTED' ? (
-                <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-background-panel/35 px-6 text-center sm:min-h-0 sm:flex-1">
-                  <QrCode className="h-10 w-10 text-primary" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Instancia conectada
-                    </p>
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      A sincronizacao inicial desta sessao QR foi iniciada automaticamente.
-                    </p>
+                <div className="space-y-4 rounded-2xl border border-border/70 bg-background-panel/35 px-6 py-5 sm:min-h-0 sm:flex-1">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    <QrCode className="h-10 w-10 text-primary" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">
+                        Numero conectado com sucesso
+                      </p>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Agora informe o nome final da instancia para salvar e iniciar a sincronizacao.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="qr-instance-name">Nome da instancia</Label>
+                    <Input
+                      id="qr-instance-name"
+                      value={createQrForm.name}
+                      onChange={(event) =>
+                        setCreateQrForm({ name: event.target.value })
+                      }
+                      placeholder="Ex.: Atendimento Comercial"
+                    />
                   </div>
                 </div>
               ) : qrState?.qrCode ?? connectionState?.qrCode ? (
@@ -1913,7 +1991,7 @@ export default function InstancesPage() {
 
               <p className="text-xs text-muted-foreground sm:shrink-0">
                 {connectionState?.phase === 'CONNECTED'
-                  ? 'Conexao concluida com sucesso.'
+                  ? 'A instancia so sera exibida na lista depois que voce salvar o nome.'
                   : `Expira em: ${
                       qrState?.qrCodeExpiresAt ??
                       connectionState?.qrCodeExpiresAt ??
@@ -1922,65 +2000,56 @@ export default function InstancesPage() {
               </p>
 
               <div className="flex flex-col gap-2 sm:shrink-0 sm:flex-row">
+                {connectionState?.phase === 'CONNECTED' ? (
+                  <Button
+                    type="button"
+                    onClick={() => void finalizeConnectedQrInstance(createQrPreviewInstance)}
+                    disabled={instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}`}
+                  >
+                    {instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    Salvar instancia
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                      createQrPreviewInstance
+                        ? void runQrAction(
+                            `refresh-qr:${createQrPreviewInstance.id}`,
+                            createQrPreviewInstance.id,
+                            'qr/refresh',
+                          )
+                        : undefined
+                    }
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Atualizar QR
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() =>
-                    createQrPreviewInstance
-                      ? void runQrAction(
-                          `refresh-qr:${createQrPreviewInstance.id}`,
-                          createQrPreviewInstance.id,
-                          'qr/refresh',
-                        )
-                      : undefined
-                  }
+                  onClick={closeCreateQrDialog}
                 >
-                  <RefreshCw className="h-4 w-4" />
-                  Atualizar QR
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setCreateQrDialogOpen(false)}
-                >
-                  Fechar
+                  Cancelar
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="qr-instance-name">Nome da instancia</Label>
-                <Input
-                  id="qr-instance-name"
-                  value={createQrForm.name}
-                  onChange={(event) =>
-                    setCreateQrForm({ name: event.target.value })
-                  }
-                  placeholder="Ex.: Atendimento Comercial"
-                />
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  onClick={() => void createQrInstance()}
-                  disabled={instanceActionKey?.startsWith('create-qr:') ?? false}
-                >
-                  {instanceActionKey?.startsWith('create-qr:') ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  Conectar QR
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setCreateQrDialogOpen(false)}
-                >
-                  Cancelar
-                </Button>
+            <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background-panel/35 px-6 text-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  Iniciando sessao QR
+                </p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Estamos criando uma sessao temporaria para gerar o QR o mais rapido possivel.
+                </p>
               </div>
             </div>
           )}

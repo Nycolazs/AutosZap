@@ -228,4 +228,31 @@ describe('InstancesService embedded signup', () => {
       data: { deletedAt: expect.any(Date) },
     });
   });
+
+  it('rejects renaming an instance to an already active name', async () => {
+    const { service, prisma } = createService();
+
+    prisma.instance.findFirst
+      .mockResolvedValueOnce({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        name: 'QR provisoria',
+        provider: 'WHATSAPP_WEB',
+        status: 'CONNECTED',
+        mode: 'PRODUCTION',
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'instance-2',
+        workspaceId: 'ws-1',
+        name: 'Atendimento Comercial',
+        deletedAt: null,
+      });
+
+    await expect(
+      service.update('instance-1', 'ws-1', {
+        name: 'Atendimento Comercial',
+      }),
+    ).rejects.toThrow('Ja existe uma instancia com este nome.');
+  });
 });

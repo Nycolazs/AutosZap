@@ -213,10 +213,54 @@ export class InstancesService {
       throw new NotFoundException('Instancia nao encontrada.');
     }
 
+    const normalizedName =
+      payload.name !== undefined ? payload.name.trim() : undefined;
+
+    if (payload.name !== undefined && !normalizedName) {
+      throw new BadRequestException('Informe um nome para a instancia.');
+    }
+
+    if (normalizedName && normalizedName !== instance.name) {
+      const existing = await this.prisma.instance.findFirst({
+        where: {
+          workspaceId,
+          name: normalizedName,
+          deletedAt: null,
+          NOT: {
+            id,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException('Ja existe uma instancia com este nome.');
+      }
+
+      const deletedInstance = await this.prisma.instance.findFirst({
+        where: {
+          workspaceId,
+          name: normalizedName,
+          NOT: {
+            deletedAt: null,
+            id,
+          },
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+      });
+
+      if (deletedInstance) {
+        throw new BadRequestException(
+          'Ja existe uma instancia removida com este nome. Escolha outro nome.',
+        );
+      }
+    }
+
     await this.prisma.instance.update({
       where: { id },
       data: {
-        name: payload.name ?? instance.name,
+        name: normalizedName ?? instance.name,
         provider: payload.provider ?? instance.provider,
         status: payload.status ?? instance.status,
         mode: payload.mode ?? instance.mode,
