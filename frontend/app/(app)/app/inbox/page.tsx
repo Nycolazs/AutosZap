@@ -3,6 +3,7 @@
 import type {
   CSSProperties,
   KeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
   SetStateAction,
@@ -28,6 +29,7 @@ import {
   CheckCheck,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   FileImage,
   Expand,
@@ -94,6 +96,7 @@ import {
 } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useUiStore } from "@/store/ui-store";
 
 const INBOX_REFRESH_INTERVAL = 12000;
 const AUDIO_WAVEFORM_BARS = [
@@ -104,6 +107,10 @@ const INBOX_CONVERSATIONS_PANEL_WIDTH = 296;
 const INBOX_DETAILS_PANEL_WIDTH = 320;
 const INBOX_COLLAPSED_PANEL_WIDTH = 72;
 const MESSAGE_HISTORY_LOAD_THRESHOLD = 96;
+const MESSAGE_CONTEXT_MENU_WIDTH = 180;
+const MESSAGE_CONTEXT_MENU_COPY_ONLY_HEIGHT = 56;
+const MESSAGE_CONTEXT_MENU_WITH_REPLY_HEIGHT = 96;
+const MESSAGE_CONTEXT_MENU_VIEWPORT_PADDING = 12;
 const ALL_INBOX_INSTANCES_VALUE = "ALL";
 const HIDDEN_MEDIA_LABELS = new Set([
   "Imagem",
@@ -520,6 +527,12 @@ type RecordingMimeConfig = {
   extension: string;
 };
 
+type MessageContextMenuState = {
+  message: ConversationMessage;
+  x: number;
+  y: number;
+};
+
 type InboxPageContentProps = {
   lockedInstanceId?: string | null;
 };
@@ -549,6 +562,12 @@ export function InboxPageContent({
   const pendingReadConversationIdsRef = useRef(new Map<string, number>());
   const suppressMessageRefetchUntilRef = useRef(0);
   const optimisticMessageIdsRef = useRef(new Map<string, string>());
+  const setActiveInboxConversationId = useUiStore(
+    (state) => state.setActiveInboxConversationId,
+  );
+  const setIsViewingLatestInboxMessages = useUiStore(
+    (state) => state.setIsViewingLatestInboxMessages,
+  );
   const requestedConversationId = searchParams.get("conversationId");
   const requestedInstanceId = searchParams.get("instanceId");
   const effectiveInstanceId = lockedInstanceId ?? requestedInstanceId;
@@ -609,6 +628,8 @@ export function InboxPageContent({
   const [conversationsPanelCollapsed, setConversationsPanelCollapsed] =
     useState(false);
   const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
+  const [messageContextMenu, setMessageContextMenu] =
+    useState<MessageContextMenuState | null>(null);
   const conversationsQueryKey = useMemo(
     () =>
       [
@@ -1794,6 +1815,119 @@ export function InboxPageContent({
     () => selectedConversation?.messages ?? [],
     [selectedConversation?.messages],
   );
+  const closeMessageContextMenu = useCallback(() => {
+    setMessageContextMenu(null);
+  }, []);
+
+  const handleCopyMessage = useCallback(
+    async (message: ConversationMessage) => {
+      closeMessageContextMenu();
+
+      const textToCopy = getCopyableMessageText(message);
+
+      if (!textToCopy) {
+        toast.error("Nao ha texto disponivel para copiar nesta mensagem.");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        toast.success("Mensagem copiada.");
+      } catch {
+        toast.error("Nao foi possivel copiar a mensagem.");
+      }
+    },
+    [closeMessageContextMenu],
+  );
+
+  const handleReplyToMessage = useCallback(
+    (message: ConversationMessage) => {
+      closeMessageContextMenu();
+
+      if (!canQuoteMessage(message)) {
+        return;
+      }
+
+      setQuotedMessageId(message.id);
+      window.requestAnimationFrame(() => {
+        composerTextareaRef.current?.focus();
+      });
+    },
+    [closeMessageContextMenu],
+  );
+
+  const openMessageContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, message: ConversationMessage) => {
+      event.preventDefault();
+
+      const menuHeight = canQuoteMessage(message)
+        ? MESSAGE_CONTEXT_MENU_WITH_REPLY_HEIGHT
+        : MESSAGE_CONTEXT_MENU_COPY_ONLY_HEIGHT;
+      const maxX =
+        window.innerWidth -
+        MESSAGE_CONTEXT_MENU_WIDTH -
+        MESSAGE_CONTEXT_MENU_VIEWPORT_PADDING;
+      const maxY =
+        window.innerHeight -
+        menuHeight -
+        MESSAGE_CONTEXT_MENU_VIEWPORT_PADDING;
+
+      setMessageContextMenu({
+        message,
+        x: Math.max(
+          MESSAGE_CONTEXT_MENU_VIEWPORT_PADDING,
+          Math.min(event.clientX, maxX),
+        ),
+        y: Math.max(
+          MESSAGE_CONTEXT_MENU_VIEWPORT_PADDING,
+          Math.min(event.clientY, maxY),
+        ),
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!messageContextMenu) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMessageContextMenu();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", closeMessageContextMenu);
+    window.addEventListener("scroll", closeMessageContextMenu, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", closeMessageContextMenu);
+      window.removeEventListener("scroll", closeMessageContextMenu, true);
+    };
+  }, [closeMessageContextMenu, messageContextMenu]);
+
+  useEffect(() => {
+    setActiveInboxConversationId(activeConversationId);
+
+    if (!activeConversationId) {
+      setIsViewingLatestInboxMessages(false);
+    }
+  }, [
+    activeConversationId,
+    setActiveInboxConversationId,
+    setIsViewingLatestInboxMessages,
+  ]);
+
+  useEffect(
+    () => () => {
+      setActiveInboxConversationId(null);
+      setIsViewingLatestInboxMessages(false);
+    },
+    [setActiveInboxConversationId, setIsViewingLatestInboxMessages],
+  );
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -2056,7 +2190,8 @@ export function InboxPageContent({
     pendingInitialScrollConversationRef.current = activeConversationId;
     shouldStickToBottomRef.current = true;
     pendingHistoryAnchorRef.current = null;
-  }, [activeConversationId]);
+    setIsViewingLatestInboxMessages(Boolean(activeConversationId));
+  }, [activeConversationId, setIsViewingLatestInboxMessages]);
 
   useLayoutEffect(() => {
     if (!selectedConversation?.id) {
@@ -2125,11 +2260,16 @@ export function InboxPageContent({
     const container = messagesScrollRef.current;
 
     if (!container) {
+      setIsViewingLatestInboxMessages(false);
       return;
     }
 
     const updateStickiness = () => {
-      shouldStickToBottomRef.current = isNearBottom(container);
+      const isViewingLatestMessages = isNearBottom(container);
+      shouldStickToBottomRef.current = isViewingLatestMessages;
+      setIsViewingLatestInboxMessages(
+        Boolean(selectedConversation?.id) && isViewingLatestMessages,
+      );
     };
 
     const handleScroll = () => {
@@ -2159,6 +2299,7 @@ export function InboxPageContent({
     hasMoreHistory,
     isFetchingHistory,
     selectedConversation?.id,
+    setIsViewingLatestInboxMessages,
   ]);
 
   useEffect(() => {
@@ -2962,6 +3103,7 @@ export function InboxPageContent({
                     users: usersQuery.data,
                   });
                   const nextItem = conversationTimelineItems[index + 1] ?? null;
+                  const canReplyToMessage = canQuoteMessage(message);
                   const showSenderAvatar = shouldShowMessageSenderAvatar(
                     message,
                     resolvedSenderUser,
@@ -2992,7 +3134,7 @@ export function InboxPageContent({
                       >
                         <div
                           className={cn(
-                            "group relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]",
+                            "relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]",
                             message.direction === "OUTBOUND"
                               ? "ml-auto"
                               : message.direction === "SYSTEM"
@@ -3014,26 +3156,15 @@ export function InboxPageContent({
                                   : "rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]",
                             )}
                             onDoubleClick={() => {
-                              if (canQuoteMessage(message)) {
+                              if (canReplyToMessage) {
                                 setQuotedMessageId(message.id);
                                 composerTextareaRef.current?.focus();
                               }
                             }}
+                            onContextMenu={(event) =>
+                              openMessageContextMenu(event, message)
+                            }
                           >
-                            {canQuoteMessage(message) ? (
-                              <button
-                                type="button"
-                                className="absolute right-1 top-1 rounded-full p-1 text-white/0 transition group-hover:text-white/60 group-hover:hover:bg-white/10 group-hover:hover:text-white"
-                                onClick={() => {
-                                  setQuotedMessageId(message.id);
-                                  composerTextareaRef.current?.focus();
-                                }}
-                                title="Responder"
-                                aria-label="Responder"
-                              >
-                                <Reply className="h-3.5 w-3.5" />
-                              </button>
-                            ) : null}
                             <MessageBubbleContent message={message} />
                             <span
                               className={cn(
@@ -3518,6 +3649,47 @@ export function InboxPageContent({
         }}
         onMessageSent={refreshConversationQueries}
       />
+
+      {messageContextMenu ? (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={closeMessageContextMenu}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              closeMessageContextMenu();
+            }}
+          />
+          <div
+            className="fixed z-50 w-[180px] overflow-hidden rounded-2xl border border-white/10 bg-[#102033]/96 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+            style={{
+              left: messageContextMenu.x,
+              top: messageContextMenu.y,
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-white/92 transition hover:bg-white/10"
+              onClick={() => void handleCopyMessage(messageContextMenu.message)}
+            >
+              <Copy className="h-4 w-4" />
+              Copiar
+            </button>
+            {canQuoteMessage(messageContextMenu.message) ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-white/92 transition hover:bg-white/10"
+                onClick={() => handleReplyToMessage(messageContextMenu.message)}
+              >
+                <Reply className="h-4 w-4" />
+                Responder
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -5367,6 +5539,18 @@ function getMessageCaption(message: ConversationMessage) {
   }
 
   return content;
+}
+
+function getCopyableMessageText(message: ConversationMessage) {
+  const caption = getMessageCaption(message);
+
+  if (caption) {
+    return caption;
+  }
+
+  const preview = buildMessageQuotePreview(message);
+
+  return preview === "Mensagem" ? null : preview;
 }
 
 function formatMediaDuration(value: number) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Menu, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,10 +25,12 @@ import {
   getRoleLabel,
 } from '@/lib/permissions';
 import {
+  NotificationItem,
   NotificationRealtimeEvent,
   NotificationsResponse,
 } from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
+import { useUiStore } from '@/store/ui-store';
 
 function isRouteActive(pathname: string, href: string) {
   if (href === '/app') {
@@ -36,6 +38,44 @@ function isRouteActive(pathname: string, href: string) {
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function getNotificationConversationId(
+  notification: Pick<
+    NotificationItem,
+    'entityType' | 'entityId' | 'linkHref' | 'metadata'
+  >,
+) {
+  const metadataConversationId = notification.metadata?.conversationId;
+
+  if (typeof metadataConversationId === 'string' && metadataConversationId) {
+    return metadataConversationId;
+  }
+
+  if (
+    notification.entityType === 'conversation' &&
+    typeof notification.entityId === 'string' &&
+    notification.entityId
+  ) {
+    return notification.entityId;
+  }
+
+  if (!notification.linkHref) {
+    return null;
+  }
+
+  try {
+    const url = new URL(notification.linkHref, 'https://autoszap.local');
+    return url.searchParams.get('conversationId');
+  } catch {
+    return null;
+  }
+}
+
+function isCustomerMessageNotification(
+  notification: Pick<NotificationItem, 'metadata'>,
+) {
+  return notification.metadata?.source === 'customer_message';
 }
 
 export function Topbar({
@@ -56,11 +96,123 @@ export function Topbar({
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const activeInboxConversationId = useUiStore(
+    (state) => state.activeInboxConversationId,
+  );
+  const isViewingLatestInboxMessages = useUiStore(
+    (state) => state.isViewingLatestInboxMessages,
+  );
   const previousUnreadIdsRef = useRef<string[]>([]);
+  const suppressedNotificationIdsRef = useRef(new Set<string>());
   const [query, setQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(true);
+  const [isWindowFocused, setIsWindowFocused] = useState(true);
+
+  useEffect(() => {
+    const syncWindowState = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+      setIsWindowFocused(document.hasFocus());
+    };
+
+    syncWindowState();
+    window.addEventListener('focus', syncWindowState);
+    window.addEventListener('blur', syncWindowState);
+    document.addEventListener('visibilitychange', syncWindowState);
+
+    return () => {
+      window.removeEventListener('focus', syncWindowState);
+      window.removeEventListener('blur', syncWindowState);
+      document.removeEventListener('visibilitychange', syncWindowState);
+    };
+  }, []);
+
+  const isActivelyReadingConversation = Boolean(
+    pathname.startsWith('/app/inbox') &&
+      activeInboxConversationId &&
+      isViewingLatestInboxMessages &&
+      isPageVisible &&
+      isWindowFocused,
+  );
+
+  const requestSilentNotificationRead = useCallback(
+    (notificationId: string) => {
+      void apiRequest(`notifications/${notificationId}/read`, {
+        method: 'POST',
+      }).catch(() => {
+        suppressedNotificationIdsRef.current.delete(notificationId);
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      });
+    },
+    [queryClient],
+  );
+
+  const shouldSuppressNotification = useCallback(
+    (
+      notification: Pick<
+        NotificationItem,
+        'entityType' | 'entityId' | 'linkHref' | 'metadata'
+      >,
+    ) => {
+      if (!isActivelyReadingConversation || !activeInboxConversationId) {
+        return false;
+      }
+
+      if (!isCustomerMessageNotification(notification)) {
+        return false;
+      }
+
+      return (
+        getNotificationConversationId(notification) === activeInboxConversationId
+      );
+    },
+    [
+      activeInboxConversationId,
+      isActivelyReadingConversation,
+    ],
+  );
+
+  const suppressNotification = useCallback(
+    (notificationId: string) => {
+      if (suppressedNotificationIdsRef.current.has(notificationId)) {
+        return;
+      }
+
+      suppressedNotificationIdsRef.current.add(notificationId);
+      queryClient.setQueryData<NotificationsResponse>(
+        ['notifications'],
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const readAt = new Date().toISOString();
+          const targetNotification = current.items.find(
+            (notification) => notification.id === notificationId,
+          );
+          const wasUnread = Boolean(targetNotification && !targetNotification.readAt);
+
+          return {
+            unreadCount: wasUnread
+              ? Math.max(0, current.unreadCount - 1)
+              : current.unreadCount,
+            items: current.items.map((notification) =>
+              notification.id === notificationId
+                ? {
+                    ...notification,
+                    readAt: notification.readAt ?? readAt,
+                  }
+                : notification,
+            ),
+          };
+        },
+      );
+      requestSilentNotificationRead(notificationId);
+    },
+    [queryClient, requestSilentNotificationRead],
+  );
 
   const visibleSections = useMemo(
     () =>
@@ -128,50 +280,12 @@ export function Topbar({
     const handleNotificationEvent = (event: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(event.data) as NotificationRealtimeEvent;
-
-        queryClient.setQueryData<NotificationsResponse>(
-          ['notifications'],
-          (current) => {
-            if (!current) {
-              return current;
-            }
-
-            const readAt = new Date().toISOString();
-            const nextUnreadCount = payload.unreadCount ?? current.unreadCount;
-
-            if (payload.type === 'notification.read-all') {
-              return {
-                unreadCount: nextUnreadCount,
-                items: current.items.map((notification) => ({
-                  ...notification,
-                  readAt: notification.readAt ?? readAt,
-                })),
-              };
-            }
-
-            if (
-              payload.type === 'notification.read' &&
-              payload.notificationId
-            ) {
-              return {
-                unreadCount: nextUnreadCount,
-                items: current.items.map((notification) =>
-                  notification.id === payload.notificationId
-                    ? {
-                        ...notification,
-                        readAt: notification.readAt ?? readAt,
-                      }
-                    : notification,
-                ),
-              };
-            }
-
-            if (
-              payload.type === 'notification.created' &&
-              payload.notificationId &&
-              payload.payload
-            ) {
-              const item = {
+        const readAt = new Date().toISOString();
+        const createdNotification =
+          payload.type === 'notification.created' &&
+          payload.notificationId &&
+          payload.payload
+            ? {
                 id: payload.notificationId,
                 title:
                   typeof payload.payload.title === 'string'
@@ -208,13 +322,75 @@ export function Topbar({
                     ? payload.payload.createdAt
                     : new Date().toISOString(),
                 readAt: null,
+              }
+            : null;
+        const shouldHideCreatedNotification = Boolean(
+          createdNotification && shouldSuppressNotification(createdNotification),
+        );
+
+        if (createdNotification && shouldHideCreatedNotification) {
+          suppressedNotificationIdsRef.current.add(createdNotification.id);
+          requestSilentNotificationRead(createdNotification.id);
+        }
+
+        queryClient.setQueryData<NotificationsResponse>(
+          ['notifications'],
+          (current) => {
+            if (!current) {
+              return current;
+            }
+
+            const nextUnreadCount = payload.unreadCount ?? current.unreadCount;
+
+            if (payload.type === 'notification.read-all') {
+              return {
+                unreadCount: nextUnreadCount,
+                items: current.items.map((notification) => ({
+                  ...notification,
+                  readAt: notification.readAt ?? readAt,
+                })),
               };
+            }
+
+            if (
+              payload.type === 'notification.read' &&
+              payload.notificationId
+            ) {
+              return {
+                unreadCount: nextUnreadCount,
+                items: current.items.map((notification) =>
+                  notification.id === payload.notificationId
+                    ? {
+                        ...notification,
+                        readAt: notification.readAt ?? readAt,
+                      }
+                    : notification,
+                ),
+              };
+            }
+
+            if (
+              createdNotification
+            ) {
+              if (shouldHideCreatedNotification) {
+                return {
+                  unreadCount: Math.max(0, nextUnreadCount - 1),
+                  items: current.items.map((notification) =>
+                    notification.id === createdNotification.id
+                      ? {
+                          ...notification,
+                          readAt: notification.readAt ?? readAt,
+                        }
+                      : notification,
+                  ),
+                };
+              }
 
               const items = current.items.some(
-                (notification) => notification.id === item.id,
+                (notification) => notification.id === createdNotification.id,
               )
                 ? current.items
-                : [item, ...current.items].slice(0, 12);
+                : [createdNotification, ...current.items].slice(0, 12);
 
               return {
                 unreadCount: nextUnreadCount,
@@ -242,10 +418,37 @@ export function Topbar({
       );
       eventSource.close();
     };
-  }, [queryClient]);
+  }, [queryClient, requestSilentNotificationRead, shouldSuppressNotification]);
 
   useEffect(() => {
-    const unreadNotifications = notificationsQuery.data?.items.filter(
+    if (!notificationsQuery.data?.items.length) {
+      return;
+    }
+
+    notificationsQuery.data.items
+      .filter(
+        (notification) =>
+          !notification.readAt &&
+          !suppressedNotificationIdsRef.current.has(notification.id) &&
+          shouldSuppressNotification(notification),
+      )
+      .forEach((notification) => suppressNotification(notification.id));
+  }, [
+    notificationsQuery.data?.items,
+    shouldSuppressNotification,
+    suppressNotification,
+  ]);
+
+  const visibleNotificationItems = useMemo(
+    () =>
+      (notificationsQuery.data?.items ?? []).filter(
+        (notification) => !suppressedNotificationIdsRef.current.has(notification.id),
+      ),
+    [notificationsQuery.data?.items],
+  );
+
+  useEffect(() => {
+    const unreadNotifications = visibleNotificationItems.filter(
       (item) => !item.readAt,
     );
 
@@ -267,7 +470,7 @@ export function Topbar({
     }
 
     previousUnreadIdsRef.current = unreadNotifications.map((item) => item.id);
-  }, [notificationsQuery.data?.items]);
+  }, [visibleNotificationItems]);
 
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
 
@@ -554,9 +757,9 @@ export function Topbar({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            {notificationsQuery.data?.items.length ? (
+            {visibleNotificationItems.length ? (
               <div className="space-y-3">
-                {notificationsQuery.data.items.map((notification) => (
+                {visibleNotificationItems.map((notification) => (
                   <button
                     key={notification.id}
                     type="button"

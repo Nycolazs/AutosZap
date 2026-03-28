@@ -112,6 +112,8 @@ services:
       AUTO_RESTART_DELAY_MS: ${WHATSAPP_WEB_GATEWAY_AUTO_RESTART_DELAY_MS:-5000}
     expose:
       - "3001"
+    ports:
+      - "127.0.0.1:${WHATSAPP_WEB_GATEWAY_PORT:-3001}:3001"
     volumes:
       - whatsapp_web_gateway_data:/data
     healthcheck:

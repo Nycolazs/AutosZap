@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -232,6 +232,77 @@ function getConnectionPhaseLabel(phase?: string | null) {
   }
 }
 
+function buildPendingQrConnectionState(
+  detail = 'Iniciando sessao QR.',
+): InstanceConnectionState {
+  return {
+    phase: 'CONNECTING',
+    healthy: false,
+    detail,
+    connectedAt: null,
+    lastSeenAt: null,
+    qrCode: null,
+    qrCodeExpiresAt: null,
+    sessionId: null,
+    transport: 'WHATSAPP_WEB_GATEWAY',
+    raw: null,
+  };
+}
+
+function buildConnectionStateFromQr(
+  qrState?: InstanceQrState | null,
+): InstanceConnectionState | null {
+  if (!qrState) {
+    return null;
+  }
+
+  const baseState = {
+    healthy: false,
+    connectedAt: null,
+    lastSeenAt: null,
+    qrCode: qrState.qrCode ?? null,
+    qrCodeExpiresAt: qrState.qrCodeExpiresAt ?? null,
+    sessionId: null,
+    transport: 'WHATSAPP_WEB_GATEWAY',
+    raw: qrState.raw ?? null,
+  };
+
+  switch (qrState.status) {
+    case 'READY':
+      return {
+        ...baseState,
+        phase: 'QR_PENDING',
+        detail: 'QR disponivel para leitura.',
+      };
+    case 'EXPIRED':
+      return {
+        ...baseState,
+        phase: 'QR_PENDING',
+        detail: 'QR expirado. Atualize para gerar um novo codigo.',
+      };
+    case 'SCANNED':
+      return {
+        ...baseState,
+        phase: 'QR_SCANNED',
+        detail: 'QR lido. Finalizando autenticacao.',
+      };
+    case 'PENDING':
+      return {
+        ...baseState,
+        phase: 'CONNECTING',
+        detail: 'Gerando QR code.',
+      };
+    case 'ERROR':
+      return {
+        ...baseState,
+        phase: 'ERROR',
+        detail: 'Falha ao gerar o QR code.',
+      };
+    default:
+      return null;
+  }
+}
+
 function getProviderCapabilities(instance: Instance) {
   const provider = instance.provider === 'WHATSAPP_WEB' ? 'WHATSAPP_WEB' : 'META_WHATSAPP';
 
@@ -336,6 +407,8 @@ export default function InstancesPage() {
   });
   const [createQrPreviewInstance, setCreateQrPreviewInstance] =
     useState<Instance | null>(null);
+  const [pendingQrDraftInstanceId, setPendingQrDraftInstanceId] =
+    useState<string | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
@@ -373,7 +446,18 @@ export default function InstancesPage() {
     queryFn: () => apiRequest<Instance[]>('instances'),
   });
 
-  const instances = useMemo(() => instancesQuery.data ?? [], [instancesQuery.data]);
+  const instances = useMemo(() => {
+    const nextInstances = instancesQuery.data ?? [];
+
+    if (!pendingQrDraftInstanceId) {
+      return nextInstances;
+    }
+
+    return nextInstances.filter(
+      (instance) =>
+        instance.id !== pendingQrDraftInstanceId || instance.status === 'CONNECTED',
+    );
+  }, [instancesQuery.data, pendingQrDraftInstanceId]);
   const metaInstances = useMemo(
     () => instances.filter((instance) => instance.provider === 'META_WHATSAPP'),
     [instances],
@@ -406,6 +490,54 @@ export default function InstancesPage() {
 
     return formatDate(new Date(latestSyncTime));
   }, [instances]);
+
+  const loadConnectionState = useCallback((instanceId: string) => {
+    return apiRequest<InstanceConnectionState>(
+      `instances/${instanceId}/connection-state`,
+    );
+  }, []);
+
+  const loadQrState = useCallback((instanceId: string) => {
+    return apiRequest<InstanceQrState>(`instances/${instanceId}/qr`);
+  }, []);
+
+  const hydrateQrConnectionState = useCallback(async (instanceId: string) => {
+    const [stateResult, qrResult] = await Promise.allSettled([
+      loadConnectionState(instanceId),
+      loadQrState(instanceId),
+    ]);
+
+    const state = stateResult.status === 'fulfilled' ? stateResult.value : null;
+    const qr = qrResult.status === 'fulfilled' ? qrResult.value : null;
+
+    if (state) {
+      setConnectionState(state);
+    } else if (qr) {
+      setConnectionState((current) => current ?? buildConnectionStateFromQr(qr));
+    }
+
+    if (qr) {
+      setQrState(qr);
+    }
+
+    if (!state && !qr) {
+      const reason =
+        stateResult.status === 'rejected'
+          ? stateResult.reason
+          : qrResult.status === 'rejected'
+            ? qrResult.reason
+            : new Error('Nao foi possivel carregar o estado da conexao.');
+
+      throw reason instanceof Error
+        ? reason
+        : new Error('Nao foi possivel carregar o estado da conexao.');
+    }
+
+    return {
+      state,
+      qr,
+    };
+  }, [loadConnectionState, loadQrState]);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -441,24 +573,23 @@ export default function InstancesPage() {
 
       try {
         const instanceId = activeQrConnectionInstance.id;
-        const [nextConnectionState, nextQrState] = await Promise.all([
-          loadConnectionState(instanceId),
-          loadQrState(instanceId).catch(() => null),
-        ]);
+        const { state: nextConnectionState, qr: nextQrState } =
+          await hydrateQrConnectionState(instanceId);
 
         if (cancelled) {
           return;
         }
 
-        setConnectionState(nextConnectionState);
-        setQrState(nextQrState);
-
         if (
-          nextConnectionState.phase !== connectionState?.phase ||
-          nextConnectionState.connectedAt !== connectionState?.connectedAt ||
-          nextConnectionState.lastSeenAt !== connectionState?.lastSeenAt ||
-          nextQrState?.status !== qrState?.status ||
-          nextQrState?.qrCodeExpiresAt !== qrState?.qrCodeExpiresAt
+          (nextConnectionState &&
+            (nextConnectionState.phase !== connectionState?.phase ||
+              nextConnectionState.connectedAt !== connectionState?.connectedAt ||
+              nextConnectionState.lastSeenAt !== connectionState?.lastSeenAt ||
+              nextConnectionState.qrCode !== connectionState?.qrCode)) ||
+          (nextQrState &&
+            (nextQrState.status !== qrState?.status ||
+              nextQrState.qrCode !== qrState?.qrCode ||
+              nextQrState.qrCodeExpiresAt !== qrState?.qrCodeExpiresAt))
         ) {
           void queryClient.invalidateQueries({ queryKey: ['instances'] });
         }
@@ -473,7 +604,7 @@ export default function InstancesPage() {
 
     const intervalId = window.setInterval(() => {
       void pollConnectionDialog();
-    }, 5000);
+    }, createQrDialogOpen ? 2000 : 5000);
 
     return () => {
       cancelled = true;
@@ -484,10 +615,32 @@ export default function InstancesPage() {
     connectionState?.connectedAt,
     connectionState?.lastSeenAt,
     connectionState?.phase,
+    connectionState?.qrCode,
     createQrDialogOpen,
     connectionDialogOpen,
+    hydrateQrConnectionState,
+    qrState?.qrCode,
     qrState?.qrCodeExpiresAt,
     qrState?.status,
+    queryClient,
+  ]);
+
+  useEffect(() => {
+    if (
+      !pendingQrDraftInstanceId ||
+      createQrPreviewInstance?.id !== pendingQrDraftInstanceId ||
+      connectionState?.phase !== 'CONNECTED'
+    ) {
+      return;
+    }
+
+    setPendingQrDraftInstanceId(null);
+    void queryClient.invalidateQueries({ queryKey: ['instances'] });
+    toast.success('Instancia QR conectada e adicionada ao workspace.');
+  }, [
+    connectionState?.phase,
+    createQrPreviewInstance?.id,
+    pendingQrDraftInstanceId,
     queryClient,
   ]);
 
@@ -537,13 +690,7 @@ export default function InstancesPage() {
       await queryClient.invalidateQueries({ queryKey: ['instances'] });
 
       if (options?.refreshConnectionDialog && instance.provider === 'WHATSAPP_WEB') {
-        const [state, qr] = await Promise.all([
-          loadConnectionState(instance.id),
-          loadQrState(instance.id).catch(() => null),
-        ]);
-
-        setConnectionState(state);
-        setQrState(qr);
+        await hydrateQrConnectionState(instance.id);
       }
 
       toast.success(getSyncSuccessMessage(instance, response), {
@@ -566,29 +713,61 @@ export default function InstancesPage() {
     }
   }
 
-  async function loadConnectionState(instanceId: string) {
-    return apiRequest<InstanceConnectionState>(
-      `instances/${instanceId}/connection-state`,
-    );
+  async function waitForQrAvailability(instanceId: string) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        const { state, qr } = await hydrateQrConnectionState(instanceId);
+
+        if (state?.phase === 'CONNECTED' || qr?.qrCode || state?.qrCode) {
+          return;
+        }
+      } catch {
+        // Keep retrying while the preview dialog is open.
+      }
+
+      if (attempt === 2) {
+        try {
+          await apiRequest(`instances/${instanceId}/qr/refresh`, {
+            method: 'POST',
+          });
+        } catch {
+          // Keep polling silently; the regular loop continues below.
+        }
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    }
   }
 
-  async function loadQrState(instanceId: string) {
-    return apiRequest<InstanceQrState>(`instances/${instanceId}/qr`);
-  }
+  async function discardPendingQrDraftInstance(
+    instanceId: string,
+    options?: { silent?: boolean },
+  ) {
+    try {
+      await apiRequest(`instances/${instanceId}`, { method: 'DELETE' });
+      await queryClient.invalidateQueries({ queryKey: ['instances'] });
 
-  async function hydrateQrConnectionState(instanceId: string) {
-    const [state, qr] = await Promise.all([
-      loadConnectionState(instanceId),
-      loadQrState(instanceId).catch(() => null),
-    ]);
+      if (!options?.silent) {
+        toast.success('Sessao QR descartada.');
+      }
 
-    setConnectionState(state);
-    setQrState(qr);
+      return true;
+    } catch (error) {
+      if (!options?.silent) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Nao foi possivel descartar a sessao QR.',
+        );
+      }
 
-    return {
-      state,
-      qr,
-    };
+      await queryClient.invalidateQueries({ queryKey: ['instances'] });
+      return false;
+    } finally {
+      setPendingQrDraftInstanceId((current) =>
+        current === instanceId ? null : current,
+      );
+    }
   }
 
   async function openConnectionDialog(instance: Instance) {
@@ -623,9 +802,10 @@ export default function InstancesPage() {
     }
 
     setInstanceActionKey(`create-qr:${name}`);
+    let createdInstance: Instance | null = null;
 
     try {
-      const createdInstance = await apiRequest<Instance>('instances', {
+      createdInstance = await apiRequest<Instance>('instances', {
         method: 'POST',
         body: {
           name,
@@ -634,16 +814,36 @@ export default function InstancesPage() {
       });
 
       setCreateQrPreviewInstance(createdInstance);
-      setConnectionState(null);
-      setQrState(null);
+      setPendingQrDraftInstanceId(createdInstance.id);
+      setConnectionState(
+        createdInstance.connectionState ??
+          buildConnectionStateFromQr(createdInstance.qr) ??
+          buildPendingQrConnectionState(),
+      );
+      setQrState(createdInstance.qr ?? null);
       setCreateQrForm({ name: '' });
-      await queryClient.invalidateQueries({ queryKey: ['instances'] });
-      await apiRequest(`instances/${createdInstance.id}/connect`, {
-        method: 'POST',
-      });
-      await hydrateQrConnectionState(createdInstance.id);
-      toast.success('Instancia QR criada. Aguardando leitura do QR.');
+      const connectedInstance = await apiRequest<Instance>(
+        `instances/${createdInstance.id}/connect`,
+        {
+          method: 'POST',
+        },
+      );
+      setCreateQrPreviewInstance(connectedInstance);
+      setConnectionState(
+        connectedInstance.connectionState ??
+          buildConnectionStateFromQr(connectedInstance.qr) ??
+          buildPendingQrConnectionState('Gerando QR code.'),
+      );
+      setQrState(connectedInstance.qr ?? null);
+      void waitForQrAvailability(createdInstance.id);
+      toast.success(
+        'Sessao QR iniciada. Escaneie o codigo para concluir a conexao.',
+      );
     } catch (error) {
+      if (createdInstance) {
+        void discardPendingQrDraftInstance(createdInstance.id, { silent: true });
+      }
+
       toast.error(
         error instanceof Error ? error.message : 'Nao foi possivel criar a instancia QR.',
       );
@@ -666,14 +866,7 @@ export default function InstancesPage() {
         await apiRequest(`instances/${instanceId}/${actionPath}`, {
           method,
         });
-
-        const [state, qr] = await Promise.all([
-          loadConnectionState(instanceId),
-          loadQrState(instanceId).catch(() => null),
-        ]);
-
-        setConnectionState(state);
-        setQrState(qr);
+        await hydrateQrConnectionState(instanceId);
       },
       { refreshList: true },
     );
@@ -961,7 +1154,7 @@ export default function InstancesPage() {
                 onClick={() => setCreateQrDialogOpen(true)}
               >
                 <QrCode className="h-4 w-4" />
-                Criar instancia QR
+                Conectar via QR
               </Button>
             </div>
           }
@@ -1102,7 +1295,7 @@ export default function InstancesPage() {
                     onClick={() => setCreateQrDialogOpen(true)}
                   >
                     <QrCode className="h-4 w-4" />
-                    Criar instancia QR
+                    Conectar via QR
                   </Button>
                 </div>
               }
@@ -1565,27 +1758,51 @@ export default function InstancesPage() {
       <Dialog
         open={createQrDialogOpen}
         onOpenChange={(open) => {
-          setCreateQrDialogOpen(open);
-          if (!open) {
-            resetCreateQrDialogState();
+          if (open) {
+            setCreateQrDialogOpen(true);
+            return;
+          }
+
+          const previewInstanceId = createQrPreviewInstance?.id ?? null;
+          const isConnected = connectionState?.phase === 'CONNECTED';
+
+          setCreateQrDialogOpen(false);
+          resetCreateQrDialogState();
+
+          if (previewInstanceId && !isConnected) {
+            void discardPendingQrDraftInstance(previewInstanceId, {
+              silent: true,
+            });
+          } else if (
+            previewInstanceId &&
+            pendingQrDraftInstanceId === previewInstanceId
+          ) {
+            setPendingQrDraftInstanceId(null);
+            void queryClient.invalidateQueries({ queryKey: ['instances'] });
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent
+          className={
+            createQrPreviewInstance
+              ? 'sm:max-w-lg sm:h-[min(86dvh,760px)] sm:max-h-[min(86dvh,760px)] sm:overflow-hidden'
+              : 'sm:max-w-lg'
+          }
+        >
+          <DialogHeader className={createQrPreviewInstance ? 'shrink-0' : undefined}>
             <DialogTitle>
-              {createQrPreviewInstance ? 'Escaneie o QR da instancia' : 'Criar instancia QR'}
+              {createQrPreviewInstance ? 'Escaneie o QR da instancia' : 'Conectar numero por QR'}
             </DialogTitle>
             <DialogDescription>
               {createQrPreviewInstance
                 ? 'Deixe este modal aberto enquanto o cliente escaneia o QR. A sincronizacao inicial sera disparada automaticamente depois da conexao.'
-                : 'A instancia WhatsApp Web sera criada com login por QR e session persistence no gateway interno.'}
+                : 'A sessao QR sera iniciada agora e a instancia so aparece na lista depois que a conexao for concluida.'}
             </DialogDescription>
           </DialogHeader>
 
           {createQrPreviewInstance ? (
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4">
+            <div className="space-y-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:space-y-0 sm:gap-4">
+              <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4 sm:shrink-0">
                 <p className="text-sm font-medium text-foreground">
                   {createQrPreviewInstance.name}
                 </p>
@@ -1595,7 +1812,7 @@ export default function InstancesPage() {
               </div>
 
               {connectionState?.phase === 'CONNECTED' ? (
-                <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-background-panel/35 px-6 text-center">
+                <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-background-panel/35 px-6 text-center sm:min-h-0 sm:flex-1">
                   <QrCode className="h-10 w-10 text-primary" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
@@ -1617,10 +1834,10 @@ export default function InstancesPage() {
                         }`
                   }
                   alt="QR code da instancia"
-                  className="mx-auto max-w-[320px] rounded-2xl border border-border bg-white p-4"
+                  className="mx-auto max-w-[320px] sm:max-h-[min(44dvh,380px)] sm:w-full rounded-2xl border border-border bg-white p-4 object-contain"
                 />
               ) : (
-                <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background-panel/35 px-6 text-center">
+                <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background-panel/35 px-6 text-center sm:min-h-0 sm:flex-1">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
@@ -1633,7 +1850,7 @@ export default function InstancesPage() {
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground sm:shrink-0">
                 {connectionState?.phase === 'CONNECTED'
                   ? 'Conexao concluida com sucesso.'
                   : `Expira em: ${
@@ -1643,7 +1860,7 @@ export default function InstancesPage() {
                     }`}
               </p>
 
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="flex flex-col gap-2 sm:shrink-0 sm:flex-row">
                 <Button
                   type="button"
                   variant="secondary"
@@ -1694,7 +1911,7 @@ export default function InstancesPage() {
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
-                  Criar
+                  Conectar QR
                 </Button>
                 <Button
                   type="button"

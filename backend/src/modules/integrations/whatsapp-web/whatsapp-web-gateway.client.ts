@@ -15,7 +15,7 @@ import type {
 
 @Injectable()
 export class WhatsAppWebGatewayClient {
-  private client: AxiosInstance;
+  private clients: AxiosInstance[];
 
   constructor(private readonly configService: ConfigService) {
     const baseURL =
@@ -23,13 +23,15 @@ export class WhatsAppWebGatewayClient {
       'http://127.0.0.1:3001';
     const sharedSecret = this.getSharedSecret();
 
-    this.client = axios.create({
-      baseURL: baseURL.replace(/\/+$/, ''),
-      timeout: 20_000,
-      headers: {
-        'x-autoszap-internal-secret': sharedSecret,
-      },
-    });
+    this.clients = this.buildBaseUrlCandidates(baseURL).map((candidate) =>
+      axios.create({
+        baseURL: candidate,
+        timeout: 20_000,
+        headers: {
+          'x-autoszap-internal-secret': sharedSecret,
+        },
+      }),
+    );
   }
 
   async registerInstance(payload: {
@@ -163,40 +165,50 @@ export class WhatsAppWebGatewayClient {
     instanceId: string;
     messageId: string;
   }): Promise<WhatsAppWebGatewayMediaDownloadResult> {
-    try {
-      const response = await this.client.request<ArrayBuffer>({
-        method: 'GET',
-        url: `/instances/${payload.instanceId}/messages/${encodeURIComponent(payload.messageId)}/media`,
-        responseType: 'arraybuffer',
-      });
+    let lastError: unknown = null;
 
-      return {
-        buffer: Buffer.from(response.data),
-        mimeType:
-          typeof response.headers['content-type'] === 'string'
-            ? response.headers['content-type']
-            : null,
-        fileName: this.extractFileName(response.headers['content-disposition']),
-        contentLength:
-          typeof response.headers['content-length'] === 'string'
-            ? Number.parseInt(response.headers['content-length'], 10)
-            : response.data.byteLength,
-      };
-    } catch (error) {
-      if (axios.isAxiosError<{ message?: string }>(error)) {
-        const responseMessage = error.response?.data?.message;
-        const message =
-          typeof responseMessage === 'string' ? responseMessage : error.message;
-
-        throw new BadGatewayException(
-          `Falha ao baixar midia do gateway WhatsApp Web: ${message}`,
+    for (const client of this.clients) {
+      try {
+        const response = await client.request<ArrayBuffer>({
+          method: 'GET',
+          url: `/instances/${payload.instanceId}/messages/${encodeURIComponent(payload.messageId)}/media`,
+          responseType: 'arraybuffer',
+        });
+        const contentTypeHeader = this.readHeader(
+          response.headers,
+          'content-type',
         );
-      }
+        const contentDispositionHeader = this.readHeader(
+          response.headers,
+          'content-disposition',
+        );
+        const contentLengthHeader = this.readHeader(
+          response.headers,
+          'content-length',
+        );
 
-      throw new InternalServerErrorException(
-        'Falha inesperada ao baixar midia do gateway WhatsApp Web.',
-      );
+        return {
+          buffer: Buffer.from(new Uint8Array(response.data)),
+          mimeType:
+            typeof contentTypeHeader === 'string' ? contentTypeHeader : null,
+          fileName: this.extractFileName(contentDispositionHeader),
+          contentLength:
+            typeof contentLengthHeader === 'string'
+              ? Number.parseInt(contentLengthHeader, 10)
+              : response.data.byteLength,
+        };
+      } catch (error) {
+        lastError = error;
+
+        if (axios.isAxiosError(error) && !error.response) {
+          continue;
+        }
+
+        return this.translateMediaDownloadError(error);
+      }
     }
+
+    return this.translateMediaDownloadError(lastError);
   }
 
   async health() {
@@ -215,29 +227,91 @@ export class WhatsAppWebGatewayClient {
     url: string;
     data?: unknown;
   }): Promise<T> {
-    try {
-      const response = await this.client.request<T>({
-        method: payload.method,
-        url: payload.url,
-        data: payload.data,
-      });
+    let lastError: unknown = null;
 
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError<{ message?: string }>(error)) {
-        const responseMessage = error.response?.data?.message;
-        const message =
-          typeof responseMessage === 'string' ? responseMessage : error.message;
+    for (const client of this.clients) {
+      try {
+        const response = await client.request<T>({
+          method: payload.method,
+          url: payload.url,
+          data: payload.data,
+        });
 
-        throw new BadGatewayException(
-          `Falha ao comunicar com o gateway WhatsApp Web: ${message}`,
-        );
+        return response.data;
+      } catch (error) {
+        lastError = error;
+
+        if (axios.isAxiosError(error) && !error.response) {
+          continue;
+        }
+
+        return this.translateRequestError(error);
       }
+    }
 
-      throw new InternalServerErrorException(
-        'Falha inesperada ao comunicar com o gateway WhatsApp Web.',
+    return this.translateRequestError(lastError);
+  }
+
+  private translateRequestError(error: unknown): never {
+    if (axios.isAxiosError<{ message?: string }>(error)) {
+      const responseMessage = error.response?.data?.message;
+      const message =
+        typeof responseMessage === 'string' ? responseMessage : error.message;
+
+      throw new BadGatewayException(
+        `Falha ao comunicar com o gateway WhatsApp Web: ${message}`,
       );
     }
+
+    throw new InternalServerErrorException(
+      'Falha inesperada ao comunicar com o gateway WhatsApp Web.',
+    );
+  }
+
+  private translateMediaDownloadError(error: unknown): never {
+    if (axios.isAxiosError<{ message?: string }>(error)) {
+      const responseMessage = error.response?.data?.message;
+      const message =
+        typeof responseMessage === 'string' ? responseMessage : error.message;
+
+      throw new BadGatewayException(
+        `Falha ao baixar midia do gateway WhatsApp Web: ${message}`,
+      );
+    }
+
+    throw new InternalServerErrorException(
+      'Falha inesperada ao baixar midia do gateway WhatsApp Web.',
+    );
+  }
+
+  private buildBaseUrlCandidates(baseURL: string): string[] {
+    const normalizedBaseUrl = baseURL.replace(/\/+$/, '');
+    const candidates = [normalizedBaseUrl];
+
+    try {
+      const parsedUrl = new URL(normalizedBaseUrl);
+
+      if (parsedUrl.hostname === 'whatsapp-web-gateway') {
+        const localhostUrl = new URL(normalizedBaseUrl);
+        localhostUrl.hostname = '127.0.0.1';
+        candidates.push(localhostUrl.toString().replace(/\/+$/, ''));
+      }
+    } catch {
+      return candidates;
+    }
+
+    return [...new Set(candidates)];
+  }
+
+  private readHeader(
+    headers: Record<string, unknown> | undefined,
+    name: string,
+  ): unknown {
+    if (!headers) {
+      return null;
+    }
+
+    return headers[name];
   }
 
   private getSharedSecret() {

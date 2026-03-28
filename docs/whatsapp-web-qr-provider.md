@@ -41,6 +41,15 @@ curl -s http://localhost:4000/api/health
 docker compose exec whatsapp-web-gateway node -e "fetch('http://127.0.0.1:3001/health').then(r=>r.text()).then(t=>console.log(t))"
 ```
 
+If you run `backend` outside Docker with `npm run start:dev`, keep the gateway in Compose and point the backend to the loopback port exposed by the local compose file:
+
+```bash
+# backend/.env
+WHATSAPP_WEB_GATEWAY_URL=http://127.0.0.1:3001
+WHATSAPP_WEB_GATEWAY_SHARED_SECRET=autoszap-local-whatsapp-web-secret
+BACKEND_INTERNAL_BASE_URL=http://127.0.0.1:4000
+```
+
 ## Key Environment Variables
 
 Backend:
@@ -90,5 +99,6 @@ The local compose files already provide sane defaults. In production, set a stro
 
 ## Notes
 
-- The gateway is intentionally private inside Compose. It is exposed to other services via the Docker network, not via a public host port.
+- In local development, the gateway is bound to `127.0.0.1:3001` so a backend running outside Docker can still reach it without exposing the service publicly on the LAN.
+- In production, keep the gateway private inside Compose and do not publish its port on the host.
 - Gateway callbacks are signed per instance with an HMAC derived from the shared secret and `instanceId`.
