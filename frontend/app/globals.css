@@ -191,6 +191,27 @@ select {
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
+/* ── Auth left panel ── */
+.auth-left-gradient-accent {
+  background:
+    radial-gradient(circle at 18% 24%, rgba(56, 148, 255, 0.28), transparent 38%),
+    radial-gradient(circle at 78% 78%, rgba(20, 160, 195, 0.20), transparent 30%);
+}
+
+.auth-left-gradient-overlay {
+  background: linear-gradient(140deg, rgba(4, 17, 36, 0.88) 0%, rgba(3, 12, 24, 0.70) 50%, rgba(2, 10, 20, 0.90) 100%);
+}
+
+.light .auth-left-gradient-accent {
+  background:
+    radial-gradient(circle at 18% 24%, rgba(43, 125, 233, 0.12), transparent 38%),
+    radial-gradient(circle at 78% 78%, rgba(14, 155, 181, 0.08), transparent 30%);
+}
+
+.light .auth-left-gradient-overlay {
+  background: linear-gradient(140deg, rgba(225, 237, 252, 0.92) 0%, rgba(237, 244, 255, 0.85) 50%, rgba(220, 234, 250, 0.95) 100%);
+}
+
 /* ── Logo shadow for light mode ── */
 .light .brand-logo-shadow {
   filter: drop-shadow(0 2px 8px rgba(30, 70, 130, 0.18));

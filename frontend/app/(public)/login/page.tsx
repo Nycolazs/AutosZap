@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { AuthPageSwitch } from '@/components/auth/auth-page-switch';
 import { AuthShell } from '@/components/layout/auth-shell';
-import { PlatformDownloads } from '@/components/auth/platform-downloads';
 import { SocialLoginButtons } from '@/components/auth/social-login-buttons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -157,7 +156,6 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        {isElectronRuntime ? null : <PlatformDownloads />}
       </div>
     </AuthShell>
   );

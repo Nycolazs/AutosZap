@@ -24,11 +24,11 @@ export function AuthShell({
   return (
     <div className="flex min-h-dvh">
       {/* ── Left panel: occupies its own sticky viewport height, independent of right column ── */}
-      <div className="desktop-low-height-auth-aside sticky top-0 hidden h-dvh w-[41%] shrink-0 flex-col justify-center overflow-y-auto overflow-x-hidden px-4 py-5 xl:w-[43%] xl:px-5 2xl:w-[46%] 2xl:px-8 2xl:py-7 lg:flex">
+      <div className="desktop-low-height-auth-aside auth-left-panel sticky top-0 hidden h-dvh w-[41%] shrink-0 flex-col justify-center overflow-y-auto overflow-x-hidden px-4 py-5 xl:w-[43%] xl:px-5 2xl:w-[46%] 2xl:px-8 2xl:py-7 lg:flex">
         {/* Background layers */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_24%,rgba(56,148,255,0.28),transparent_38%),radial-gradient(circle_at_78%_78%,rgba(20,160,195,0.20),transparent_30%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(4,17,36,0.88)_0%,rgba(3,12,24,0.70)_50%,rgba(2,10,20,0.90)_100%)]" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-foreground/[0.06]" />
+        <div className="auth-left-gradient-accent pointer-events-none absolute inset-0" />
+        <div className="auth-left-gradient-overlay pointer-events-none absolute inset-0" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-border" />
 
         {/* Content */}
         <div className="desktop-low-height-auth-aside-inner relative z-10 mx-auto w-full max-w-[390px] 2xl:max-w-[410px]">
@@ -73,7 +73,7 @@ export function AuthShell({
             })}
           </div>
 
-          <div className="desktop-low-height-auth-highlight glass-panel mt-5 rounded-xl border-white/8 p-3.5 shadow-[0_10px_28px_rgba(2,10,22,0.26)]">
+          <div className="desktop-low-height-auth-highlight glass-panel mt-5 rounded-xl border-border p-3.5 shadow-[0_10px_28px_rgba(2,10,22,0.1)]">
             <p className="text-[11px] italic leading-[1.55] text-foreground/75">
               &ldquo;Centralizamos atendimento, pipeline comercial e disparos sem perder a qualidade operacional.&rdquo;
             </p>
