@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -126,6 +127,17 @@ export class PlatformAdminController {
       this.getActorGlobalUserId(user),
       globalUserId,
       dto,
+    );
+  }
+
+  @Delete('users/:globalUserId')
+  deleteUser(
+    @CurrentUser() user: CurrentAuthUser,
+    @Param('globalUserId') globalUserId: string,
+  ) {
+    return this.platformAdminService.deleteGlobalUser(
+      this.getActorGlobalUserId(user),
+      globalUserId,
     );
   }
 

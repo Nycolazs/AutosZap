@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { apiRequest } from '@/lib/api-client';
+import { ApiError, apiRequest } from '@/lib/api-client';
 import { PlatformCompany } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +13,60 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type CompanyStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+type CompanyActivityFilter = 'all' | 'active' | 'inactive';
+type UpdateCompanyPayload = {
+  companyId: string;
+  name?: string;
+  legalName?: string | null;
+  status?: CompanyStatus;
+};
 
 const STATUS_OPTIONS: CompanyStatus[] = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
+const ACTIVITY_FILTER_OPTIONS: Array<{
+  value: CompanyActivityFilter;
+  label: string;
+}> = [
+  { value: 'all', label: 'Todas' },
+  { value: 'active', label: 'Ativas' },
+  { value: 'inactive', label: 'Desativadas' },
+];
+
+const STATUS_LABELS: Record<CompanyStatus, string> = {
+  ACTIVE: 'Ativa',
+  INACTIVE: 'Desativada',
+  SUSPENDED: 'Suspensa',
+};
+
+function getCompanyStatusLabel(status: CompanyStatus) {
+  return STATUS_LABELS[status];
+}
+
+function getCompanyStatusBadgeVariant(status: CompanyStatus): 'success' | 'danger' | 'secondary' {
+  if (status === 'ACTIVE') {
+    return 'success';
+  }
+
+  if (status === 'INACTIVE') {
+    return 'danger';
+  }
+
+  return 'secondary';
+}
+
+function filterCompaniesByActivity(
+  companies: PlatformCompany[],
+  activity: CompanyActivityFilter,
+) {
+  if (activity === 'active') {
+    return companies.filter((company) => company.status === 'ACTIVE');
+  }
+
+  if (activity === 'inactive') {
+    return companies.filter((company) => company.status !== 'ACTIVE');
+  }
+
+  return companies;
+}
 
 function CompanyCard({
   company,
@@ -23,7 +76,7 @@ function CompanyCard({
   provisioning,
 }: {
   company: PlatformCompany;
-  onSave: (payload: { companyId: string; name: string; legalName: string; status: CompanyStatus }) => void;
+  onSave: (payload: UpdateCompanyPayload) => void;
   onProvision: (companyId: string) => void;
   saving: boolean;
   provisioning: boolean;
@@ -31,14 +84,30 @@ function CompanyCard({
   const [name, setName] = useState(company.name);
   const [legalName, setLegalName] = useState(company.legalName ?? '');
   const [status, setStatus] = useState<CompanyStatus>((company.status as CompanyStatus) ?? 'ACTIVE');
+  const companyStatus = (company.status as CompanyStatus) ?? 'ACTIVE';
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">{company.name}</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          {company.slug} • Workspace {company.workspaceId}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="text-base">{company.name}</CardTitle>
+          <Badge variant={getCompanyStatusBadgeVariant(companyStatus)}>
+            {getCompanyStatusLabel(companyStatus)}
+          </Badge>
+          <Badge variant="secondary">
+            {company.memberships?.length ?? 0} usuários ativos
+          </Badge>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            {company.slug} • Workspace {company.workspaceId}
+          </p>
+          {company.deactivatedAt ? (
+            <p className="text-xs text-muted-foreground">
+              Desativada em {new Date(company.deactivatedAt).toLocaleString('pt-BR')}
+            </p>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid gap-3 md:grid-cols-3">
@@ -59,7 +128,7 @@ function CompanyCard({
               <SelectContent>
                 {STATUS_OPTIONS.map((option) => (
                   <SelectItem key={option} value={option}>
-                    {option}
+                    {getCompanyStatusLabel(option)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -91,6 +160,20 @@ function CompanyCard({
               Salvar
             </Button>
             <Button
+              variant={companyStatus === 'ACTIVE' ? 'danger' : 'secondary'}
+              onClick={() =>
+                onSave({
+                  companyId: company.id,
+                  name,
+                  legalName,
+                  status: companyStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                })
+              }
+              disabled={saving}
+            >
+              {companyStatus === 'ACTIVE' ? 'Desativar' : 'Reativar'}
+            </Button>
+            <Button
               onClick={() => onProvision(company.id)}
               disabled={provisioning}
             >
@@ -106,6 +189,7 @@ function CompanyCard({
 export default function PlatformCompaniesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [activityFilter, setActivityFilter] = useState<CompanyActivityFilter>('all');
   const [createForm, setCreateForm] = useState({
     name: '',
     legalName: '',
@@ -117,20 +201,54 @@ export default function PlatformCompaniesPage() {
   });
 
   const companiesQuery = useQuery({
-    queryKey: ['platform-companies', search],
-    queryFn: () =>
-      apiRequest<PlatformCompany[]>(
-        `platform-admin/companies${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-      ),
+    queryKey: ['platform-companies', search, activityFilter],
+    queryFn: async () => {
+      const baseParams = new URLSearchParams();
+
+      if (search.trim()) {
+        baseParams.set('search', search.trim());
+      }
+
+      if (activityFilter === 'all') {
+        const query = baseParams.toString();
+        return apiRequest<PlatformCompany[]>(
+          `platform-admin/companies${query ? `?${query}` : ''}`,
+        );
+      }
+
+      const filteredParams = new URLSearchParams(baseParams);
+      filteredParams.set('activity', activityFilter);
+
+      try {
+        const query = filteredParams.toString();
+        return await apiRequest<PlatformCompany[]>(
+          `platform-admin/companies${query ? `?${query}` : ''}`,
+        );
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 400) {
+          throw error;
+        }
+
+        const fallbackQuery = baseParams.toString();
+        const companies = await apiRequest<PlatformCompany[]>(
+          `platform-admin/companies${fallbackQuery ? `?${fallbackQuery}` : ''}`,
+        );
+
+        return filterCompaniesByActivity(companies, activityFilter);
+      }
+    },
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { companyId: string; name: string; legalName: string; status: CompanyStatus }) =>
+    mutationFn: (payload: UpdateCompanyPayload) =>
       apiRequest(`platform-admin/companies/${payload.companyId}`, {
         method: 'PATCH',
         body: {
           name: payload.name,
-          legalName: payload.legalName || null,
+          legalName:
+            payload.legalName === undefined
+              ? undefined
+              : payload.legalName || null,
           status: payload.status,
         },
       }),
@@ -250,27 +368,59 @@ export default function PlatformCompaniesPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
           <Input
             placeholder="Buscar por nome, slug ou workspace"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
+          <div className="space-y-1">
+            <Label className="text-xs">Filtro</Label>
+            <Select value={activityFilter} onValueChange={(value) => setActivityFilter(value as CompanyActivityFilter)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTIVITY_FILTER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
       <div className="space-y-3">
+        {companiesQuery.isError ? (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-sm text-danger">
+                {(companiesQuery.error as Error).message}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
         {(companiesQuery.data ?? []).map((company) => (
           <CompanyCard
-            key={company.id}
+            key={`${company.id}:${company.updatedAt}`}
             company={company}
             onSave={(payload) => updateMutation.mutate(payload)}
             onProvision={(companyId) => provisionMutation.mutate(companyId)}
-            saving={updateMutation.isPending}
-            provisioning={provisionMutation.isPending}
+            saving={
+              updateMutation.isPending &&
+              updateMutation.variables?.companyId === company.id
+            }
+            provisioning={
+              provisionMutation.isPending &&
+              provisionMutation.variables === company.id
+            }
           />
         ))}
-        {!companiesQuery.isLoading && (companiesQuery.data ?? []).length === 0 ? (
+        {!companiesQuery.isLoading &&
+        !companiesQuery.isError &&
+        (companiesQuery.data ?? []).length === 0 ? (
           <Card>
             <CardContent className="p-6">
               <p className="text-sm text-muted-foreground">Nenhuma empresa encontrada.</p>

@@ -3,31 +3,72 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { apiRequest } from '@/lib/api-client';
+import { ApiError, apiRequest } from '@/lib/api-client';
 import { PlatformCompany, PlatformGlobalUser } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Switch } from '@/components/ui/switch';
 
 type GlobalUserStatus = 'ACTIVE' | 'PENDING' | 'BLOCKED';
 type PlatformRole = 'SUPER_ADMIN' | 'SUPPORT';
 type TenantRole = 'ADMIN' | 'MANAGER' | 'AGENT' | 'SELLER';
 type MembershipStatus = 'ACTIVE' | 'INVITED' | 'INACTIVE';
+type UserActivityFilter = 'all' | 'active' | 'inactive';
 
 const USER_STATUS_OPTIONS: GlobalUserStatus[] = ['ACTIVE', 'PENDING', 'BLOCKED'];
 const PLATFORM_ROLE_OPTIONS: Array<PlatformRole | 'NONE'> = ['NONE', 'SUPER_ADMIN', 'SUPPORT'];
 const TENANT_ROLE_OPTIONS: TenantRole[] = ['ADMIN', 'MANAGER', 'AGENT', 'SELLER'];
 const MEMBERSHIP_STATUS_OPTIONS: MembershipStatus[] = ['ACTIVE', 'INVITED', 'INACTIVE'];
+const USER_ACTIVITY_FILTER_OPTIONS: Array<{
+  value: UserActivityFilter;
+  label: string;
+}> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'active', label: 'Ativos' },
+  { value: 'inactive', label: 'Nao ativos' },
+];
+const ALL_COMPANIES_FILTER = '__all__';
+
+function filterUsersByActivity(
+  users: PlatformGlobalUser[],
+  activity: UserActivityFilter,
+) {
+  if (activity === 'active') {
+    return users.filter((user) => user.status === 'ACTIVE');
+  }
+
+  if (activity === 'inactive') {
+    return users.filter((user) => user.status !== 'ACTIVE');
+  }
+
+  return users;
+}
+
+function filterUsersByCompany(
+  users: PlatformGlobalUser[],
+  companyId: string,
+) {
+  if (companyId === ALL_COMPANIES_FILTER) {
+    return users;
+  }
+
+  return users.filter((user) =>
+    user.memberships.some((membership) => membership.companyId === companyId),
+  );
+}
 
 function UserCard({
   user,
   companies,
   onUpdate,
+  onDelete,
   onUpsertMembership,
   busy,
+  deleting,
 }: {
   user: PlatformGlobalUser;
   companies: PlatformCompany[];
@@ -39,6 +80,7 @@ function UserCard({
     password: string;
     confirmPassword: string;
   }) => void;
+  onDelete: (globalUserId: string) => void;
   onUpsertMembership: (payload: {
     globalUserId: string;
     companyId: string;
@@ -47,6 +89,7 @@ function UserCard({
     isDefault: boolean;
   }) => void;
   busy: boolean;
+  deleting: boolean;
 }) {
   const [name, setName] = useState(user.name);
   const [status, setStatus] = useState<GlobalUserStatus>((user.status as GlobalUserStatus) ?? 'ACTIVE');
@@ -102,9 +145,9 @@ function UserCard({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button
-              className="w-full"
+              className="flex-1"
               variant="secondary"
               onClick={() =>
                 onUpdate({
@@ -120,6 +163,21 @@ function UserCard({
             >
               Salvar usuário
             </Button>
+            <ConfirmDialog
+              trigger={
+                <Button
+                  className="flex-1"
+                  variant="danger"
+                  disabled={busy || deleting}
+                >
+                  Excluir
+                </Button>
+              }
+              title="Excluir usuário"
+              description={`Excluir ${user.name} (${user.email})? Essa ação remove o acesso do usuário e inativa os vínculos com empresas.`}
+              actionLabel="Excluir"
+              onConfirm={() => onDelete(user.id)}
+            />
           </div>
         </div>
 
@@ -223,6 +281,8 @@ function UserCard({
 export default function PlatformUsersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [activityFilter, setActivityFilter] = useState<UserActivityFilter>('all');
+  const [companyFilter, setCompanyFilter] = useState(ALL_COMPANIES_FILTER);
   const [createForm, setCreateForm] = useState({
     name: '',
     email: '',
@@ -233,11 +293,52 @@ export default function PlatformUsersPage() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ['platform-users', search],
-    queryFn: () =>
-      apiRequest<PlatformGlobalUser[]>(
-        `platform-admin/users${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-      ),
+    queryKey: ['platform-users', search, activityFilter, companyFilter],
+    queryFn: async () => {
+      const baseParams = new URLSearchParams();
+
+      if (search.trim()) {
+        baseParams.set('search', search.trim());
+      }
+
+      if (activityFilter === 'all' && companyFilter === ALL_COMPANIES_FILTER) {
+        const query = baseParams.toString();
+        return apiRequest<PlatformGlobalUser[]>(
+          `platform-admin/users${query ? `?${query}` : ''}`,
+        );
+      }
+
+      const filteredParams = new URLSearchParams(baseParams);
+
+      if (activityFilter !== 'all') {
+        filteredParams.set('activity', activityFilter);
+      }
+
+      if (companyFilter !== ALL_COMPANIES_FILTER) {
+        filteredParams.set('companyId', companyFilter);
+      }
+
+      try {
+        const query = filteredParams.toString();
+        return await apiRequest<PlatformGlobalUser[]>(
+          `platform-admin/users${query ? `?${query}` : ''}`,
+        );
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 400) {
+          throw error;
+        }
+
+        const fallbackQuery = baseParams.toString();
+        const users = await apiRequest<PlatformGlobalUser[]>(
+          `platform-admin/users${fallbackQuery ? `?${fallbackQuery}` : ''}`,
+        );
+
+        return filterUsersByCompany(
+          filterUsersByActivity(users, activityFilter),
+          companyFilter,
+        );
+      }
+    },
   });
 
   const companiesQuery = useQuery({
@@ -303,6 +404,20 @@ export default function PlatformUsersPage() {
       toast.success('Usuário atualizado.');
       queryClient.invalidateQueries({ queryKey: ['platform-users'] });
       queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (globalUserId: string) =>
+      apiRequest(`platform-admin/users/${globalUserId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      toast.success('Usuário excluído.');
+      queryClient.invalidateQueries({ queryKey: ['platform-users'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-companies'] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -415,27 +530,81 @@ export default function PlatformUsersPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_200px_240px]">
           <Input
             placeholder="Buscar por nome ou email"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
+          <div className="space-y-1">
+            <Label className="text-xs">Atividade</Label>
+            <Select value={activityFilter} onValueChange={(value) => setActivityFilter(value as UserActivityFilter)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {USER_ACTIVITY_FILTER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Empresa</Label>
+            <Select value={companyFilter} onValueChange={setCompanyFilter}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_COMPANIES_FILTER}>
+                  Todas as empresas
+                </SelectItem>
+                {companies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
       <div className="space-y-3">
+        {usersQuery.isError ? (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-sm text-danger">
+                {(usersQuery.error as Error).message}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
         {(usersQuery.data ?? []).map((user) => (
           <UserCard
             key={user.id}
             user={user}
             companies={companies}
             onUpdate={(payload) => updateMutation.mutate(payload)}
+            onDelete={(globalUserId) => deleteMutation.mutate(globalUserId)}
             onUpsertMembership={(payload) => membershipMutation.mutate(payload)}
-            busy={updateMutation.isPending || membershipMutation.isPending}
+            busy={
+              updateMutation.isPending ||
+              membershipMutation.isPending ||
+              (deleteMutation.isPending &&
+                deleteMutation.variables === user.id)
+            }
+            deleting={
+              deleteMutation.isPending &&
+              deleteMutation.variables === user.id
+            }
           />
         ))}
-        {!usersQuery.isLoading && (usersQuery.data ?? []).length === 0 ? (
+        {!usersQuery.isLoading &&
+        !usersQuery.isError &&
+        (usersQuery.data ?? []).length === 0 ? (
           <Card>
             <CardContent className="p-6">
               <p className="text-sm text-muted-foreground">Nenhum usuário encontrado.</p>

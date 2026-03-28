@@ -13,6 +13,7 @@ import {
   GlobalUserStatus,
   LeadInterestStatus,
   MembershipStatus,
+  Prisma,
   PlatformRole,
   PlatformAuditAction,
   ProvisioningJobStatus,
@@ -127,16 +128,29 @@ export class PlatformAdminService {
 
   async listCompanies(query: PlatformCompanyListQueryDto) {
     const search = query.search?.trim();
+    const activity = query.activity ?? 'all';
+    const where: Prisma.CompanyWhereInput = {};
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { slug: { contains: search, mode: 'insensitive' } },
+        { workspaceId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (activity === 'active') {
+      where.status = CompanyStatus.ACTIVE;
+    }
+
+    if (activity === 'inactive') {
+      where.status = {
+        not: CompanyStatus.ACTIVE,
+      };
+    }
+
     return this.controlPlanePrisma.company.findMany({
-      where: search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { slug: { contains: search, mode: 'insensitive' } },
-              { workspaceId: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         tenantDatabase: true,
         memberships: {
@@ -278,6 +292,14 @@ export class PlatformAdminService {
       nextSlug = await this.generateUniqueCompanySlug(dto.slug, company.id);
     }
 
+    const nextStatus = dto.status ?? company.status;
+    const nextDeactivatedAt =
+      nextStatus === CompanyStatus.ACTIVE
+        ? null
+        : company.status === CompanyStatus.ACTIVE
+          ? new Date()
+          : company.deactivatedAt ?? new Date();
+
     const updated = await this.controlPlanePrisma.company.update({
       where: {
         id: companyId,
@@ -286,13 +308,8 @@ export class PlatformAdminService {
         name: dto.name ?? company.name,
         legalName: dto.legalName ?? company.legalName,
         slug: nextSlug ?? company.slug,
-        status: dto.status ?? company.status,
-        deactivatedAt:
-          dto.status && dto.status !== CompanyStatus.ACTIVE
-            ? new Date()
-            : dto.status === CompanyStatus.ACTIVE
-              ? null
-              : company.deactivatedAt,
+        status: nextStatus,
+        deactivatedAt: nextDeactivatedAt,
       },
     });
 
@@ -373,15 +390,38 @@ export class PlatformAdminService {
 
   async listGlobalUsers(query: PlatformUsersListQueryDto) {
     const search = query.search?.trim();
+    const activity = query.activity ?? 'all';
+    const where: Prisma.GlobalUserWhereInput = {
+      deletedAt: null,
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (activity === 'active') {
+      where.status = GlobalUserStatus.ACTIVE;
+    }
+
+    if (activity === 'inactive') {
+      where.status = {
+        not: GlobalUserStatus.ACTIVE,
+      };
+    }
+
+    if (query.companyId?.trim()) {
+      where.memberships = {
+        some: {
+          companyId: query.companyId.trim(),
+        },
+      };
+    }
+
     return this.controlPlanePrisma.globalUser.findMany({
-      where: search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         memberships: {
           include: {
@@ -468,6 +508,10 @@ export class PlatformAdminService {
       throw new NotFoundException('Usuario global nao encontrado.');
     }
 
+    if (user.deletedAt) {
+      throw new NotFoundException('Usuario global nao encontrado.');
+    }
+
     const nextPasswordHash =
       dto.password && dto.password.length > 0
         ? await bcrypt.hash(dto.password, 10)
@@ -505,6 +549,109 @@ export class PlatformAdminService {
     return updated;
   }
 
+  async deleteGlobalUser(actorId: string, globalUserId: string) {
+    const user = await this.controlPlanePrisma.globalUser.findUnique({
+      where: {
+        id: globalUserId,
+      },
+      include: {
+        memberships: {
+          include: {
+            company: {
+              select: {
+                id: true,
+                workspaceId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('Usuario global nao encontrado.');
+    }
+
+    if (actorId === user.id) {
+      throw new BadRequestException('Voce nao pode excluir o proprio usuario.');
+    }
+
+    if (user.platformRole === PlatformRole.SUPER_ADMIN) {
+      const remainingSuperAdmins = await this.controlPlanePrisma.globalUser.count({
+        where: {
+          platformRole: PlatformRole.SUPER_ADMIN,
+          status: GlobalUserStatus.ACTIVE,
+          deletedAt: null,
+          id: {
+            not: user.id,
+          },
+        },
+      });
+
+      if (remainingSuperAdmins === 0) {
+        throw new BadRequestException(
+          'Nao e possivel excluir o ultimo SUPER_ADMIN.',
+        );
+      }
+    }
+
+    const now = new Date();
+
+    await this.controlPlanePrisma.$transaction([
+      this.controlPlanePrisma.companyMembership.updateMany({
+        where: {
+          globalUserId: user.id,
+        },
+        data: {
+          status: MembershipStatus.INACTIVE,
+          isDefault: false,
+          revokedAt: now,
+        },
+      }),
+      this.controlPlanePrisma.globalRefreshToken.updateMany({
+        where: {
+          globalUserId: user.id,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: now,
+        },
+      }),
+      this.controlPlanePrisma.globalUser.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          deletedAt: now,
+        },
+      }),
+    ]);
+
+    await Promise.all(
+      user.memberships.map((membership) =>
+        this.deactivateTenantUserAccess({
+          companyId: membership.companyId,
+          workspaceId: membership.company.workspaceId,
+          globalUserId: user.id,
+          email: user.email,
+          deletedAt: now,
+        }),
+      ),
+    );
+
+    await this.controlPlaneAuditService.log({
+      actorId,
+      action: PlatformAuditAction.USER_UPDATED,
+      entityType: 'global_user',
+      entityId: user.id,
+      metadata: {
+        deletedAt: now.toISOString(),
+      },
+    });
+
+    return { success: true };
+  }
+
   async upsertMembership(
     actorId: string,
     globalUserId: string,
@@ -517,6 +664,10 @@ export class PlatformAdminService {
     });
 
     if (!user) {
+      throw new NotFoundException('Usuario global nao encontrado.');
+    }
+
+    if (user.deletedAt) {
       throw new NotFoundException('Usuario global nao encontrado.');
     }
 
@@ -796,6 +947,45 @@ export class PlatformAdminService {
           email: user.email,
           role: user.role,
           status: user.status,
+        },
+      });
+    });
+  }
+
+  private async deactivateTenantUserAccess(payload: {
+    workspaceId: string;
+    companyId: string;
+    globalUserId: string;
+    email: string;
+    deletedAt: Date;
+  }) {
+    await this.prisma.runWithTenant(payload.companyId, async () => {
+      await this.prisma.user.updateMany({
+        where: {
+          workspaceId: payload.workspaceId,
+          OR: [
+            {
+              globalUserId: payload.globalUserId,
+            },
+            {
+              email: payload.email,
+            },
+          ],
+        },
+        data: {
+          status: UserStatus.INACTIVE,
+          deletedAt: payload.deletedAt,
+        },
+      });
+
+      await this.prisma.teamMember.updateMany({
+        where: {
+          workspaceId: payload.workspaceId,
+          email: payload.email,
+        },
+        data: {
+          status: UserStatus.INACTIVE,
+          deactivatedAt: payload.deletedAt,
         },
       });
     });

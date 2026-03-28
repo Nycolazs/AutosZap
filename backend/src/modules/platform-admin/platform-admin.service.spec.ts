@@ -1,4 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  CompanyStatus,
+  GlobalUserStatus,
+  PlatformRole,
+} from '@autoszap/control-plane-client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ControlPlanePrismaService } from '../../common/prisma/control-plane-prisma.service';
 import { ControlPlaneAuditService } from '../control-plane/control-plane-audit.service';
@@ -14,7 +19,15 @@ describe('PlatformAdminService', () => {
   let prismaService: jest.Mocked<PrismaService>;
   let notificationsService: jest.Mocked<NotificationsService>;
   let findGlobalUserMock: jest.Mock;
+  let findGlobalUsersMock: jest.Mock;
+  let updateGlobalUserMock: jest.Mock;
+  let countGlobalUsersMock: jest.Mock;
   let findCompanyMock: jest.Mock;
+  let findCompaniesMock: jest.Mock;
+  let updateCompanyMock: jest.Mock;
+  let updateGlobalRefreshTokensMock: jest.Mock;
+  let updateTenantUsersMock: jest.Mock;
+  let updateTeamMembersMock: jest.Mock;
   let upsertMembershipMock: jest.Mock;
   let supportTicketFindUniqueMock: jest.Mock;
   let supportTicketMessageCreateMock: jest.Mock;
@@ -26,7 +39,15 @@ describe('PlatformAdminService', () => {
 
   beforeEach(() => {
     findGlobalUserMock = jest.fn();
+    findGlobalUsersMock = jest.fn();
+    updateGlobalUserMock = jest.fn();
+    countGlobalUsersMock = jest.fn();
     findCompanyMock = jest.fn();
+    findCompaniesMock = jest.fn();
+    updateCompanyMock = jest.fn();
+    updateGlobalRefreshTokensMock = jest.fn();
+    updateTenantUsersMock = jest.fn();
+    updateTeamMembersMock = jest.fn();
     upsertMembershipMock = jest.fn();
     supportTicketFindUniqueMock = jest.fn();
     supportTicketMessageCreateMock = jest.fn();
@@ -41,9 +62,17 @@ describe('PlatformAdminService', () => {
     controlPlanePrisma = {
       globalUser: {
         findUnique: findGlobalUserMock,
+        findMany: findGlobalUsersMock,
+        update: updateGlobalUserMock,
+        count: countGlobalUsersMock,
+      },
+      globalRefreshToken: {
+        updateMany: updateGlobalRefreshTokensMock,
       },
       company: {
         findUnique: findCompanyMock,
+        findMany: findCompaniesMock,
+        update: updateCompanyMock,
       },
       companyMembership: {
         upsert: upsertMembershipMock,
@@ -67,6 +96,10 @@ describe('PlatformAdminService', () => {
     prismaService = {
       user: {
         findFirst: findTenantUserMock,
+        updateMany: updateTenantUsersMock,
+      },
+      teamMember: {
+        updateMany: updateTeamMembersMock,
       },
       runWithTenant: runWithTenantMock,
     } as unknown as jest.Mocked<PrismaService>;
@@ -80,6 +113,185 @@ describe('PlatformAdminService', () => {
       tenantProvisioningService,
       prismaService,
       notificationsService,
+    );
+  });
+
+  it('filtra empresas ativas e desativadas na listagem', async () => {
+    findCompaniesMock.mockResolvedValue([]);
+
+    await service.listCompanies({
+      search: 'Acme',
+      activity: 'active',
+    });
+
+    expect(findCompaniesMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: 'Acme', mode: 'insensitive' } },
+            { slug: { contains: 'Acme', mode: 'insensitive' } },
+            { workspaceId: { contains: 'Acme', mode: 'insensitive' } },
+          ],
+          status: CompanyStatus.ACTIVE,
+        },
+      }),
+    );
+
+    await service.listCompanies({
+      activity: 'inactive',
+    });
+
+    expect(findCompaniesMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          status: {
+            not: CompanyStatus.ACTIVE,
+          },
+        },
+      }),
+    );
+  });
+
+  it('filtra usuarios por atividade e empresa', async () => {
+    findGlobalUsersMock.mockResolvedValue([]);
+
+    await service.listGlobalUsers({
+      search: 'joao',
+      activity: 'active',
+      companyId: 'company-1',
+    });
+
+    expect(findGlobalUsersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          OR: [
+            { name: { contains: 'joao', mode: 'insensitive' } },
+            { email: { contains: 'joao', mode: 'insensitive' } },
+          ],
+          status: GlobalUserStatus.ACTIVE,
+          memberships: {
+            some: {
+              companyId: 'company-1',
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it('exclui usuario global, revoga acessos e sincroniza tenants', async () => {
+    const deletedAt = new Date('2026-03-28T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(deletedAt);
+    findGlobalUserMock.mockResolvedValue({
+      id: 'user-1',
+      email: 'user@acme.com',
+      deletedAt: null,
+      platformRole: null,
+      memberships: [
+        {
+          id: 'membership-1',
+          companyId: 'company-1',
+          company: {
+            id: 'company-1',
+            workspaceId: 'workspace-1',
+          },
+        },
+      ],
+    } as never);
+    updateGlobalUserMock.mockResolvedValue({
+      id: 'user-1',
+    } as never);
+    updateGlobalRefreshTokensMock.mockResolvedValue({ count: 1 } as never);
+    runWithTenantMock.mockImplementation(async (_companyId, callback) =>
+      callback(),
+    );
+    updateTenantUsersMock.mockResolvedValue({ count: 1 } as never);
+    updateTeamMembersMock.mockResolvedValue({ count: 1 } as never);
+
+    const result = await service.deleteGlobalUser('actor-1', 'user-1');
+
+    expect(result).toEqual({ success: true });
+    expect(updateGlobalRefreshTokensMock).toHaveBeenCalledWith({
+      where: {
+        globalUserId: 'user-1',
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: deletedAt,
+      },
+    });
+    expect(updateGlobalUserMock).toHaveBeenCalledWith({
+      where: {
+        id: 'user-1',
+      },
+      data: {
+        deletedAt,
+      },
+    });
+    expect(runWithTenantMock).toHaveBeenCalledWith(
+      'company-1',
+      expect.any(Function),
+    );
+    expect(updateTenantUsersMock).toHaveBeenCalled();
+    expect(updateTeamMembersMock).toHaveBeenCalled();
+    expect(auditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'user-1',
+        metadata: {
+          deletedAt: deletedAt.toISOString(),
+        },
+      }),
+    );
+    jest.useRealTimers();
+  });
+
+  it('impede excluir o ultimo super admin', async () => {
+    findGlobalUserMock.mockResolvedValue({
+      id: 'user-1',
+      email: 'admin@autoszap.com',
+      deletedAt: null,
+      platformRole: PlatformRole.SUPER_ADMIN,
+      memberships: [],
+    } as never);
+    countGlobalUsersMock.mockResolvedValue(0);
+
+    await expect(
+      service.deleteGlobalUser('actor-2', 'user-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('preserva a data de desativacao ao atualizar empresa ja desativada', async () => {
+    const deactivatedAt = new Date('2026-03-20T10:00:00.000Z');
+    findCompanyMock.mockResolvedValue({
+      id: 'company-1',
+      name: 'Acme',
+      legalName: 'Acme Ltda',
+      slug: 'acme',
+      status: CompanyStatus.INACTIVE,
+      deactivatedAt,
+    } as never);
+    updateCompanyMock.mockResolvedValue({
+      id: 'company-1',
+      status: CompanyStatus.INACTIVE,
+      deactivatedAt,
+    } as never);
+
+    await service.updateCompany('actor-1', 'company-1', {
+      name: 'Acme Brasil',
+      status: CompanyStatus.INACTIVE,
+    });
+
+    expect(updateCompanyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: 'Acme Brasil',
+          status: CompanyStatus.INACTIVE,
+          deactivatedAt,
+        }),
+      }),
     );
   });
 

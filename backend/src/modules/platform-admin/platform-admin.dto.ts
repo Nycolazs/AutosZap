@@ -65,12 +65,24 @@ export class PlatformCompanyListQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsIn(['all', 'active', 'inactive'])
+  activity?: 'all' | 'active' | 'inactive';
 }
 
 export class PlatformUsersListQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsIn(['all', 'active', 'inactive'])
+  activity?: 'all' | 'active' | 'inactive';
+
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }
 
 export class CreatePlatformUserDto {

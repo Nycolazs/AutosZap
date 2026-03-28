@@ -735,6 +735,7 @@ export interface PlatformCompany {
   legalName?: string | null;
   slug: string;
   status: string;
+  deactivatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   tenantDatabase?: {
