@@ -91,6 +91,14 @@ type CreateQrInstanceForm = {
   name: string;
 };
 
+type InstanceHistorySyncJob = {
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  trigger?: string | null;
+  detail?: string | null;
+};
+
 const DEFAULT_PROVIDER_CAPABILITIES: Record<
   InstanceProvider,
   {
@@ -253,6 +261,58 @@ function buildQrDraftInstanceName() {
   return `__qr_draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function getInstanceHistorySyncJob(instance: Instance): InstanceHistorySyncJob | null {
+  const providerMetadata = toRecord(instance.providerMetadata);
+  const historySyncJob = toRecord(providerMetadata?.historySyncJob);
+
+  if (!historySyncJob) {
+    return null;
+  }
+
+  const status =
+    typeof historySyncJob.status === 'string' ? historySyncJob.status : null;
+
+  if (
+    status !== 'RUNNING' &&
+    status !== 'COMPLETED' &&
+    status !== 'FAILED' &&
+    status !== 'CANCELED'
+  ) {
+    return null;
+  }
+
+  return {
+    status,
+    startedAt:
+      typeof historySyncJob.startedAt === 'string' ? historySyncJob.startedAt : null,
+    finishedAt:
+      typeof historySyncJob.finishedAt === 'string'
+        ? historySyncJob.finishedAt
+        : null,
+    trigger:
+      typeof historySyncJob.trigger === 'string' ? historySyncJob.trigger : null,
+    detail:
+      typeof historySyncJob.detail === 'string' ? historySyncJob.detail : null,
+  };
+}
+
+function buildRunningHistorySyncJob(detail: string): InstanceHistorySyncJob {
+  return {
+    status: 'RUNNING',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    detail,
+  };
+}
+
 function isWhatsAppWebGatewayTimeoutError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
@@ -264,6 +324,15 @@ function isWhatsAppWebGatewayTimeoutError(error: unknown) {
     (normalizedMessage.includes('timeout') ||
       normalizedMessage.includes('demorou mais que o esperado'))
   );
+}
+
+function isWhatsAppWebGatewaySyncCanceledError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.toLowerCase().includes('sincronizacao do historico qr') &&
+    error.message.toLowerCase().includes('cancelada');
 }
 
 function buildConnectionStateFromQr(
@@ -484,6 +553,13 @@ export default function InstancesPage() {
     () => instances.filter((instance) => instance.provider === 'WHATSAPP_WEB'),
     [instances],
   );
+  const qrSyncingInstanceIds = useMemo(
+    () =>
+      qrInstances
+        .filter((instance) => getInstanceHistorySyncJob(instance)?.status === 'RUNNING')
+        .map((instance) => instance.id),
+    [qrInstances],
+  );
   const connectedInstances = useMemo(
     () => instances.filter((instance) => instance.status === 'CONNECTED'),
     [instances],
@@ -508,6 +584,20 @@ export default function InstancesPage() {
 
     return formatDate(new Date(latestSyncTime));
   }, [instances]);
+
+  useEffect(() => {
+    if (!qrSyncingInstanceIds.length) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void instancesQuery.refetch();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [instancesQuery, qrSyncingInstanceIds]);
 
   const loadConnectionState = useCallback((instanceId: string) => {
     return apiRequest<InstanceConnectionState>(
@@ -685,9 +775,43 @@ export default function InstancesPage() {
     ]);
   }, [queryClient]);
 
+  const setInstanceHistorySyncJobInCache = useCallback(
+    (instanceId: string, historySyncJob: InstanceHistorySyncJob) => {
+      queryClient.setQueryData<Instance[]>(['instances'], (current) =>
+        current?.map((instance) =>
+          instance.id === instanceId
+            ? {
+                ...instance,
+                providerMetadata: {
+                  ...(instance.providerMetadata ?? {}),
+                  historySyncJob,
+                },
+              }
+            : instance,
+        ) ?? current,
+      );
+    },
+    [queryClient],
+  );
+
+  const removeInstanceFromCache = useCallback(
+    (instanceId: string) => {
+      queryClient.setQueryData<Instance[]>(['instances'], (current) =>
+        current?.filter((instance) => instance.id !== instanceId) ?? current,
+      );
+    },
+    [queryClient],
+  );
+
   const triggerInitialQrHistorySync = useCallback((instanceId: string) => {
     void (async () => {
       try {
+        setInstanceHistorySyncJobInCache(
+          instanceId,
+          buildRunningHistorySyncJob(
+            'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+          ),
+        );
         await syncInstance(instanceId);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['instances'] }),
@@ -699,6 +823,11 @@ export default function InstancesPage() {
           return;
         }
 
+        if (isWhatsAppWebGatewaySyncCanceledError(error)) {
+          await queryClient.invalidateQueries({ queryKey: ['instances'] });
+          return;
+        }
+
         toast.error(
           error instanceof Error
             ? error.message
@@ -706,7 +835,12 @@ export default function InstancesPage() {
         );
       }
     })();
-  }, [clearConversationCaches, queryClient, syncInstance]);
+  }, [
+    clearConversationCaches,
+    queryClient,
+    setInstanceHistorySyncJobInCache,
+    syncInstance,
+  ]);
 
   async function runSyncAction(
     instance: Instance,
@@ -726,6 +860,15 @@ export default function InstancesPage() {
     setInstanceActionKey(actionKey);
 
     try {
+      if (instance.provider === 'WHATSAPP_WEB') {
+        setInstanceHistorySyncJobInCache(
+          instance.id,
+          buildRunningHistorySyncJob(
+            'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+          ),
+        );
+      }
+
       const response = await syncInstance(instance.id);
       await queryClient.invalidateQueries({ queryKey: ['instances'] });
 
@@ -748,6 +891,15 @@ export default function InstancesPage() {
           description:
             'O gateway continua processando o historico. Atualize a lista em alguns instantes.',
         });
+        return null;
+      }
+
+      if (
+        instance.provider === 'WHATSAPP_WEB' &&
+        isWhatsAppWebGatewaySyncCanceledError(error)
+      ) {
+        await queryClient.invalidateQueries({ queryKey: ['instances'] });
+        toast.dismiss(loadingToastId);
         return null;
       }
 
@@ -1110,6 +1262,7 @@ export default function InstancesPage() {
 
     try {
       await apiRequest(`instances/${instance.id}`, { method: 'DELETE' });
+      removeInstanceFromCache(instance.id);
       if (selectedInstance?.id === instance.id) {
         setProfileDialogOpen(false);
         resetProfileDialogState();
@@ -1521,7 +1674,16 @@ export default function InstancesPage() {
                 const logoutActionKey = `logout:${instance.id}`;
                 const disconnectActionKey = `disconnect:${instance.id}`;
                 const removeActionKey = `remove:${instance.id}`;
+                const historySyncJob = isQrInstance
+                  ? getInstanceHistorySyncJob(instance)
+                  : null;
+                const isHistorySyncRunning = historySyncJob?.status === 'RUNNING';
                 const isBusy = instanceActionKey !== null;
+                const isRemovingThisInstance = instanceActionKey === removeActionKey;
+                const isSyncingThisInstance = instanceActionKey === syncActionKey;
+                const hasBlockingInstanceAction =
+                  Boolean(instanceActionKey?.endsWith(`:${instance.id}`)) &&
+                  !isSyncingThisInstance;
 
                 return (
                   <Card key={instance.id} className="overflow-hidden p-0">
@@ -1538,6 +1700,15 @@ export default function InstancesPage() {
                             <Badge variant={getModeVariant(instance.mode)}>
                               {getModeLabel(instance.mode)}
                             </Badge>
+                            {isHistorySyncRunning ? (
+                              <Badge
+                                variant="default"
+                                className="inline-flex items-center gap-1.5"
+                              >
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Sincronizando historico
+                              </Badge>
+                            ) : null}
                           </div>
                           <div>
                             <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
@@ -1572,8 +1743,8 @@ export default function InstancesPage() {
                       </div>
                     </div>
 
-                    <CardContent className="space-y-5 p-5">
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <CardContent className="space-y-5 p-5">
+                        <div className="grid gap-3 sm:grid-cols-2">
                         <InstanceFact
                           label="Numero conectado"
                           value={
@@ -1627,10 +1798,27 @@ export default function InstancesPage() {
                               .join(' • ') || 'Sem capacidades informadas'
                           }
                           helper="A interface adapta as acoes ao provedor da instancia."
-                        />
-                      </div>
+                          />
+                        </div>
 
-                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {isHistorySyncRunning ? (
+                          <div className="rounded-[20px] border border-primary/20 bg-primary/10 px-4 py-3">
+                            <div className="flex items-start gap-3">
+                              <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-primary" />
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  Sincronizando conversas e midias antigas
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {historySyncJob?.detail ??
+                                    'As conversas vao aparecendo aos poucos enquanto o gateway processa o historico privado.'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         <Button
                           type="button"
                           variant="secondary"
@@ -1920,7 +2108,7 @@ export default function InstancesPage() {
                               type="button"
                               variant="ghost"
                               className="justify-start text-danger hover:text-danger"
-                              disabled={isBusy}
+                              disabled={isRemovingThisInstance || hasBlockingInstanceAction}
                             >
                               {instanceActionKey === removeActionKey ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

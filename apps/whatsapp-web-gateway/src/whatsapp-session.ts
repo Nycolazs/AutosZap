@@ -161,6 +161,13 @@ function normalizeSyncError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+class HistorySyncCanceledError extends Error {
+  constructor() {
+    super("WhatsApp QR history sync was canceled.");
+    this.name = "HistorySyncCanceledError";
+  }
+}
+
 function normalizeBrazilianPhoneDigits(value?: string | null) {
   const digits = value?.replace(/\D/g, "") ?? "";
 
@@ -204,6 +211,7 @@ export class WhatsAppSession {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private destroyed = false;
   private historySyncPromise: Promise<HistorySyncResult> | null = null;
+  private historySyncCanceled = false;
   private readonly lidPhoneCache = new Map<string, string>();
   private readonly contactProfilePictureCache = new Map<string, string>();
 
@@ -298,6 +306,7 @@ export class WhatsAppSession {
 
   async stop(clearSession: boolean) {
     this.desiredState = "stopped";
+    this.historySyncCanceled = true;
     this.clearReconnectTimer();
 
     const sessionPath = this.getSessionPath();
@@ -453,6 +462,7 @@ export class WhatsAppSession {
       return this.historySyncPromise;
     }
 
+    this.historySyncCanceled = false;
     this.historySyncPromise = this.performHistorySync().finally(() => {
       this.historySyncPromise = null;
     });
@@ -479,6 +489,7 @@ export class WhatsAppSession {
 
   private async performHistorySync(): Promise<HistorySyncResult> {
     const client = await this.ensureClientReady();
+    this.assertHistorySyncActive();
     const startedAt = new Date();
     const result: HistorySyncResult = {
       instanceId: this.options.instanceId,
@@ -496,9 +507,11 @@ export class WhatsAppSession {
       errors: [],
     };
     const chats = await client.getChats();
+    this.assertHistorySyncActive();
     const eligibleChats: Chat[] = [];
 
     for (const chat of chats) {
+      this.assertHistorySyncActive();
       result.chatsEvaluated += 1;
 
       const chatId = chat.id?._serialized;
@@ -524,6 +537,7 @@ export class WhatsAppSession {
       const nextPendingChats: Chat[] = [];
 
       for (const chat of pendingChats) {
+        this.assertHistorySyncActive();
         const chatId = chat.id?._serialized;
 
         try {
@@ -558,6 +572,7 @@ export class WhatsAppSession {
     }
 
     result.chatsSynced = syncedChatIds.size;
+    this.assertHistorySyncActive();
 
     const finishedAt = new Date();
     result.finishedAt = finishedAt.toISOString();
@@ -607,7 +622,9 @@ export class WhatsAppSession {
       retryPass?: boolean;
     },
   ) {
+    this.assertHistorySyncActive();
     await chat.syncHistory().catch(() => false);
+    this.assertHistorySyncActive();
 
     const [messages, contact] = await Promise.all([
       chat.fetchMessages({
@@ -622,6 +639,7 @@ export class WhatsAppSession {
     let shouldRetry = false;
 
     for (const message of messages) {
+      this.assertHistorySyncActive();
       const contactContext = await this.resolveMessageContactContext(
         client,
         message,
@@ -661,6 +679,7 @@ export class WhatsAppSession {
       }
 
       if (normalizedWithMedia.hasMedia === true) {
+        this.assertHistorySyncActive();
         await this.flushHistoryBatch(batch, result);
         await this.emit("messages.batch", {
           messages: [normalizedWithMedia],
@@ -673,10 +692,12 @@ export class WhatsAppSession {
       batch.push(normalizedWithMedia);
 
       if (batch.length >= HISTORY_SYNC_BATCH_SIZE) {
+        this.assertHistorySyncActive();
         await this.flushHistoryBatch(batch, result);
       }
     }
 
+    this.assertHistorySyncActive();
     await this.flushHistoryBatch(batch, result);
 
     return {
@@ -751,6 +772,12 @@ export class WhatsAppSession {
           downloadError: normalizeSyncError(error),
         },
       };
+    }
+  }
+
+  private assertHistorySyncActive() {
+    if (this.historySyncCanceled || this.desiredState === "stopped") {
+      throw new HistorySyncCanceledError();
     }
   }
 

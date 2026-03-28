@@ -158,6 +158,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
           providerMetadata: null,
         }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       whatsAppWebhookEvent: {
         create: jest.fn().mockResolvedValue({
@@ -217,6 +218,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
           deletedAt: null,
         }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const gatewayClient = {
@@ -261,7 +263,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
     );
 
     await service.getConnectionState('workspace-1', 'instance-1');
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(gatewayClient.syncHistory).toHaveBeenCalledWith('instance-1');
   });
@@ -282,6 +284,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
           deletedAt: null,
         }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const gatewayClient = {
@@ -320,6 +323,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
   it('unregisters a qr instance directly in the gateway and marks it disconnected in the db', async () => {
     const instanceUpdate = jest.fn().mockResolvedValue({});
     const gatewayClient = {
+      cancelSyncHistory: jest.fn(),
       unregister: jest.fn().mockResolvedValue({
         success: true,
         instanceId: 'instance-1',
@@ -349,6 +353,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
       success: true,
       instanceId: 'instance-1',
     });
+    expect(gatewayClient.cancelSyncHistory).toHaveBeenCalledWith('instance-1');
     expect(gatewayClient.unregister).toHaveBeenCalledWith('instance-1');
     expect(instanceUpdate).toHaveBeenCalledWith(
       expect.objectContaining({

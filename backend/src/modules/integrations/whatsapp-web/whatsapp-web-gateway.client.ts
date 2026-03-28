@@ -16,9 +16,22 @@ import type {
 const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 20_000;
 const HISTORY_SYNC_REQUEST_TIMEOUT_MS = 120_000;
 
+export class WhatsAppWebGatewayHistorySyncCanceledError extends Error {
+  constructor(instanceId: string) {
+    super(
+      `Sincronizacao do historico QR da instancia ${instanceId} foi cancelada.`,
+    );
+    this.name = 'WhatsAppWebGatewayHistorySyncCanceledError';
+  }
+}
+
 @Injectable()
 export class WhatsAppWebGatewayClient {
   private clients: AxiosInstance[];
+  private readonly historySyncAbortControllers = new Map<
+    string,
+    AbortController
+  >();
 
   constructor(private readonly configService: ConfigService) {
     const baseURL =
@@ -123,11 +136,39 @@ export class WhatsAppWebGatewayClient {
   }
 
   async syncHistory(instanceId: string) {
-    return this.request<WhatsAppWebGatewayHistorySyncResult>({
-      method: 'POST',
-      url: `/instances/${instanceId}/history/sync`,
-      timeoutMs: HISTORY_SYNC_REQUEST_TIMEOUT_MS,
-    });
+    const abortController = new AbortController();
+    this.historySyncAbortControllers.set(instanceId, abortController);
+
+    try {
+      return await this.request<WhatsAppWebGatewayHistorySyncResult>({
+        method: 'POST',
+        url: `/instances/${instanceId}/history/sync`,
+        timeoutMs: HISTORY_SYNC_REQUEST_TIMEOUT_MS,
+        signal: abortController.signal,
+      });
+    } catch (error) {
+      if (error instanceof WhatsAppWebGatewayHistorySyncCanceledError) {
+        throw new WhatsAppWebGatewayHistorySyncCanceledError(instanceId);
+      }
+
+      throw error;
+    } finally {
+      if (this.historySyncAbortControllers.get(instanceId) === abortController) {
+        this.historySyncAbortControllers.delete(instanceId);
+      }
+    }
+  }
+
+  cancelSyncHistory(instanceId: string) {
+    const abortController = this.historySyncAbortControllers.get(instanceId);
+
+    if (!abortController) {
+      return false;
+    }
+
+    abortController.abort();
+    this.historySyncAbortControllers.delete(instanceId);
+    return true;
   }
 
   async sendText(payload: {
@@ -231,6 +272,7 @@ export class WhatsAppWebGatewayClient {
     url: string;
     data?: unknown;
     timeoutMs?: number;
+    signal?: AbortSignal;
   }): Promise<T> {
     let lastError: unknown = null;
 
@@ -241,11 +283,19 @@ export class WhatsAppWebGatewayClient {
           url: payload.url,
           data: payload.data,
           timeout: payload.timeoutMs,
+          signal: payload.signal,
         });
 
         return response.data;
       } catch (error) {
         lastError = error;
+
+        if (
+          axios.isAxiosError(error) &&
+          (error.code === 'ERR_CANCELED' || error.name === 'CanceledError')
+        ) {
+          return this.translateRequestError(error);
+        }
 
         if (axios.isAxiosError(error) && !error.response) {
           continue;
@@ -260,6 +310,10 @@ export class WhatsAppWebGatewayClient {
 
   private translateRequestError(error: unknown): never {
     if (axios.isAxiosError<{ message?: string }>(error)) {
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        throw new WhatsAppWebGatewayHistorySyncCanceledError('desconhecida');
+      }
+
       const responseMessage = error.response?.data?.message;
       const isTimeoutError =
         error.code === 'ECONNABORTED' ||

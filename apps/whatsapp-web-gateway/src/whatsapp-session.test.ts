@@ -223,6 +223,53 @@ test("downloads historical qr media so old chat attachments can be persisted", a
   assert.equal(media?.isBase64, true);
 });
 
+test("cancels qr history sync when the session is stopped", async () => {
+  const session = createSession() as any;
+
+  session.client = {
+    destroy: async () => undefined,
+  };
+  session.state = "connected";
+  session.resetSessionArtifacts = async () => undefined;
+  session.ensureClientReady = async () => ({
+    getChats: async () => [
+      {
+        id: {
+          _serialized: "5511999999999@c.us",
+        },
+        syncHistory: async () => true,
+        getContact: async () => null,
+        fetchMessages: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          return [
+            {
+              id: {
+                _serialized: "wamid.cancel.1",
+                remote: "5511999999999@c.us",
+              },
+              from: "5511999999999@c.us",
+              to: "5511888888888@c.us",
+              body: "Oi",
+              type: "chat",
+              timestamp: 1710000000,
+              hasMedia: false,
+              fromMe: false,
+              ack: 0,
+              getContact: async () => null,
+            },
+          ];
+        },
+      },
+    ],
+  });
+
+  const syncPromise = session.syncHistory();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await session.disconnect();
+
+  await assert.rejects(syncPromise, /history sync was canceled/i);
+});
+
 test("resolves @lid contacts to a brazilian phone and avatar during qr history sync", async () => {
   const emittedEvents: Array<Record<string, unknown>> = [];
   const session = createSession(async (_instanceId, event) => {

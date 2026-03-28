@@ -16,7 +16,10 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TenantConnectionService } from '../../../common/tenancy/tenant-connection.service';
 import { WhatsAppMessagingService } from '../whatsapp/whatsapp-messaging.service';
-import { WhatsAppWebGatewayClient } from './whatsapp-web-gateway.client';
+import {
+  WhatsAppWebGatewayClient,
+  WhatsAppWebGatewayHistorySyncCanceledError,
+} from './whatsapp-web-gateway.client';
 import type {
   WhatsAppWebGatewayEventEnvelope,
   WhatsAppWebGatewayHistorySyncResult,
@@ -65,10 +68,26 @@ export class WhatsAppWebService {
       return this.serializeGatewayState(state);
     }
 
-    const historySync = await this.gatewayClient.syncHistory(instance.id);
-    await this.updateHistorySyncSnapshot(instance, state.status, historySync);
+    await this.markHistorySyncStarted(instance.id, 'manual');
 
-    return this.serializeGatewayState(state, historySync);
+    try {
+      const historySync = await this.gatewayClient.syncHistory(instance.id);
+      await this.updateHistorySyncSnapshot(instance, state.status, historySync);
+
+      return this.serializeGatewayState(state, historySync);
+    } catch (error) {
+      if (error instanceof WhatsAppWebGatewayHistorySyncCanceledError) {
+        await this.markHistorySyncCanceled(instance.id, 'manual');
+      } else {
+        await this.markHistorySyncFailed(
+          instance.id,
+          error instanceof Error ? error.message : 'Falha desconhecida.',
+          'manual',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async connect(workspaceId: string, instanceId: string) {
@@ -81,6 +100,7 @@ export class WhatsAppWebService {
 
   async disconnect(workspaceId: string, instanceId: string) {
     const instance = await this.getInstanceOrThrow(instanceId, workspaceId);
+    this.cancelHistorySync(instance.id);
     await this.registerInstance(instance);
     const state = await this.gatewayClient.disconnect(instance.id);
     await this.updateInstanceFromGatewayState(instance.id, state);
@@ -89,6 +109,7 @@ export class WhatsAppWebService {
 
   async reconnect(workspaceId: string, instanceId: string) {
     const instance = await this.getInstanceOrThrow(instanceId, workspaceId);
+    this.cancelHistorySync(instance.id);
     await this.registerInstance(instance, { autoStart: true });
     const state = await this.gatewayClient.reconnect(instance.id);
     await this.updateInstanceFromGatewayState(instance.id, state);
@@ -97,6 +118,7 @@ export class WhatsAppWebService {
 
   async logout(workspaceId: string, instanceId: string) {
     const instance = await this.getInstanceOrThrow(instanceId, workspaceId);
+    this.cancelHistorySync(instance.id);
     await this.registerInstance(instance);
     const state = await this.gatewayClient.logout(instance.id);
     await this.updateInstanceFromGatewayState(instance.id, state);
@@ -105,6 +127,7 @@ export class WhatsAppWebService {
 
   async unregister(workspaceId: string, instanceId: string) {
     const instance = await this.getInstanceOrThrow(instanceId, workspaceId);
+    this.cancelHistorySync(instance.id);
     await this.gatewayClient.unregister(instance.id);
 
     await this.prisma.instance.update({
@@ -729,24 +752,28 @@ export class WhatsAppWebService {
     gatewayStatus: WhatsAppWebGatewayState['status'],
     historySync: WhatsAppWebGatewayHistorySyncResult,
   ) {
-    const providerMetadata = this.toRecord(instance.providerMetadata);
-
-    await this.prisma.instance.update({
-      where: { id: instance.id },
-      data: {
-        providerMetadata: {
-          ...(providerMetadata ?? {}),
-          lastGatewayStatus: gatewayStatus,
-          historySync: {
-            ...historySync,
-            detail: this.buildHistorySyncDetail(historySync),
-            errorCount: historySync.errors.length,
-          },
-          autoHistorySyncLastError: null,
+    await this.updateActiveInstanceProviderMetadata(
+      instance.id,
+      (providerMetadata) => ({
+        ...(providerMetadata ?? {}),
+        lastGatewayStatus: gatewayStatus,
+        historySync: {
+          ...historySync,
+          detail: this.buildHistorySyncDetail(historySync),
+          errorCount: historySync.errors.length,
         },
+        historySyncJob: {
+          ...this.readHistorySyncJob(providerMetadata),
+          status: 'COMPLETED',
+          finishedAt: new Date().toISOString(),
+          detail: this.buildHistorySyncDetail(historySync),
+        },
+        autoHistorySyncLastError: null,
+      }),
+      {
         lastSyncAt: new Date(),
       },
-    });
+    );
   }
 
   private maybeScheduleConnectedHistorySync(
@@ -828,11 +855,25 @@ export class WhatsAppWebService {
       trigger?: 'connection-state' | 'session.connected';
     },
   ) {
+    await this.markHistorySyncStarted(
+      instance.id,
+      options?.trigger ?? 'session.connected',
+    );
+
     try {
       const historySync = await this.gatewayClient.syncHistory(instance.id);
       await this.updateHistorySyncSnapshot(instance, 'connected', historySync);
       this.autoHistorySyncRetryCooldownUntil.delete(instance.id);
     } catch (error) {
+      if (error instanceof WhatsAppWebGatewayHistorySyncCanceledError) {
+        this.autoHistorySyncRetryCooldownUntil.delete(instance.id);
+        await this.markHistorySyncCanceled(
+          instance.id,
+          options?.trigger ?? 'session.connected',
+        );
+        return;
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : 'Falha desconhecida.';
       this.autoHistorySyncRetryCooldownUntil.set(
@@ -846,19 +887,114 @@ export class WhatsAppWebService {
         }: ${errorMessage}`,
       );
 
-      const providerMetadata = this.toRecord(instance.providerMetadata);
-      await this.prisma.instance.update({
-        where: { id: instance.id },
-        data: {
-          providerMetadata: {
-            ...(providerMetadata ?? {}),
-            autoHistorySyncLastError: errorMessage,
-          },
-        },
-      });
+      await this.markHistorySyncFailed(
+        instance.id,
+        errorMessage,
+        options?.trigger ?? 'session.connected',
+      );
 
       throw error;
     }
+  }
+
+  private cancelHistorySync(instanceId: string) {
+    this.gatewayClient.cancelSyncHistory(instanceId);
+    this.autoHistorySyncPromises.delete(instanceId);
+    this.autoHistorySyncRetryCooldownUntil.delete(instanceId);
+  }
+
+  private async markHistorySyncStarted(instanceId: string, trigger: string) {
+    await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => ({
+      ...(providerMetadata ?? {}),
+      historySyncJob: {
+        ...this.readHistorySyncJob(providerMetadata),
+        status: 'RUNNING',
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        trigger,
+        detail:
+          'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+      },
+      autoHistorySyncLastError: null,
+    }));
+  }
+
+  private async markHistorySyncFailed(
+    instanceId: string,
+    errorMessage: string,
+    trigger: string,
+  ) {
+    await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => ({
+      ...(providerMetadata ?? {}),
+      historySyncJob: {
+        ...this.readHistorySyncJob(providerMetadata),
+        status: 'FAILED',
+        finishedAt: new Date().toISOString(),
+        trigger,
+        detail: errorMessage,
+      },
+      autoHistorySyncLastError: errorMessage,
+    }));
+  }
+
+  private async markHistorySyncCanceled(instanceId: string, trigger: string) {
+    await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => ({
+      ...(providerMetadata ?? {}),
+      historySyncJob: {
+        ...this.readHistorySyncJob(providerMetadata),
+        status: 'CANCELED',
+        finishedAt: new Date().toISOString(),
+        trigger,
+        detail:
+          'Sincronizacao interrompida porque a sessao foi encerrada ou a instancia foi removida.',
+      },
+    }));
+  }
+
+  private async updateActiveInstanceProviderMetadata(
+    instanceId: string,
+    updater: (
+      providerMetadata: Record<string, unknown> | null,
+    ) => Record<string, unknown>,
+    options?: {
+      lastSyncAt?: Date;
+    },
+  ) {
+    const currentInstance = await this.prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        deletedAt: null,
+      },
+      select: {
+        providerMetadata: true,
+      },
+    });
+
+    if (!currentInstance) {
+      return false;
+    }
+
+    const nextProviderMetadata = updater(
+      this.toRecord(currentInstance.providerMetadata),
+    );
+    const updateResult = await this.prisma.instance.updateMany({
+      where: {
+        id: instanceId,
+        deletedAt: null,
+      },
+      data: {
+        providerMetadata: nextProviderMetadata as never,
+        ...(options?.lastSyncAt ? { lastSyncAt: options.lastSyncAt } : {}),
+      },
+    });
+
+    return updateResult.count > 0;
+  }
+
+  private readHistorySyncJob(providerMetadata: Record<string, unknown> | null) {
+    return this.toRecord(
+      providerMetadata?.historySyncJob as Prisma.JsonValue | null | undefined,
+    );
   }
 
   private buildHistorySyncDetail(
