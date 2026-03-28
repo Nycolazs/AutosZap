@@ -164,7 +164,11 @@ export class TenantConnectionService implements OnModuleDestroy {
           select: { id: true, workspaceId: true },
         });
         if (instance) {
-          return { companyId: cached, workspaceId: instance.workspaceId, instanceId: instance.id };
+          return {
+            companyId: cached,
+            workspaceId: instance.workspaceId,
+            instanceId: instance.id,
+          };
         }
         // Instance was deleted or moved — fall through to full scan
         this.instanceToCompanyCache.delete(instanceId);

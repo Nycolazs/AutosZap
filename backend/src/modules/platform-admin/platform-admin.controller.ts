@@ -204,7 +204,11 @@ export class PlatformAdminController {
     @Param('ticketId') ticketId: string,
     @Body() dto: CreateSupportTicketMessageDto,
   ) {
-    return this.platformAdminService.addSupportTicketMessage(user, ticketId, dto);
+    return this.platformAdminService.addSupportTicketMessage(
+      user,
+      ticketId,
+      dto,
+    );
   }
 
   @Patch('support-tickets/:ticketId/status')

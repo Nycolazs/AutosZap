@@ -29,7 +29,10 @@ import type {
 export class WhatsAppWebService {
   private readonly logger = new Logger(WhatsAppWebService.name);
   private readonly autoHistorySyncPromises = new Map<string, Promise<void>>();
-  private readonly autoHistorySyncRetryCooldownUntil = new Map<string, number>();
+  private readonly autoHistorySyncRetryCooldownUntil = new Map<
+    string,
+    number
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -790,7 +793,9 @@ export class WhatsAppWebService {
       return false;
     }
 
-    const cooldownUntil = this.autoHistorySyncRetryCooldownUntil.get(instance.id);
+    const cooldownUntil = this.autoHistorySyncRetryCooldownUntil.get(
+      instance.id,
+    );
     if (typeof cooldownUntil === 'number' && cooldownUntil > Date.now()) {
       return false;
     }
@@ -804,19 +809,25 @@ export class WhatsAppWebService {
       state.connectedAt ?? instance.connectedAt?.toISOString() ?? null,
     );
 
-    if (historyFinishedAt && (!connectedAt || historyFinishedAt >= connectedAt)) {
+    if (
+      historyFinishedAt &&
+      (!connectedAt || historyFinishedAt >= connectedAt)
+    ) {
       return false;
     }
 
     return true;
   }
 
-  private async syncConnectedInstanceHistory(instance: {
-    id: string;
-    providerMetadata?: Prisma.JsonValue | null;
-  }, options?: {
-    trigger?: 'connection-state' | 'session.connected';
-  }) {
+  private async syncConnectedInstanceHistory(
+    instance: {
+      id: string;
+      providerMetadata?: Prisma.JsonValue | null;
+    },
+    options?: {
+      trigger?: 'connection-state' | 'session.connected';
+    },
+  ) {
     try {
       const historySync = await this.gatewayClient.syncHistory(instance.id);
       await this.updateHistorySyncSnapshot(instance, 'connected', historySync);

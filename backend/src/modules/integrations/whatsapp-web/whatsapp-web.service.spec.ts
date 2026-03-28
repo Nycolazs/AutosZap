@@ -92,7 +92,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
 
     expect(result.from).toBe('5511888888888');
     expect(result.metadata.fromMe).toBe(true);
-    expect(result.metadata.providerMessageContext.fromMe).toBe(true);
+    expect((result.metadata.providerMessageContext as any).fromMe).toBe(true);
   });
 
   it('preserves voice-note metadata emitted by the qr gateway', () => {

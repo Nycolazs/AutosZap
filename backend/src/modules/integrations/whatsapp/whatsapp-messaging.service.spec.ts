@@ -446,8 +446,12 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
   });
 
   it('downloads qr media on demand using the external message id instead of local storage', async () => {
-    const { service, prisma, whatsappWebTransportProvider, mediaStorageService } =
-      createService();
+    const {
+      service,
+      prisma,
+      whatsappWebTransportProvider,
+      mediaStorageService,
+    } = createService();
 
     prisma.conversationMessage.findFirst.mockResolvedValue({
       id: 'message-1',
@@ -474,7 +478,7 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
       id: 'instance-1',
       workspaceId: 'ws-1',
       provider: InstanceProvider.WHATSAPP_WEB,
-      mode: InstanceMode.LIVE,
+      mode: InstanceMode.PRODUCTION,
     });
     whatsappWebTransportProvider.downloadMedia.mockResolvedValue({
       buffer: Buffer.from('qr-media'),
@@ -526,8 +530,12 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
   });
 
   it('falls back to the active conversation instance and external message id when legacy qr storage is unavailable', async () => {
-    const { service, prisma, whatsappWebTransportProvider, mediaStorageService } =
-      createService();
+    const {
+      service,
+      prisma,
+      whatsappWebTransportProvider,
+      mediaStorageService,
+    } = createService();
 
     prisma.conversationMessage.findFirst.mockResolvedValue({
       id: 'message-legacy-1',
@@ -561,7 +569,7 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
             id: 'instance-active',
             workspaceId: 'ws-1',
             provider: InstanceProvider.WHATSAPP_WEB,
-            mode: InstanceMode.LIVE,
+            mode: InstanceMode.PRODUCTION,
           };
         }
 
@@ -579,7 +587,10 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     expect(mediaStorageService.read).toHaveBeenCalledWith(
       'ws-1/instance-deleted/conv-1/inbound/old-file.jpg',
     );
-    expect(getInstanceConfigSpy).toHaveBeenCalledWith('instance-active', 'ws-1');
+    expect(getInstanceConfigSpy).toHaveBeenCalledWith(
+      'instance-active',
+      'ws-1',
+    );
     expect(whatsappWebTransportProvider.downloadMedia).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'instance-active',
@@ -633,7 +644,7 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
         id: 'instance-1',
         workspaceId: 'ws-1',
         provider: InstanceProvider.WHATSAPP_WEB,
-        mode: InstanceMode.LIVE,
+        mode: InstanceMode.PRODUCTION,
       },
       transport: {} as never,
     });
@@ -688,12 +699,11 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
         id: 'instance-1',
         workspaceId: 'ws-1',
         provider: InstanceProvider.WHATSAPP_WEB,
-        mode: InstanceMode.LIVE,
+        mode: InstanceMode.PRODUCTION,
       },
       transport: {} as never,
     });
 
     expect(recipient).toBe('+5541999999999');
   });
-
 });

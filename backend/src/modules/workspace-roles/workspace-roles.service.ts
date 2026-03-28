@@ -5,9 +5,7 @@ import {
 } from '@nestjs/common';
 import { PermissionKey, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import {
-  ALL_PERMISSION_KEYS,
-} from '../access-control/permissions.constants';
+import { ALL_PERMISSION_KEYS } from '../access-control/permissions.constants';
 
 type WorkspaceRolePayload = {
   name: string;

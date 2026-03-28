@@ -115,9 +115,13 @@ export class MetaWhatsAppService {
 
   private async persistBusinessProfileSnapshot(
     instanceId: string,
-    payload?: Pick<ProviderProfileUpdateResult, 'phoneNumber' | 'businessProfile'> | null,
+    payload?: Pick<
+      ProviderProfileUpdateResult,
+      'phoneNumber' | 'businessProfile'
+    > | null,
   ) {
-    const profilePictureUrl = payload?.businessProfile?.profilePictureUrl ?? null;
+    const profilePictureUrl =
+      payload?.businessProfile?.profilePictureUrl ?? null;
     const displayPhoneNumber = payload?.phoneNumber?.displayPhoneNumber ?? null;
 
     await this.prisma.instance.update({
@@ -469,7 +473,9 @@ export class MetaWhatsAppService {
     }
 
     try {
-      return await this.downloadRemoteProfilePicture(refreshedProfilePictureUrl);
+      return await this.downloadRemoteProfilePicture(
+        refreshedProfilePictureUrl,
+      );
     } catch (error) {
       throw this.buildFriendlyProfileError(
         'Nao foi possivel carregar a foto de perfil do WhatsApp.',
@@ -488,7 +494,10 @@ export class MetaWhatsAppService {
       contactName?: string;
     },
   ) {
-    return this.whatsappMessagingService.sendDirectMessage(workspaceId, payload);
+    return this.whatsappMessagingService.sendDirectMessage(
+      workspaceId,
+      payload,
+    );
   }
 
   async sendDirectMediaMessage(
@@ -757,7 +766,10 @@ export class MetaWhatsAppService {
     fileName?: string | null;
     contentLength?: number | null;
   }> {
-    return this.whatsappMessagingService.getMessageMedia(workspaceId, messageId);
+    return this.whatsappMessagingService.getMessageMedia(
+      workspaceId,
+      messageId,
+    );
   }
 
   private async maybeSendAutomaticReply(
@@ -947,12 +959,17 @@ export class MetaWhatsAppService {
       return false;
     }
 
-    const menu = activeMenus.find((item) => item.id === latestContext.context.menuId);
+    const menu = activeMenus.find(
+      (item) => item.id === latestContext.context.menuId,
+    );
     if (!menu) {
       return false;
     }
 
-    const options = this.getMenuStepOptions(menu, latestContext.context.parentNodeId);
+    const options = this.getMenuStepOptions(
+      menu,
+      latestContext.context.parentNodeId,
+    );
     if (!options.length) {
       return false;
     }
@@ -983,7 +1000,9 @@ export class MetaWhatsAppService {
       return true;
     }
 
-    const selectedNode = options.find((node) => node.id === selectedOption.nodeId);
+    const selectedNode = options.find(
+      (node) => node.id === selectedOption.nodeId,
+    );
     if (!selectedNode) {
       return false;
     }
@@ -1009,7 +1028,8 @@ export class MetaWhatsAppService {
       );
     }
 
-    const hasChildren = this.getMenuStepOptions(menu, selectedNode.id).length > 0;
+    const hasChildren =
+      this.getMenuStepOptions(menu, selectedNode.id).length > 0;
 
     if (hasChildren) {
       await this.sendInteractiveMenuStep(
@@ -1076,7 +1096,9 @@ export class MetaWhatsAppService {
       }
     }
 
-    const leadingNumberMatch = payload.inboundBody?.trim().match(/^(\d{1,2})\D?/);
+    const leadingNumberMatch = payload.inboundBody
+      ?.trim()
+      .match(/^(\d{1,2})\D?/);
     const requestedIndex = leadingNumberMatch
       ? Number(leadingNumberMatch[1])
       : Number.NaN;
@@ -1160,8 +1182,7 @@ export class MetaWhatsAppService {
               }
 
               const row = item as Record<string, unknown>;
-              const nodeId =
-                typeof row.nodeId === 'string' ? row.nodeId : null;
+              const nodeId = typeof row.nodeId === 'string' ? row.nodeId : null;
               const label = typeof row.label === 'string' ? row.label : null;
               const replyId =
                 typeof row.replyId === 'string' ? row.replyId : null;
@@ -1181,7 +1202,9 @@ export class MetaWhatsAppService {
                 type,
               } satisfies InteractiveMenuContextOption;
             })
-            .filter((item): item is InteractiveMenuContextOption => item !== null)
+            .filter(
+              (item): item is InteractiveMenuContextOption => item !== null,
+            )
         : [];
 
       if (!options.length) {
@@ -1226,13 +1249,15 @@ export class MetaWhatsAppService {
       return false;
     }
 
-    const contextOptions: InteractiveMenuContextOption[] = options.map((node) => ({
-      nodeId: node.id,
-      label: node.label.trim(),
-      order: node.order,
-      replyId: this.buildInteractiveMenuReplyId(menu.id, node.id),
-      type: node.type,
-    }));
+    const contextOptions: InteractiveMenuContextOption[] = options.map(
+      (node) => ({
+        nodeId: node.id,
+        label: node.label.trim(),
+        order: node.order,
+        replyId: this.buildInteractiveMenuReplyId(menu.id, node.id),
+        type: node.type,
+      }),
+    );
 
     const fallbackText = this.buildInteractiveMenuMessage(menu, options);
     if (!fallbackText) {
@@ -1249,7 +1274,9 @@ export class MetaWhatsAppService {
       interactivePayload = {
         type: 'button',
         body: this.trimInteractiveLabel(bodyText, 1024),
-        footer: footerText ? this.trimInteractiveLabel(footerText, 60) : undefined,
+        footer: footerText
+          ? this.trimInteractiveLabel(footerText, 60)
+          : undefined,
         buttons: contextOptions.map((option) => ({
           id: option.replyId,
           title: this.trimInteractiveLabel(option.label, 20),
@@ -1260,7 +1287,9 @@ export class MetaWhatsAppService {
       interactivePayload = {
         type: 'list',
         body: this.trimInteractiveLabel(bodyText, 1024),
-        footer: footerText ? this.trimInteractiveLabel(footerText, 60) : undefined,
+        footer: footerText
+          ? this.trimInteractiveLabel(footerText, 60)
+          : undefined,
         buttonText: 'Ver opcoes',
         sections: [
           {
@@ -1296,19 +1325,20 @@ export class MetaWhatsAppService {
         },
       );
 
-      const latestSystemMessage = await this.prisma.conversationMessage.findFirst({
-        where: {
-          workspaceId,
-          conversationId,
-          direction: MessageDirection.SYSTEM,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        select: {
-          id: true,
-        },
-      });
+      const latestSystemMessage =
+        await this.prisma.conversationMessage.findFirst({
+          where: {
+            workspaceId,
+            conversationId,
+            direction: MessageDirection.SYSTEM,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+          },
+        });
 
       if (latestSystemMessage?.id) {
         await this.prisma.conversationMessage.update({

@@ -52,8 +52,8 @@ describe('PlatformAdminService', () => {
     supportTicketFindUniqueMock = jest.fn();
     supportTicketMessageCreateMock = jest.fn();
     supportTicketUpdateMock = jest.fn();
-    controlPlaneTransactionMock = jest.fn(async (operations: Promise<unknown>[]) =>
-      Promise.all(operations),
+    controlPlaneTransactionMock = jest.fn(
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
     findTenantUserMock = jest.fn();
     runWithTenantMock = jest.fn();
@@ -205,9 +205,7 @@ describe('PlatformAdminService', () => {
       id: 'user-1',
     } as never);
     updateGlobalRefreshTokensMock.mockResolvedValue({ count: 1 } as never);
-    runWithTenantMock.mockImplementation(async (_companyId, callback) =>
-      callback(),
-    );
+    runWithTenantMock.mockImplementation((_companyId, callback) => callback());
     updateTenantUsersMock.mockResolvedValue({ count: 1 } as never);
     updateTeamMembersMock.mockResolvedValue({ count: 1 } as never);
 
@@ -384,9 +382,7 @@ describe('PlatformAdminService', () => {
     supportTicketUpdateMock.mockResolvedValue({
       id: 'ticket-1',
     } as never);
-    runWithTenantMock.mockImplementation(async (_companyId, callback) =>
-      callback(),
-    );
+    runWithTenantMock.mockImplementation((_companyId, callback) => callback());
     findTenantUserMock.mockResolvedValue({
       id: 'tenant-user-1',
     } as never);

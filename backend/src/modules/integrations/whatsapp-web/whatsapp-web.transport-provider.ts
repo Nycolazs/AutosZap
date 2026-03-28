@@ -45,7 +45,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     };
   }
 
-  async sendTemplateMessage(
+  sendTemplateMessage(
     _config: MessagingInstanceConfig,
     _to: string,
     _payload: {
@@ -60,7 +60,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async sendInteractiveMessage(
+  sendInteractiveMessage(
     _config: MessagingInstanceConfig,
     _to: string,
     _payload: InteractiveMessagePayload,
@@ -70,7 +70,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async uploadMedia(
+  uploadMedia(
     _config: MessagingInstanceConfig,
     _payload: {
       buffer: Buffer;
@@ -182,7 +182,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     };
   }
 
-  async getBusinessProfile(
+  getBusinessProfile(
     _config: MessagingInstanceConfig,
   ): Promise<ProviderProfileUpdateResult> {
     throw new BadRequestException(
@@ -190,7 +190,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async updateBusinessProfile(
+  updateBusinessProfile(
     _config: MessagingInstanceConfig,
     _payload: {
       about?: string;
@@ -206,7 +206,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async updateBusinessProfilePicture(
+  updateBusinessProfilePicture(
     _config: MessagingInstanceConfig,
     _payload: {
       buffer: Buffer;
@@ -220,7 +220,7 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async subscribeApp(
+  subscribeApp(
     _config: MessagingInstanceConfig,
     _payload?: {
       overrideCallbackUri?: string;
@@ -237,10 +237,10 @@ export class WhatsAppWebTransportProvider implements MessagingProvider {
     );
   }
 
-  async listTemplates(
+  listTemplates(
     _config: MessagingInstanceConfig,
   ): Promise<ProviderTemplateSummary[]> {
-    return [];
+    return Promise.resolve([]);
   }
 
   canUseRealTransport(_config: MessagingInstanceConfig) {

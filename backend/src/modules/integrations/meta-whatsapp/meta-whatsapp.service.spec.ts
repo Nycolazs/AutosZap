@@ -46,6 +46,9 @@ describe('MetaWhatsAppService automatic replies', () => {
       getBusinessHoursContext: jest.fn(),
       getConversationSettings: jest.fn(),
     };
+    const whatsappMessagingService = {
+      sendConversationMessage: jest.fn().mockResolvedValue({ id: 'msg-1' }),
+    };
 
     const service = new MetaWhatsAppService(
       prisma as never,
@@ -58,13 +61,14 @@ describe('MetaWhatsAppService automatic replies', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
+      whatsappMessagingService as never,
     );
 
     return {
       service,
       prisma,
       provider,
+      whatsappMessagingService,
       workspaceSettingsService: service[
         'workspaceSettingsService'
       ] as unknown as {
@@ -143,313 +147,48 @@ describe('MetaWhatsAppService automatic replies', () => {
     expect(sendConversationMessageSpy).not.toHaveBeenCalled();
   });
 
-  it('falls back to the configured approved template when the 24-hour window is closed', async () => {
-    const { service, prisma, provider, workspaceSettingsService } =
-      createService();
-    const sendTemplateConversationMessageSpy = jest
-      .spyOn(service, 'sendTemplateConversationMessage')
-      .mockResolvedValue({ id: 'msg-template-1' } as never);
-
-    prisma.conversation.findFirst.mockResolvedValue({
-      id: 'conv-1',
-      workspaceId: 'ws-1',
-      instanceId: 'instance-1',
-      contact: {
-        phone: '+5585988112201',
-      },
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-    provider.canUseRealTransport.mockReturnValue(true);
-    workspaceSettingsService.getConversationSettings.mockResolvedValue({
-      sendWindowClosedTemplateReply: true,
-      windowClosedTemplateName: 'retomada_atendimento_autozap',
-      windowClosedTemplateLanguageCode: 'pt_BR',
-    });
-    Object.assign(service as unknown as Record<string, unknown>, {
-      getInstanceConfig: jest.fn().mockResolvedValue({
-        id: 'instance-1',
-        workspaceId: 'ws-1',
-        provider: InstanceProvider.META_WHATSAPP,
-        mode: 'PRODUCTION',
-        accessToken: 'token',
-        phoneNumberId: 'phone-id',
-      }),
-    });
+  it('delegates sendConversationMessage to the shared messaging service', async () => {
+    const { service, whatsappMessagingService } = createService();
 
     await service.sendConversationMessage(
       'ws-1',
       'conv-1',
       'seller-1',
-      '*ANA*:\nPodemos continuar o atendimento por aqui?',
+      'Olá, tudo bem?',
     );
 
-    expect(sendTemplateConversationMessageSpy).toHaveBeenCalledWith(
+    expect(whatsappMessagingService.sendConversationMessage).toHaveBeenCalledWith(
       'ws-1',
       'conv-1',
       'seller-1',
-      expect.objectContaining({
-        instanceId: 'instance-1',
-        templateName: 'retomada_atendimento_autozap',
-        languageCode: 'pt_BR',
-        bodyParameters: ['*ANA*:\nPodemos continuar o atendimento por aqui?'],
-        contentPreview: '*ANA*:\nPodemos continuar o atendimento por aqui?',
-        metadata: {
-          windowClosedTemplateReply: true,
-        },
-      }),
-    );
-    expect(provider.sendTextMessage).not.toHaveBeenCalled();
-  });
-
-  it('auto-configures another approved template when the configured one fails', async () => {
-    const { service, prisma, provider, workspaceSettingsService } =
-      createService();
-
-    const sendTemplateConversationMessageSpy = jest
-      .spyOn(service, 'sendTemplateConversationMessage')
-      .mockRejectedValueOnce(new Error('template not found'))
-      .mockResolvedValueOnce({ id: 'msg-template-2' } as never);
-
-    jest.spyOn(service, 'listTemplates').mockResolvedValue([
-      {
-        name: 'retomada_atendimento_autozap',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        bodyParameterCount: 1,
-        headerParameterCount: 0,
-        headerFormat: 'TEXT',
-      },
-      {
-        name: 'retomada_atendimento_padrao',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        qualityScore: 'GREEN',
-        bodyParameterCount: 1,
-        headerParameterCount: 0,
-        headerFormat: 'TEXT',
-      },
-    ] as never);
-
-    prisma.conversation.findFirst.mockResolvedValue({
-      id: 'conv-1',
-      workspaceId: 'ws-1',
-      instanceId: 'instance-1',
-      contact: {
-        phone: '+5585988112201',
-      },
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-    provider.canUseRealTransport.mockReturnValue(true);
-    workspaceSettingsService.getConversationSettings.mockResolvedValue({
-      sendWindowClosedTemplateReply: true,
-      windowClosedTemplateName: 'retomada_atendimento_autozap',
-      windowClosedTemplateLanguageCode: 'pt_BR',
-    });
-    Object.assign(service as unknown as Record<string, unknown>, {
-      getInstanceConfig: jest.fn().mockResolvedValue({
-        id: 'instance-1',
-        workspaceId: 'ws-1',
-        provider: InstanceProvider.META_WHATSAPP,
-        mode: 'PRODUCTION',
-        accessToken: 'token',
-        phoneNumberId: 'phone-id',
-      }),
-    });
-
-    await service.sendConversationMessage(
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      '*ANA*:\nPodemos continuar o atendimento por aqui?',
-    );
-
-    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
-      1,
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      expect.objectContaining({
-        templateName: 'retomada_atendimento_autozap',
-        languageCode: 'pt_BR',
-      }),
-    );
-
-    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
-      2,
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      expect.objectContaining({
-        templateName: 'retomada_atendimento_padrao',
-        languageCode: 'pt_BR',
-        metadata: {
-          windowClosedTemplateReply: true,
-          autoTemplateConfigured: true,
-        },
-      }),
-    );
-
-    expect(prisma.workspaceConversationSettings.update).toHaveBeenCalledWith({
-      where: {
-        workspaceId: 'ws-1',
-      },
-      data: {
-        sendWindowClosedTemplateReply: true,
-        windowClosedTemplateName: 'retomada_atendimento_padrao',
-        windowClosedTemplateLanguageCode: 'pt_BR',
-      },
-    });
-  });
-
-  it('normalizes the configured template language before sending outside the 24-hour window', async () => {
-    const { service, prisma, provider, workspaceSettingsService } =
-      createService();
-    const sendTemplateConversationMessageSpy = jest
-      .spyOn(service, 'sendTemplateConversationMessage')
-      .mockResolvedValue({ id: 'msg-template-3' } as never);
-
-    prisma.conversation.findFirst.mockResolvedValue({
-      id: 'conv-1',
-      workspaceId: 'ws-1',
-      instanceId: 'instance-1',
-      contact: {
-        phone: '+5585988112201',
-      },
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-    provider.canUseRealTransport.mockReturnValue(true);
-    workspaceSettingsService.getConversationSettings.mockResolvedValue({
-      sendWindowClosedTemplateReply: true,
-      windowClosedTemplateName: 'retomada_atendimento_autozap',
-      windowClosedTemplateLanguageCode: 'pt-br',
-    });
-    Object.assign(service as unknown as Record<string, unknown>, {
-      getInstanceConfig: jest.fn().mockResolvedValue({
-        id: 'instance-1',
-        workspaceId: 'ws-1',
-        provider: InstanceProvider.META_WHATSAPP,
-        mode: 'PRODUCTION',
-        accessToken: 'token',
-        phoneNumberId: 'phone-id',
-      }),
-    });
-
-    await service.sendConversationMessage(
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      '*ANA*:\nPodemos continuar o atendimento por aqui?',
-    );
-
-    expect(sendTemplateConversationMessageSpy).toHaveBeenCalledWith(
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      expect.objectContaining({
-        templateName: 'retomada_atendimento_autozap',
-        languageCode: 'pt_BR',
-      }),
+      'Olá, tudo bem?',
+      undefined,
     );
   });
 
-  it('skips approved templates that are incompatible with the automatic closed-window flow', async () => {
-    const { service, prisma, provider, workspaceSettingsService } =
-      createService();
-
-    const sendTemplateConversationMessageSpy = jest
-      .spyOn(service, 'sendTemplateConversationMessage')
-      .mockRejectedValueOnce(new Error('template not found'))
-      .mockResolvedValueOnce({ id: 'msg-template-4' } as never);
-
-    jest.spyOn(service, 'listTemplates').mockResolvedValue([
-      {
-        name: 'retomada_atendimento_autozap',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        bodyParameterCount: 1,
-        headerParameterCount: 0,
-        headerFormat: 'TEXT',
-      },
-      {
-        name: 'template_com_header_midia',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        bodyParameterCount: 1,
-        headerParameterCount: 0,
-        headerFormat: 'IMAGE',
-      },
-      {
-        name: 'template_com_duas_variaveis',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        bodyParameterCount: 2,
-        headerParameterCount: 0,
-        headerFormat: 'TEXT',
-      },
-      {
-        name: 'retomada_atendimento_padrao',
-        language: 'pt_BR',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        bodyParameterCount: 1,
-        headerParameterCount: 0,
-        headerFormat: 'TEXT',
-      },
-    ] as never);
-
-    prisma.conversation.findFirst.mockResolvedValue({
-      id: 'conv-1',
-      workspaceId: 'ws-1',
-      instanceId: 'instance-1',
-      contact: {
-        phone: '+5585988112201',
-      },
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-    provider.canUseRealTransport.mockReturnValue(true);
-    workspaceSettingsService.getConversationSettings.mockResolvedValue({
-      sendWindowClosedTemplateReply: true,
-      windowClosedTemplateName: 'retomada_atendimento_autozap',
-      windowClosedTemplateLanguageCode: 'pt_BR',
-    });
-    Object.assign(service as unknown as Record<string, unknown>, {
-      getInstanceConfig: jest.fn().mockResolvedValue({
-        id: 'instance-1',
-        workspaceId: 'ws-1',
-        provider: InstanceProvider.META_WHATSAPP,
-        mode: 'PRODUCTION',
-        accessToken: 'token',
-        phoneNumberId: 'phone-id',
-      }),
-    });
+  it('forwards options to the shared messaging service when sending a conversation message', async () => {
+    const { service, whatsappMessagingService } = createService();
+    const options = {
+      direction: MessageDirection.OUTBOUND,
+      isAutomated: true,
+      autoMessageType: AutoMessageType.IN_BUSINESS_HOURS,
+    };
 
     await service.sendConversationMessage(
       'ws-1',
       'conv-1',
-      'seller-1',
-      '*ANA*:\nPodemos continuar o atendimento por aqui?',
+      null,
+      'Mensagem automática',
+      options,
     );
 
-    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
-      1,
+    expect(whatsappMessagingService.sendConversationMessage).toHaveBeenCalledWith(
       'ws-1',
       'conv-1',
-      'seller-1',
-      expect.objectContaining({
-        templateName: 'retomada_atendimento_autozap',
-      }),
+      null,
+      'Mensagem automática',
+      options,
     );
-    expect(sendTemplateConversationMessageSpy).toHaveBeenNthCalledWith(
-      2,
-      'ws-1',
-      'conv-1',
-      'seller-1',
-      expect.objectContaining({
-        templateName: 'retomada_atendimento_padrao',
-      }),
-    );
-    expect(sendTemplateConversationMessageSpy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -485,6 +224,12 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       emitConversationRealtimeEvent: jest.fn(),
     };
 
+    const whatsappMessagingService = {
+      processIncomingPayload: jest
+        .fn()
+        .mockResolvedValue({ processed: 1, skipped: 0 }),
+    };
+
     const service = new MetaWhatsAppService(
       prisma as never,
       tenantConnectionService as never,
@@ -496,7 +241,7 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
+      whatsappMessagingService as never,
     );
 
     return {
@@ -505,6 +250,7 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       provider,
       tenantConnectionService,
       conversationWorkflowService,
+      whatsappMessagingService,
     };
   }
 
@@ -519,60 +265,30 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
     jest.clearAllMocks();
   });
 
-  it('stores stale inbound media using the original WhatsApp timestamp without reopening the conversation', async () => {
+  it('creates a webhook event record and delegates parsed messages to processIncomingPayload', async () => {
     const {
       service,
       prisma,
       provider,
       tenantConnectionService,
-      conversationWorkflowService,
+      whatsappMessagingService,
     } = createWebhookService();
-    const assertWebhookSignatureSpy = jest
+
+    jest
       .spyOn(service as any, 'assertWebhookSignature')
       .mockResolvedValue(undefined);
-    const ensureContactSpy = jest
-      .spyOn(service as any, 'ensureContact')
-      .mockResolvedValue({
-        id: 'contact-1',
-        name: 'Nycolas Rocha',
-      });
-    const ensureConversationSpy = jest
-      .spyOn(service as any, 'ensureConversation')
-      .mockResolvedValue({
-        id: 'conversation-1',
-      });
-    const enrichInboundMessageMetadataSpy = jest
-      .spyOn(service as any, 'enrichInboundMessageMetadata')
-      .mockResolvedValue({
-        mediaId: 'media-1',
-      });
-    const notifyRecipientsSpy = jest
-      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
-      .mockResolvedValue(undefined);
-    const maybeSendAutomaticReplySpy = jest
-      .spyOn(service as any, 'maybeSendAutomaticReply')
-      .mockResolvedValue(undefined);
-    const staleTimestamp = String(
-      Math.floor((Date.now() - 26 * 60 * 60_000) / 1000),
-    );
-    const staleSentAt = new Date(Number(staleTimestamp) * 1000);
 
-    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
-      null,
-    );
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(null);
     provider.parseWebhook.mockReturnValue({
       messages: [
         {
           phoneNumberId: 'phone-1',
           from: '5585988887777',
-          profileName: 'Nycolas Rocha',
-          externalMessageId: 'wamid.stale.1',
-          messageType: 'image',
-          body: '',
-          timestamp: staleTimestamp,
-          metadata: {
-            mediaId: 'media-1',
-          },
+          profileName: 'Nycolas',
+          externalMessageId: 'wamid.1',
+          messageType: 'text',
+          body: 'Olá',
+          timestamp: String(Math.floor(Date.now() / 1000)),
         },
       ],
       statuses: [],
@@ -582,241 +298,51 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       workspaceId: 'workspace-1',
       phoneNumberId: 'phone-1',
     });
-    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
-      id: 'webhook-1',
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+    prisma.whatsAppWebhookEvent.create.mockResolvedValue({ id: 'webhook-1' });
 
-    await service.handleWebhook(
-      {
-        entry: [],
-      },
-      {
-        rawBody: Buffer.from('{}'),
-      },
-    );
+    await service.handleWebhook({ entry: [] }, { rawBody: Buffer.from('{}') });
 
-    expect(assertWebhookSignatureSpy).toHaveBeenCalled();
-    expect(ensureContactSpy).toHaveBeenCalledWith(
-      'workspace-1',
-      '5585988887777',
-      'Nycolas Rocha',
-    );
-    expect(ensureConversationSpy).toHaveBeenCalledWith(
-      'workspace-1',
-      'contact-1',
-      'instance-1',
-    );
-    expect(enrichInboundMessageMetadataSpy).toHaveBeenCalled();
-    expect(prisma.conversationMessage.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        workspaceId: 'workspace-1',
-        conversationId: 'conversation-1',
-        externalMessageId: 'wamid.stale.1',
-        sentAt: staleSentAt,
+    expect(prisma.whatsAppWebhookEvent.create).toHaveBeenCalled();
+    expect(whatsappMessagingService.processIncomingPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ externalMessageId: 'wamid.1' }),
+        ]),
       }),
-    });
-    expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: 'conversation-1',
-        OR: [
-          {
-            lastMessageAt: null,
-          },
-          {
-            lastMessageAt: {
-              lte: staleSentAt,
-            },
-          },
-        ],
-      },
-      data: {
-        lastMessageAt: staleSentAt,
-        lastMessagePreview: 'Imagem',
-        updatedAt: new Date('2026-03-22T18:30:00.000Z'),
-      },
-    });
-    expect(
-      conversationWorkflowService.registerInboundActivity,
-    ).not.toHaveBeenCalled();
-    expect(notifyRecipientsSpy).not.toHaveBeenCalled();
-    expect(maybeSendAutomaticReplySpy).not.toHaveBeenCalled();
-    expect(
-      conversationWorkflowService.emitConversationRealtimeEvent,
-    ).toHaveBeenCalledWith(
-      'workspace-1',
-      'conversation-1',
-      'conversation.message.created',
-      'INBOUND',
+    );
+    expect(prisma.whatsAppWebhookEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'webhook-1' },
+        data: expect.objectContaining({ processedAt: expect.any(Date) }),
+      }),
     );
   });
 
-  it('still treats recent inbound messages as new activity', async () => {
+  it('marks the webhook event as processed even when there are no messages', async () => {
     const {
       service,
       prisma,
       provider,
       tenantConnectionService,
-      conversationWorkflowService,
+      whatsappMessagingService,
     } = createWebhookService();
-    const notifyRecipientsSpy = jest
-      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
-      .mockResolvedValue(undefined);
-    const maybeSendAutomaticReplySpy = jest
-      .spyOn(service as any, 'maybeSendAutomaticReply')
-      .mockResolvedValue(undefined);
-    const recentTimestamp = String(
-      Math.floor((Date.now() - 4 * 60_000) / 1000),
-    );
 
     jest
       .spyOn(service as any, 'assertWebhookSignature')
       .mockResolvedValue(undefined);
-    jest.spyOn(service as any, 'ensureContact').mockResolvedValue({
-      id: 'contact-1',
-      name: 'Nycolas Rocha',
-    });
-    jest.spyOn(service as any, 'ensureConversation').mockResolvedValue({
-      id: 'conversation-1',
-    });
-    jest
-      .spyOn(service as any, 'enrichInboundMessageMetadata')
-      .mockResolvedValue({
-        mediaId: 'media-2',
-      });
 
-    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
-      null,
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(null);
+    provider.parseWebhook.mockReturnValue({ messages: [], statuses: [] });
+    prisma.instance.findFirst.mockResolvedValue(null);
+    prisma.whatsAppWebhookEvent.create.mockResolvedValue({ id: 'webhook-2' });
+
+    await service.handleWebhook({ entry: [] }, { rawBody: Buffer.from('{}') });
+
+    expect(whatsappMessagingService.processIncomingPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ messages: [], statuses: [] }),
     );
-    provider.parseWebhook.mockReturnValue({
-      messages: [
-        {
-          phoneNumberId: 'phone-1',
-          from: '5585988887777',
-          profileName: 'Nycolas Rocha',
-          externalMessageId: 'wamid.recent.1',
-          messageType: 'image',
-          body: '',
-          timestamp: recentTimestamp,
-          metadata: {
-            mediaId: 'media-2',
-          },
-        },
-      ],
-      statuses: [],
-    });
-    prisma.instance.findFirst.mockResolvedValue({
-      id: 'instance-1',
-      workspaceId: 'workspace-1',
-      phoneNumberId: 'phone-1',
-    });
-    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
-      id: 'webhook-1',
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-
-    await service.handleWebhook(
-      {
-        entry: [],
-      },
-      {
-        rawBody: Buffer.from('{}'),
-      },
+    expect(prisma.whatsAppWebhookEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'webhook-2' } }),
     );
-
-    expect(
-      conversationWorkflowService.registerInboundActivity,
-    ).toHaveBeenCalledWith('conversation-1', 'workspace-1');
-    expect(notifyRecipientsSpy).toHaveBeenCalledWith({
-      workspaceId: 'workspace-1',
-      conversationId: 'conversation-1',
-      contactName: 'Nycolas Rocha',
-      preview: 'Imagem',
-    });
-    expect(maybeSendAutomaticReplySpy).toHaveBeenCalledWith(
-      'workspace-1',
-      'conversation-1',
-    );
-  });
-
-  it('does not react as a new inbound when an out-of-order message is older than the current conversation summary', async () => {
-    const {
-      service,
-      prisma,
-      provider,
-      tenantConnectionService,
-      conversationWorkflowService,
-    } = createWebhookService();
-    const notifyRecipientsSpy = jest
-      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
-      .mockResolvedValue(undefined);
-    const maybeSendAutomaticReplySpy = jest
-      .spyOn(service as any, 'maybeSendAutomaticReply')
-      .mockResolvedValue(undefined);
-    const outOfOrderTimestamp = String(
-      Math.floor((Date.now() - 4 * 60_000) / 1000),
-    );
-
-    jest
-      .spyOn(service as any, 'assertWebhookSignature')
-      .mockResolvedValue(undefined);
-    jest.spyOn(service as any, 'ensureContact').mockResolvedValue({
-      id: 'contact-1',
-      name: 'Nycolas Rocha',
-    });
-    jest.spyOn(service as any, 'ensureConversation').mockResolvedValue({
-      id: 'conversation-1',
-      lastMessageAt: new Date(Date.now() - 2 * 60_000),
-    });
-    jest
-      .spyOn(service as any, 'enrichInboundMessageMetadata')
-      .mockResolvedValue({
-        mediaId: 'media-3',
-      });
-
-    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
-      null,
-    );
-    provider.parseWebhook.mockReturnValue({
-      messages: [
-        {
-          phoneNumberId: 'phone-1',
-          from: '5585988887777',
-          profileName: 'Nycolas Rocha',
-          externalMessageId: 'wamid.out-of-order.1',
-          messageType: 'image',
-          body: '',
-          timestamp: outOfOrderTimestamp,
-          metadata: {
-            mediaId: 'media-3',
-          },
-        },
-      ],
-      statuses: [],
-    });
-    prisma.instance.findFirst.mockResolvedValue({
-      id: 'instance-1',
-      workspaceId: 'workspace-1',
-      phoneNumberId: 'phone-1',
-    });
-    prisma.whatsAppWebhookEvent.create.mockResolvedValue({
-      id: 'webhook-1',
-    });
-    prisma.conversationMessage.findFirst.mockResolvedValue(null);
-
-    await service.handleWebhook(
-      {
-        entry: [],
-      },
-      {
-        rawBody: Buffer.from('{}'),
-      },
-    );
-
-    expect(
-      conversationWorkflowService.registerInboundActivity,
-    ).not.toHaveBeenCalled();
-    expect(notifyRecipientsSpy).not.toHaveBeenCalled();
-    expect(maybeSendAutomaticReplySpy).not.toHaveBeenCalled();
   });
 });

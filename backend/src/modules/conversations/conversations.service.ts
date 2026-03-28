@@ -1421,7 +1421,9 @@ export class ConversationsService {
       throw new NotFoundException('Mensagem nao encontrada.');
     }
 
-    const [decoratedMessage] = await this.decorateConversationMessages([message]);
+    const [decoratedMessage] = await this.decorateConversationMessages([
+      message,
+    ]);
 
     return decoratedMessage ?? message;
   }

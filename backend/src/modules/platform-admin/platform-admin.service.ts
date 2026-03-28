@@ -298,7 +298,7 @@ export class PlatformAdminService {
         ? null
         : company.status === CompanyStatus.ACTIVE
           ? new Date()
-          : company.deactivatedAt ?? new Date();
+          : (company.deactivatedAt ?? new Date());
 
     const updated = await this.controlPlanePrisma.company.update({
       where: {
@@ -577,16 +577,17 @@ export class PlatformAdminService {
     }
 
     if (user.platformRole === PlatformRole.SUPER_ADMIN) {
-      const remainingSuperAdmins = await this.controlPlanePrisma.globalUser.count({
-        where: {
-          platformRole: PlatformRole.SUPER_ADMIN,
-          status: GlobalUserStatus.ACTIVE,
-          deletedAt: null,
-          id: {
-            not: user.id,
+      const remainingSuperAdmins =
+        await this.controlPlanePrisma.globalUser.count({
+          where: {
+            platformRole: PlatformRole.SUPER_ADMIN,
+            status: GlobalUserStatus.ACTIVE,
+            deletedAt: null,
+            id: {
+              not: user.id,
+            },
           },
-        },
-      });
+        });
 
       if (remainingSuperAdmins === 0) {
         throw new BadRequestException(
@@ -1077,20 +1078,21 @@ export class PlatformAdminService {
     const normalizedBody = payload.body.trim();
     const actorGlobalUserId = actor.globalUserId ?? actor.sub;
 
-    const existingTicket = await this.controlPlanePrisma.supportTicket.findUnique({
-      where: { id: ticketId },
-      select: {
-        id: true,
-        title: true,
-        companyId: true,
-        globalUserId: true,
-        company: {
-          select: {
-            workspaceId: true,
+    const existingTicket =
+      await this.controlPlanePrisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        select: {
+          id: true,
+          title: true,
+          companyId: true,
+          globalUserId: true,
+          company: {
+            select: {
+              workspaceId: true,
+            },
           },
         },
-      },
-    });
+      });
 
     if (!existingTicket) {
       throw new NotFoundException('Chamado nao encontrado.');

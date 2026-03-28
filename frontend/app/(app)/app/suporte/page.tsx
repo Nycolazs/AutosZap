@@ -90,6 +90,7 @@ export default function SuportePage() {
 
   useEffect(() => {
     if (highlightedTicketId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedTicket(highlightedTicketId);
     }
   }, [highlightedTicketId]);

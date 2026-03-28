@@ -130,14 +130,11 @@ describe('ConversationWorkflowService', () => {
       closedById: null,
     });
 
-    await service.assertConversationAccess(
-      'conv-1',
-      {
-        sub: 'admin-1',
-        workspaceId: 'ws-1',
-        role: 'ADMIN',
-      } as never,
-    );
+    await service.assertConversationAccess('conv-1', {
+      sub: 'admin-1',
+      workspaceId: 'ws-1',
+      role: 'ADMIN',
+    } as never);
 
     expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -25,10 +25,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PermissionKey } from '@prisma/client';
-import {
-  AutoResponseMenusService,
-  MenuNodeInput,
-} from './auto-response-menus.service';
+import { AutoResponseMenusService } from './auto-response-menus.service';
 
 class MenuNodeDto {
   @IsOptional()

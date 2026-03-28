@@ -33,8 +33,8 @@ describe('PlatformService', () => {
     findSupportTicketMock = jest.fn();
     createSupportTicketMessageMock = jest.fn();
     updateSupportTicketMock = jest.fn();
-    controlPlaneTransactionMock = jest.fn(async (operations: Promise<unknown>[]) =>
-      Promise.all(operations),
+    controlPlaneTransactionMock = jest.fn(
+      async (operations: Promise<unknown>[]) => Promise.all(operations),
     );
 
     prismaService = {

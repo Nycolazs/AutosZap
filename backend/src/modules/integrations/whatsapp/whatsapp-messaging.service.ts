@@ -902,8 +902,11 @@ export class WhatsAppMessagingService {
     const instanceIdCandidates = [
       message.conversation.instanceId,
       message.instanceId,
-    ].filter((value, index, values): value is string =>
-      typeof value === 'string' && value.trim().length > 0 && values.indexOf(value) === index,
+    ].filter(
+      (value, index, values): value is string =>
+        typeof value === 'string' &&
+        value.trim().length > 0 &&
+        values.indexOf(value) === index,
     );
 
     if (!instanceIdCandidates.length) {
@@ -929,18 +932,18 @@ export class WhatsAppMessagingService {
     }
 
     if (!config) {
-      throw (lastConfigError instanceof Error
+      throw lastConfigError instanceof Error
         ? lastConfigError
         : new BadRequestException(
             'A mensagem nao possui uma instancia valida para baixar a midia.',
-          ));
+          );
     }
 
     const transport = this.resolveTransport(config.provider);
     const mediaId =
       config.provider === InstanceProvider.WHATSAPP_WEB
-        ? message.externalMessageId ?? metadata.mediaId ?? undefined
-        : metadata.mediaId ?? message.externalMessageId ?? undefined;
+        ? (message.externalMessageId ?? metadata.mediaId ?? undefined)
+        : (metadata.mediaId ?? message.externalMessageId ?? undefined);
 
     if (!mediaId) {
       throw new BadRequestException('A mensagem nao possui midia anexada.');
@@ -953,7 +956,9 @@ export class WhatsAppMessagingService {
       conversationId: message.conversationId,
       instanceId: config.id,
       direction:
-        message.direction === MessageDirection.OUTBOUND ? 'outbound' : 'inbound',
+        message.direction === MessageDirection.OUTBOUND
+          ? 'outbound'
+          : 'inbound',
       buffer: download.buffer,
       mimeType: download.mimeType ?? metadata.mimeType ?? null,
       fileName: download.fileName ?? metadata.fileName ?? null,
@@ -2246,7 +2251,8 @@ export class WhatsAppMessagingService {
         isAutomated: payload.isAutomated ?? false,
         autoMessageType: payload.autoMessageType,
         sentAt: new Date(),
-        deliveredAt: initialStatus === MessageStatus.DELIVERED ? new Date() : null,
+        deliveredAt:
+          initialStatus === MessageStatus.DELIVERED ? new Date() : null,
       },
     });
 
@@ -2411,7 +2417,8 @@ export class WhatsAppMessagingService {
       return await this.prisma.contact.create({
         data: {
           workspaceId,
-          name: normalizedName ?? this.buildFallbackContactName(normalizedPhone),
+          name:
+            normalizedName ?? this.buildFallbackContactName(normalizedPhone),
           phone: normalizedPhone,
         },
       });
@@ -2490,17 +2497,19 @@ export class WhatsAppMessagingService {
           error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2002'
         ) {
-          const instanceConversation = await this.prisma.conversation.findFirst({
-            where: {
-              workspaceId,
-              contactId,
-              instanceId,
-              deletedAt: null,
+          const instanceConversation = await this.prisma.conversation.findFirst(
+            {
+              where: {
+                workspaceId,
+                contactId,
+                instanceId,
+                deletedAt: null,
+              },
+              orderBy: {
+                updatedAt: 'desc',
+              },
             },
-            orderBy: {
-              updatedAt: 'desc',
-            },
-          });
+          );
 
           if (instanceConversation) {
             return instanceConversation;

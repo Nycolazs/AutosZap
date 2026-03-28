@@ -128,6 +128,7 @@ describe('AuthService', () => {
       { log: jest.fn() } as never,
       {} as never,
       tenantConnectionService as never,
+      {} as never,
     );
   });
 

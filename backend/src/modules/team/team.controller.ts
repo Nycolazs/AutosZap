@@ -121,7 +121,7 @@ export class TeamController {
   @Permissions(PermissionKey.MANAGE_TEAM)
   @Post()
   create(
-    @CurrentUser() user: CurrentAuthUser,
+    @CurrentUser() _user: CurrentAuthUser,
     @Body() _dto: CreateTeamMemberDto,
   ) {
     throw new BadRequestException(
@@ -146,8 +146,8 @@ export class TeamController {
   @Permissions(PermissionKey.MANAGE_USER_PERMISSIONS)
   @Patch(':id/permissions')
   updatePermissions(
-    @CurrentUser() user: CurrentAuthUser,
-    @Param('id') id: string,
+    @CurrentUser() _user: CurrentAuthUser,
+    @Param('id') _id: string,
     @Body() _dto: UpdatePermissionsDto,
   ) {
     throw new BadRequestException(

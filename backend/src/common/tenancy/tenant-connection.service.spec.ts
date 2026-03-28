@@ -61,7 +61,7 @@ describe('TenantConnectionService', () => {
   });
 
   it('normaliza tenant URL com localhost para o host do banco principal', async () => {
-    controlPlanePrisma.tenantDatabase.findUnique.mockResolvedValue({
+    (controlPlanePrisma.tenantDatabase.findUnique as jest.Mock).mockResolvedValue({
       status: 'READY',
       databaseName: 'autozap_tenant_demo',
       company: {
@@ -96,7 +96,7 @@ describe('TenantConnectionService', () => {
       return undefined;
     });
 
-    controlPlanePrisma.tenantDatabase.findUnique.mockResolvedValue({
+    (controlPlanePrisma.tenantDatabase.findUnique as jest.Mock).mockResolvedValue({
       status: 'READY',
       databaseName: 'autozap_tenant_demo',
       company: {
