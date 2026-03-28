@@ -13,6 +13,9 @@ import type {
   WhatsAppWebGatewayState,
 } from './whatsapp-web.types';
 
+const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 20_000;
+const HISTORY_SYNC_REQUEST_TIMEOUT_MS = 120_000;
+
 @Injectable()
 export class WhatsAppWebGatewayClient {
   private clients: AxiosInstance[];
@@ -26,7 +29,7 @@ export class WhatsAppWebGatewayClient {
     this.clients = this.buildBaseUrlCandidates(baseURL).map((candidate) =>
       axios.create({
         baseURL: candidate,
-        timeout: 20_000,
+        timeout: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
         headers: {
           'x-autoszap-internal-secret': sharedSecret,
         },
@@ -123,6 +126,7 @@ export class WhatsAppWebGatewayClient {
     return this.request<WhatsAppWebGatewayHistorySyncResult>({
       method: 'POST',
       url: `/instances/${instanceId}/history/sync`,
+      timeoutMs: HISTORY_SYNC_REQUEST_TIMEOUT_MS,
     });
   }
 
@@ -226,6 +230,7 @@ export class WhatsAppWebGatewayClient {
     method: 'GET' | 'POST';
     url: string;
     data?: unknown;
+    timeoutMs?: number;
   }): Promise<T> {
     let lastError: unknown = null;
 
@@ -235,6 +240,7 @@ export class WhatsAppWebGatewayClient {
           method: payload.method,
           url: payload.url,
           data: payload.data,
+          timeout: payload.timeoutMs,
         });
 
         return response.data;
@@ -255,8 +261,15 @@ export class WhatsAppWebGatewayClient {
   private translateRequestError(error: unknown): never {
     if (axios.isAxiosError<{ message?: string }>(error)) {
       const responseMessage = error.response?.data?.message;
-      const message =
-        typeof responseMessage === 'string' ? responseMessage : error.message;
+      const isTimeoutError =
+        error.code === 'ECONNABORTED' ||
+        /timeout/i.test(responseMessage ?? '') ||
+        /timeout/i.test(error.message);
+      const message = isTimeoutError
+        ? 'O gateway WhatsApp Web demorou mais que o esperado para responder.'
+        : typeof responseMessage === 'string'
+          ? responseMessage
+          : error.message;
 
       throw new BadGatewayException(
         `Falha ao comunicar com o gateway WhatsApp Web: ${message}`,

@@ -253,6 +253,19 @@ function buildQrDraftInstanceName() {
   return `__qr_draft__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function isWhatsAppWebGatewayTimeoutError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+  return (
+    normalizedMessage.includes('gateway whatsapp web') &&
+    (normalizedMessage.includes('timeout') ||
+      normalizedMessage.includes('demorou mais que o esperado'))
+  );
+}
+
 function buildConnectionStateFromQr(
   qrState?: InstanceQrState | null,
 ): InstanceConnectionState | null {
@@ -663,6 +676,38 @@ export default function InstancesPage() {
     });
   }, []);
 
+  const clearConversationCaches = useCallback(() => {
+    return Promise.all([
+      queryClient.removeQueries({ queryKey: ['conversations'] }),
+      queryClient.removeQueries({ queryKey: ['conversations-summary'] }),
+      queryClient.removeQueries({ queryKey: ['conversations-instances'] }),
+      queryClient.removeQueries({ queryKey: ['conversation'] }),
+    ]);
+  }, [queryClient]);
+
+  const triggerInitialQrHistorySync = useCallback((instanceId: string) => {
+    void (async () => {
+      try {
+        await syncInstance(instanceId);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['instances'] }),
+          clearConversationCaches(),
+        ]);
+      } catch (error) {
+        if (isWhatsAppWebGatewayTimeoutError(error)) {
+          await queryClient.invalidateQueries({ queryKey: ['instances'] });
+          return;
+        }
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Instancia salva, mas nao foi possivel concluir a sincronizacao inicial.',
+        );
+      }
+    })();
+  }, [clearConversationCaches, queryClient, syncInstance]);
+
   async function runSyncAction(
     instance: Instance,
     options?: {
@@ -672,6 +717,10 @@ export default function InstancesPage() {
     const actionKey = `sync:${instance.id}`;
     const loadingToastId = toast.loading(getSyncLoadingMessage(instance), {
       duration: Number.POSITIVE_INFINITY,
+      description:
+        instance.provider === 'WHATSAPP_WEB'
+          ? 'O gateway vai processar o historico privado e as conversas vao aparecendo aos poucos.'
+          : undefined,
     });
 
     setInstanceActionKey(actionKey);
@@ -690,6 +739,18 @@ export default function InstancesPage() {
 
       return response;
     } catch (error) {
+      if (
+        instance.provider === 'WHATSAPP_WEB' &&
+        isWhatsAppWebGatewayTimeoutError(error)
+      ) {
+        toast.message('Sincronizacao iniciada em segundo plano.', {
+          id: loadingToastId,
+          description:
+            'O gateway continua processando o historico. Atualize a lista em alguns instantes.',
+        });
+        return null;
+      }
+
       toast.error(
         error instanceof Error
           ? error.message
@@ -746,9 +807,11 @@ export default function InstancesPage() {
       finalizingConnectedQrInstanceIdRef.current = instance.id;
       const actionKey = `finalize-qr:${instance.id}`;
       const syncToastId = toast.loading(
-        'Salvando a instancia e sincronizando conversas privadas do WhatsApp...',
+        'Salvando a instancia conectada...',
         {
           duration: Number.POSITIVE_INFINITY,
+          description:
+            'Assim que o nome for salvo, a sincronizacao inicial continua em segundo plano.',
         },
       );
       setInstanceActionKey(actionKey);
@@ -767,23 +830,18 @@ export default function InstancesPage() {
         setCreateQrDialogOpen(false);
         resetCreateQrDialogState();
 
-        await queryClient.invalidateQueries({ queryKey: ['instances'] });
-
-        const response = await syncInstance(instance.id);
-
         await Promise.all([
-          queryClient.removeQueries({ queryKey: ['conversations'] }),
-          queryClient.removeQueries({ queryKey: ['conversations-summary'] }),
-          queryClient.removeQueries({ queryKey: ['conversations-instances'] }),
-          queryClient.removeQueries({ queryKey: ['conversation'] }),
+          queryClient.invalidateQueries({ queryKey: ['instances'] }),
+          clearConversationCaches(),
         ]);
 
-        toast.success(
-          response.historySync?.detail ?? 'Instancia conectada com sucesso.',
-          {
-            id: syncToastId,
-          },
-        );
+        triggerInitialQrHistorySync(instance.id);
+
+        toast.success('Instancia conectada com sucesso.', {
+          id: syncToastId,
+          description:
+            'A sincronizacao inicial do historico foi iniciada e pode levar alguns instantes.',
+        });
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -800,7 +858,13 @@ export default function InstancesPage() {
         setInstanceActionKey((current) => (current === actionKey ? null : current));
       }
     },
-    [createQrForm.name, queryClient, resetCreateQrDialogState, syncInstance],
+    [
+      clearConversationCaches,
+      createQrForm.name,
+      queryClient,
+      resetCreateQrDialogState,
+      triggerInitialQrHistorySync,
+    ],
   );
 
   const discardPendingQrDraftInstance = useCallback(async (
