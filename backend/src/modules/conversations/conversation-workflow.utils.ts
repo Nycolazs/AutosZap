@@ -23,7 +23,7 @@ export function normalizeConversationStatus(
   if (status === ConversationStatus.OPEN) {
     return assignedUserId
       ? ConversationStatus.IN_PROGRESS
-      : ConversationStatus.NEW;
+      : ConversationStatus.OPEN;
   }
 
   if (status === ConversationStatus.PENDING) {

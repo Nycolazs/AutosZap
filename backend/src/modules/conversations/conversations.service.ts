@@ -47,6 +47,7 @@ const INBOX_INSTANCE_SELECT = {
   phoneNumber: true,
   profilePictureUrl: true,
   profilePictureUpdatedAt: true,
+  providerMetadata: true,
 } satisfies Prisma.InstanceSelect;
 const MESSAGE_SENDER_USER_SELECT = {
   id: true,
@@ -241,6 +242,7 @@ export class ConversationsService {
 
     const summary = {
       ALL: 0,
+      OPEN: 0,
       NEW: 0,
       IN_PROGRESS: 0,
       WAITING: 0,
@@ -987,12 +989,16 @@ export class ConversationsService {
       return null;
     }
 
+    if (status === 'OPEN') {
+      return {
+        status: 'OPEN' as never,
+        assignedUserId: null,
+      } satisfies Prisma.ConversationWhereInput;
+    }
+
     if (status === 'NEW') {
       return {
-        OR: [
-          { status: 'NEW' as never },
-          { status: 'OPEN' as never, assignedUserId: null },
-        ],
+        status: 'NEW' as never,
       } satisfies Prisma.ConversationWhereInput;
     }
 

@@ -243,6 +243,7 @@ export interface Conversation {
 
 export interface ConversationStatusSummary {
   ALL: number;
+  OPEN: number;
   NEW: number;
   IN_PROGRESS: number;
   WAITING: number;
@@ -383,6 +384,7 @@ export interface InboxInstance {
   phoneNumber?: string | null;
   profilePictureUrl?: string | null;
   profilePictureUpdatedAt?: string | null;
+  providerMetadata?: Record<string, unknown> | null;
   visibleConversationsCount: number;
   unreadMessagesCount: number;
   newConversationsCount: number;

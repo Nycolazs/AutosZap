@@ -291,6 +291,7 @@ export class WhatsAppWebService {
         statuses: batchPayload.statuses.map((status) =>
           this.mapStatusEvent(instance.id, status),
         ),
+        historical: true,
       });
     }
 

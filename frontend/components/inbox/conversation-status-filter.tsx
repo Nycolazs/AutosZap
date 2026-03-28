@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 
 export type ConversationStatusFilterValue =
   | 'ALL'
+  | 'OPEN'
   | 'NEW'
   | 'IN_PROGRESS'
   | 'WAITING'
@@ -25,6 +26,12 @@ const STATUS_ITEMS: StatusItem[] = [
     label: 'Todas',
     hint: 'Visão completa do inbox',
     dotClassName: 'bg-foreground/72',
+  },
+  {
+    value: 'OPEN',
+    label: 'Sem status',
+    hint: 'Conversas sincronizadas sem classificação',
+    dotClassName: 'bg-foreground/30',
   },
   {
     value: 'NEW',

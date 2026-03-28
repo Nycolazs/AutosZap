@@ -252,7 +252,7 @@ function shouldShowDateSeparator(
 const STATUS_LABELS: Record<string, string> = {
   ALL: "Todas",
   NEW: "Novo",
-  OPEN: "Aberto",
+  OPEN: "Sem status",
   PENDING: "Pendente",
   IN_PROGRESS: "Em atendimento",
   WAITING: "Aguardando",
@@ -527,6 +527,7 @@ function isInboxInstanceAvailableForSwitch(instance: InboxInstance) {
 
 const DEFAULT_CONVERSATION_STATUS_SUMMARY: ConversationStatusSummary = {
   ALL: 0,
+  OPEN: 0,
   NEW: 0,
   IN_PROGRESS: 0,
   WAITING: 0,
@@ -668,7 +669,16 @@ export function InboxPageContent({
   const inboxInstancesQuery = useQuery({
     queryKey: ["conversations-instances"],
     queryFn: () => apiRequest<InboxInstance[]>("conversations/instances"),
-    refetchInterval: INBOX_REFRESH_INTERVAL,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasSyncing = Array.isArray(data) && data.some((instance) => {
+        const meta = instance.providerMetadata;
+        if (!meta || typeof meta !== "object") return false;
+        const job = (meta as Record<string, unknown>).historySyncJob;
+        return typeof job === "object" && job !== null && (job as Record<string, unknown>).status === "RUNNING";
+      });
+      return hasSyncing ? 4000 : INBOX_REFRESH_INTERVAL;
+    },
     refetchIntervalInBackground: true,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
@@ -698,6 +708,17 @@ export function InboxPageContent({
   const inboxInstances = useMemo(
     () => inboxInstancesQuery.data ?? [],
     [inboxInstancesQuery.data],
+  );
+  const syncingInstances = useMemo(
+    () =>
+      inboxInstances.filter((instance) => {
+        const meta = instance.providerMetadata;
+        if (!meta || typeof meta !== "object") return false;
+        const job = (meta as Record<string, unknown>).historySyncJob;
+        if (!job || typeof job !== "object") return false;
+        return (job as Record<string, unknown>).status === "RUNNING";
+      }),
+    [inboxInstances],
   );
   const switchableInboxInstances = useMemo(
     () =>
@@ -2762,6 +2783,19 @@ export function InboxPageContent({
                     instances={visibleInboxInstances}
                     isFetching={inboxInstancesQuery.isFetching}
                   />
+                </div>
+              ) : null}
+              {syncingInstances.length > 0 ? (
+                <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-primary/20 bg-primary/[0.04] px-3.5 py-2.5">
+                  <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-medium text-foreground">
+                      Sincronizando historico
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {syncingInstances.map((i) => i.name).join(", ")} &mdash; as conversas aparecem conforme chegam
+                    </p>
+                  </div>
                 </div>
               ) : null}
               <div className="relative mt-3">

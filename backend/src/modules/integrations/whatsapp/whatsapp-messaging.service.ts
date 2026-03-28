@@ -594,7 +594,9 @@ export class WhatsAppMessagingService {
         details?: string;
       }>;
     }>;
+    historical?: boolean;
   }) {
+    const isHistorical = payload.historical === true;
     for (const inbound of payload.messages) {
       if (this.shouldIgnoreInboundMessage(inbound)) {
         this.logger.warn(
@@ -645,6 +647,8 @@ export class WhatsAppMessagingService {
         inboundInstance.workspaceId,
         contact.id,
         inboundInstance.id,
+        undefined,
+        { historical: isHistorical },
       );
       const shouldTreatAsNewInboundActivity =
         !isStaleMessage &&
@@ -2453,6 +2457,7 @@ export class WhatsAppMessagingService {
     contactId: string,
     instanceId: string,
     assignedUserId?: string | null,
+    options?: { historical?: boolean },
   ) {
     const existing = await this.prisma.conversation.findFirst({
       where: {
@@ -2529,7 +2534,9 @@ export class WhatsAppMessagingService {
           assignedUserId: assignedUserId ?? undefined,
           status: assignedUserId
             ? ConversationStatus.IN_PROGRESS
-            : ConversationStatus.NEW,
+            : options?.historical
+              ? ConversationStatus.OPEN
+              : ConversationStatus.NEW,
           ownership: assignedUserId
             ? ConversationOwnership.MINE
             : ConversationOwnership.UNASSIGNED,

@@ -5,8 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
+  AlertCircle,
   Camera,
+  CheckCircle2,
   Copy,
+  Inbox,
   Loader2,
   LogOut,
   MessageSquareText,
@@ -493,6 +496,10 @@ export default function InstancesPage() {
   });
   const [createQrPreviewInstance, setCreateQrPreviewInstance] =
     useState<Instance | null>(null);
+  const [qrDialogSyncPhase, setQrDialogSyncPhase] = useState<
+    'idle' | 'syncing' | 'done' | 'failed'
+  >('idle');
+  const [qrDialogSyncDetail, setQrDialogSyncDetail] = useState<string | null>(null);
   const [pendingQrDraftInstanceId, setPendingQrDraftInstanceId] =
     useState<string | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
@@ -742,6 +749,8 @@ export default function InstancesPage() {
     setCreateQrPreviewInstance(null);
     setConnectionState(null);
     setQrState(null);
+    setQrDialogSyncPhase('idle');
+    setQrDialogSyncDetail(null);
     finalizingConnectedQrInstanceIdRef.current = null;
   }, []);
 
@@ -958,50 +967,64 @@ export default function InstancesPage() {
 
       finalizingConnectedQrInstanceIdRef.current = instance.id;
       const actionKey = `finalize-qr:${instance.id}`;
-      const syncToastId = toast.loading(
-        'Salvando a instancia conectada...',
-        {
-          duration: Number.POSITIVE_INFINITY,
-          description:
-            'Assim que o nome for salvo, a sincronizacao inicial continua em segundo plano.',
-        },
-      );
       setInstanceActionKey(actionKey);
 
       try {
         await apiRequest<Instance>(`instances/${instance.id}`, {
           method: 'PATCH',
-          body: {
-            name,
-          },
+          body: { name },
         });
 
         setPendingQrDraftInstanceId((current) =>
           current === instance.id ? null : current,
         );
-        setCreateQrDialogOpen(false);
-        resetCreateQrDialogState();
 
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['instances'] }),
           clearConversationCaches(),
         ]);
 
-        triggerInitialQrHistorySync(instance.id);
+        setQrDialogSyncPhase('syncing');
+        setQrDialogSyncDetail(null);
 
-        toast.success('Instancia conectada com sucesso.', {
-          id: syncToastId,
-          description:
-            'A sincronizacao inicial do historico foi iniciada e pode levar alguns instantes.',
-        });
+        try {
+          setInstanceHistorySyncJobInCache(
+            instance.id,
+            buildRunningHistorySyncJob(
+              'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+            ),
+          );
+          await syncInstance(instance.id);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['instances'] }),
+            clearConversationCaches(),
+          ]);
+          setQrDialogSyncPhase('done');
+          setQrDialogSyncDetail('Historico sincronizado com sucesso.');
+        } catch (syncError) {
+          if (
+            isWhatsAppWebGatewayTimeoutError(syncError) ||
+            isWhatsAppWebGatewaySyncCanceledError(syncError)
+          ) {
+            await queryClient.invalidateQueries({ queryKey: ['instances'] });
+            setQrDialogSyncPhase('done');
+            setQrDialogSyncDetail(
+              'Sincronizacao continua em segundo plano. As conversas apareceram em breve.',
+            );
+          } else {
+            setQrDialogSyncPhase('failed');
+            setQrDialogSyncDetail(
+              syncError instanceof Error
+                ? syncError.message
+                : 'Nao foi possivel concluir a sincronizacao.',
+            );
+          }
+        }
       } catch (error) {
         toast.error(
           error instanceof Error
             ? error.message
             : 'Nao foi possivel finalizar a instancia QR.',
-          {
-            id: syncToastId,
-          },
         );
       } finally {
         if (finalizingConnectedQrInstanceIdRef.current === instance.id) {
@@ -1014,8 +1037,8 @@ export default function InstancesPage() {
       clearConversationCaches,
       createQrForm.name,
       queryClient,
-      resetCreateQrDialogState,
-      triggerInitialQrHistorySync,
+      setInstanceHistorySyncJobInCache,
+      syncInstance,
     ],
   );
 
@@ -2164,31 +2187,87 @@ export default function InstancesPage() {
         >
           <DialogHeader className={createQrPreviewInstance ? 'shrink-0' : undefined}>
             <DialogTitle>
-              {connectionState?.phase === 'CONNECTED'
-                ? 'Defina o nome da instancia'
-                : 'Conectar numero por QR'}
+              {qrDialogSyncPhase === 'syncing'
+                ? 'Sincronizando historico'
+                : qrDialogSyncPhase === 'done'
+                  ? 'Instancia pronta'
+                  : qrDialogSyncPhase === 'failed'
+                    ? 'Sincronizacao com falha'
+                    : connectionState?.phase === 'CONNECTED'
+                      ? 'Defina o nome da instancia'
+                      : 'Conectar numero por QR'}
             </DialogTitle>
             <DialogDescription>
-              {connectionState?.phase === 'CONNECTED'
-                ? 'O numero ja conectou. Agora informe o nome final para salvar a instancia no workspace.'
-                : 'A sessao QR e iniciada imediatamente. O QR aparece assim que o gateway terminar de preparar a conexao.'}
+              {qrDialogSyncPhase === 'syncing'
+                ? 'Buscando conversas privadas do WhatsApp Web. Isso pode levar alguns minutos.'
+                : qrDialogSyncPhase === 'done'
+                  ? 'A instancia foi salva e o historico foi sincronizado com sucesso.'
+                  : qrDialogSyncPhase === 'failed'
+                    ? 'A instancia foi salva, mas a sincronizacao encontrou um problema.'
+                    : connectionState?.phase === 'CONNECTED'
+                      ? 'O numero ja conectou. Agora informe o nome final para salvar a instancia no workspace.'
+                      : 'A sessao QR e iniciada imediatamente. O QR aparece assim que o gateway terminar de preparar a conexao.'}
             </DialogDescription>
           </DialogHeader>
 
           {createQrPreviewInstance ? (
             <div className="space-y-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:space-y-0 sm:gap-4">
-              <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4 sm:shrink-0">
-                <p className="text-sm font-medium text-foreground">
-                  {connectionState?.phase === 'CONNECTED'
-                    ? 'Sessao conectada'
-                    : 'Sessao QR temporaria'}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Status: {getConnectionPhaseLabel(connectionState?.phase)}
-                </p>
-              </div>
+              {qrDialogSyncPhase === 'idle' ? (
+                <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4 sm:shrink-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {connectionState?.phase === 'CONNECTED'
+                      ? 'Sessao conectada'
+                      : 'Sessao QR temporaria'}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Status: {getConnectionPhaseLabel(connectionState?.phase)}
+                  </p>
+                </div>
+              ) : null}
 
-              {connectionState?.phase === 'CONNECTED' ? (
+              {qrDialogSyncPhase === 'syncing' ? (
+                <div className="flex min-h-[220px] flex-col items-center justify-center gap-5 rounded-2xl border border-border/70 bg-background-panel/35 px-6 py-8 text-center sm:min-h-0 sm:flex-1">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                  <div className="w-full space-y-3">
+                    <p className="text-sm font-medium text-foreground">
+                      Sincronizando conversas...
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Buscando historico de mensagens privadas do WhatsApp Web.
+                      Isso pode levar alguns minutos.
+                    </p>
+                    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-border">
+                      <div className="animate-sync-progress absolute inset-y-0 w-1/3 rounded-full bg-primary" />
+                    </div>
+                  </div>
+                </div>
+              ) : qrDialogSyncPhase === 'done' ? (
+                <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] px-6 py-8 text-center sm:min-h-0 sm:flex-1">
+                  <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Historico sincronizado
+                    </p>
+                    {qrDialogSyncDetail ? (
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        {qrDialogSyncDetail}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : qrDialogSyncPhase === 'failed' ? (
+                <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] px-6 py-8 text-center sm:min-h-0 sm:flex-1">
+                  <AlertCircle className="h-10 w-10 text-amber-500" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Instancia salva com aviso
+                    </p>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {qrDialogSyncDetail ?? 'A sincronizacao inicial encontrou um problema. Tente sincronizar manualmente depois.'}
+                    </p>
+                  </div>
+                </div>
+              ) : connectionState?.phase === 'CONNECTED' ? (
                 <div className="space-y-4 rounded-2xl border border-border/70 bg-background-panel/35 px-6 py-5 sm:min-h-0 sm:flex-1">
                   <div className="flex flex-col items-center justify-center gap-3 text-center">
                     <QrCode className="h-10 w-10 text-primary" />
@@ -2241,22 +2320,42 @@ export default function InstancesPage() {
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground sm:shrink-0">
-                {connectionState?.phase === 'CONNECTED'
-                  ? 'A instancia so sera exibida na lista depois que voce salvar o nome.'
-                  : `Expira em: ${
-                      qrState?.qrCodeExpiresAt ??
-                      connectionState?.qrCodeExpiresAt ??
-                      'nao informado'
-                    }`}
-              </p>
+              {qrDialogSyncPhase === 'idle' ? (
+                <p className="text-xs text-muted-foreground sm:shrink-0">
+                  {connectionState?.phase === 'CONNECTED'
+                    ? 'A instancia so sera exibida na lista depois que voce salvar o nome.'
+                    : `Expira em: ${
+                        qrState?.qrCodeExpiresAt ??
+                        connectionState?.qrCodeExpiresAt ??
+                        'nao informado'
+                      }`}
+                </p>
+              ) : null}
 
               <div className="flex flex-col gap-2 sm:shrink-0 sm:flex-row">
-                {connectionState?.phase === 'CONNECTED' ? (
+                {qrDialogSyncPhase === 'syncing' ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setQrDialogSyncPhase('done');
+                      setQrDialogSyncDetail('Sincronizacao continua em segundo plano.');
+                    }}
+                  >
+                    Minimizar
+                  </Button>
+                ) : qrDialogSyncPhase === 'done' || qrDialogSyncPhase === 'failed' ? (
+                  <Link href="/app/inbox">
+                    <Button type="button">
+                      <Inbox className="h-4 w-4" />
+                      Ir para o Inbox
+                    </Button>
+                  </Link>
+                ) : connectionState?.phase === 'CONNECTED' ? (
                   <Button
                     type="button"
                     onClick={() => void finalizeConnectedQrInstance(createQrPreviewInstance)}
-                    disabled={instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}`}
+                    disabled={instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}` || !createQrForm.name.trim()}
                   >
                     {instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}` ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2283,13 +2382,26 @@ export default function InstancesPage() {
                     Atualizar QR
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={closeCreateQrDialog}
-                >
-                  Cancelar
-                </Button>
+                {qrDialogSyncPhase === 'idle' ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={closeCreateQrDialog}
+                  >
+                    Cancelar
+                  </Button>
+                ) : qrDialogSyncPhase === 'done' || qrDialogSyncPhase === 'failed' ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      resetCreateQrDialogState();
+                      setCreateQrDialogOpen(false);
+                    }}
+                  >
+                    Fechar
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : (

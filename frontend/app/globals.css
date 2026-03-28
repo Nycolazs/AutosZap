@@ -351,6 +351,19 @@ html.theme-transition *::after {
   padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
 }
 
+@keyframes sync-progress-sweep {
+  0% {
+    transform: translateX(-150%);
+  }
+  100% {
+    transform: translateX(450%);
+  }
+}
+
+.animate-sync-progress {
+  animation: sync-progress-sweep 1.4s ease-in-out infinite;
+}
+
 @keyframes global-loading-sweep {
   0% {
     transform: translateX(-120%) scaleX(0.9);

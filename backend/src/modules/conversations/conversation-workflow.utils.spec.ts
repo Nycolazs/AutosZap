@@ -24,9 +24,9 @@ describe('conversation-workflow.utils', () => {
   });
 
   describe('normalizeConversationStatus', () => {
-    it('maps legacy open conversations without assignee to NEW', () => {
+    it('keeps open conversations without assignee as OPEN (sem status)', () => {
       expect(normalizeConversationStatus(ConversationStatus.OPEN, null)).toBe(
-        ConversationStatus.NEW,
+        ConversationStatus.OPEN,
       );
     });
 
