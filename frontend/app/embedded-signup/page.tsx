@@ -93,7 +93,7 @@ export default function EmbeddedSignupBridgePage() {
   const isError = bridgeState.status === 'error';
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[#060918] text-white">
+    <main className="relative min-h-dvh overflow-hidden bg-background text-white">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-[25%] -top-[18%] h-[360px] w-[360px] rounded-full bg-blue-600/[0.10] blur-[110px]" />
         <div className="absolute -right-[20%] top-[18%] h-[300px] w-[300px] rounded-full bg-cyan-500/[0.08] blur-[110px]" />
@@ -149,7 +149,7 @@ export default function EmbeddedSignupBridgePage() {
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-white/[0.08] bg-[#0b1228]/70 p-4">
+            <div className="rounded-[24px] border border-white/[0.08] bg-background-soft/70 p-4">
               <div className="grid gap-3 text-sm text-white/72">
                 <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
                   1. Entrar na conta Business correta.

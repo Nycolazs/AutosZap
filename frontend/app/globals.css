@@ -4,6 +4,7 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ── Dark theme (default) ── */
 :root {
   --background: #040d19;
   --background-elevated: #081423;
@@ -13,13 +14,71 @@ html {
   --muted-foreground: #8ea3c4;
   --border: rgba(135, 181, 255, 0.14);
   --border-strong: rgba(135, 181, 255, 0.22);
-  --primary: #3297ff;
+  --primary: #2b8aed;
   --primary-soft: rgba(50, 151, 255, 0.14);
   --secondary: #19b7d7;
   --danger: #ff6b81;
   --success: #4ab3ff;
   --ui-font-size: 14px;
   --ui-line-height: 1.35;
+
+  /* theme-aware surface colors for inline styles */
+  --surface-chat-bg: #0b141a;
+  --surface-chat-input: #162535;
+  --surface-chat-input-alt: #1a2541;
+  --surface-bubble-outbound: #1b4a8b;
+  --surface-bubble-inbound: #1a2a3d;
+  --surface-context-menu: #102033;
+  --surface-message-area: #0b1117;
+  --surface-quote-bg: #0d3568;
+  --surface-avatar-bg: #132032;
+  --surface-hover: #152741;
+  --surface-marketing-bg: #060918;
+  --surface-marketing-footer: #050816;
+  --surface-glass-from: rgba(11, 24, 41, 0.96);
+  --surface-glass-to: rgba(8, 18, 32, 0.92);
+  --text-on-bubble: #e9edef;
+  --text-bubble-meta: rgba(255, 255, 255, 0.6);
+  --text-bubble-time: rgba(255, 255, 255, 0.4);
+  --text-link-blue: #7eb8ff;
+  --text-link-accent: #53bdeb;
+}
+
+/* ── Light theme ── */
+.light {
+  --background: #f5f8fc;
+  --background-elevated: #ffffff;
+  --background-panel: #edf2f9;
+  --background-soft: #e2eaf5;
+  --foreground: #0f1a2e;
+  --muted-foreground: #5a6f8a;
+  --border: rgba(30, 70, 130, 0.12);
+  --border-strong: rgba(30, 70, 130, 0.2);
+  --primary: #2b7de9;
+  --primary-soft: rgba(43, 125, 233, 0.1);
+  --secondary: #0e9bb5;
+  --danger: #e5444b;
+  --success: #1a8cd8;
+
+  --surface-chat-bg: #f0f4f9;
+  --surface-chat-input: #ffffff;
+  --surface-chat-input-alt: #e8eef6;
+  --surface-bubble-outbound: #d4e5ff;
+  --surface-bubble-inbound: #ffffff;
+  --surface-context-menu: #ffffff;
+  --surface-message-area: #f5f8fc;
+  --surface-quote-bg: #dce8f8;
+  --surface-avatar-bg: #dce8f8;
+  --surface-hover: #e2ecf8;
+  --surface-marketing-bg: #f5f8fc;
+  --surface-marketing-footer: #edf2f9;
+  --surface-glass-from: rgba(255, 255, 255, 0.96);
+  --surface-glass-to: rgba(240, 246, 255, 0.92);
+  --text-on-bubble: #0f1a2e;
+  --text-bubble-meta: rgba(15, 26, 46, 0.6);
+  --text-bubble-time: rgba(15, 26, 46, 0.45);
+  --text-link-blue: #2563eb;
+  --text-link-accent: #0e7490;
 }
 
 @theme inline {
@@ -55,6 +114,14 @@ html {
     linear-gradient(180deg, #07111f 0%, #040d19 100%);
 }
 
+html.light {
+  color-scheme: light;
+  background:
+    radial-gradient(circle at top left, rgba(43, 125, 233, 0.06), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(14, 155, 181, 0.06), transparent 28%),
+    linear-gradient(180deg, #f5f8fc 0%, #edf2f9 100%);
+}
+
 body {
   min-height: 100vh;
   color: var(--foreground);
@@ -66,6 +133,13 @@ body {
     radial-gradient(circle at 20% 10%, rgba(33, 123, 255, 0.08), transparent 26%),
     radial-gradient(circle at 90% 80%, rgba(24, 148, 214, 0.08), transparent 18%),
     linear-gradient(180deg, rgba(4, 13, 25, 0.98), rgba(4, 13, 25, 1));
+}
+
+html.light body {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(43, 125, 233, 0.04), transparent 26%),
+    radial-gradient(circle at 90% 80%, rgba(14, 155, 181, 0.04), transparent 18%),
+    linear-gradient(180deg, rgba(245, 248, 252, 0.98), rgba(245, 248, 252, 1));
 }
 
 @media (max-width: 767px) {
@@ -93,10 +167,14 @@ select {
 }
 
 .glass-panel {
-  background: linear-gradient(180deg, rgba(11, 24, 41, 0.96), rgba(8, 18, 32, 0.92));
+  background: linear-gradient(180deg, var(--surface-glass-from), var(--surface-glass-to));
   border: 1px solid var(--border);
   box-shadow: 0 20px 48px rgba(2, 10, 24, 0.42);
   backdrop-filter: blur(14px);
+}
+
+.light .glass-panel {
+  box-shadow: 0 20px 48px rgba(30, 70, 130, 0.08);
 }
 
 .glow-border {
@@ -104,6 +182,28 @@ select {
     0 0 0 1px rgba(74, 170, 255, 0.08),
     0 16px 42px rgba(7, 16, 31, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.light .glow-border {
+  box-shadow:
+    0 0 0 1px rgba(43, 125, 233, 0.1),
+    0 16px 42px rgba(30, 70, 130, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ── Logo shadow for light mode ── */
+.light .brand-logo-shadow {
+  filter: drop-shadow(0 2px 8px rgba(30, 70, 130, 0.18));
+}
+
+/* ── Theme transition ── */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 400ms ease, color 300ms ease, border-color 300ms ease,
+    box-shadow 400ms ease, fill 300ms ease, stroke 300ms ease !important;
+  transition-delay: 0ms !important;
 }
 
 .safe-bottom-pad {

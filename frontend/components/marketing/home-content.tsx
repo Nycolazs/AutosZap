@@ -26,6 +26,7 @@ import { ScreenshotShowcase } from '@/components/marketing/screenshot-showcase';
 import { ScrollReveal } from '@/components/marketing/scroll-reveal';
 import { Button } from '@/components/ui/button';
 import { MobileNav } from '@/components/marketing/mobile-nav';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 /* ── data ── */
 
@@ -86,8 +87,8 @@ const faqs = [
 ];
 
 /* ── glass helpers ── */
-const glass = 'rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl';
-const glassHover = `${glass} transition-[border-color,background-color] duration-300 hover:border-blue-500/20 hover:bg-white/[0.06]`;
+const glass = 'rounded-2xl border border-border bg-background-soft/40 backdrop-blur-xl';
+const glassHover = `${glass} transition-[border-color,background-color] duration-300 hover:border-blue-500/20 hover:bg-background-soft/60`;
 
 const navLinks = [
   { href: '#funcionalidades', label: 'Funcionalidades' },
@@ -125,7 +126,7 @@ interface HomeContentProps {
 
 export function HomeContent({ currentYear }: HomeContentProps) {
   return (
-    <main className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-[#060918] text-white">
+    <main className="relative min-h-dvh overflow-x-hidden scroll-smooth bg-background text-foreground">
       {/* ── ambient gradients ── */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-[30%] -top-[20%] h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[120px] sm:h-[700px] sm:w-[700px]" />
@@ -134,7 +135,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
       </div>
 
       {/* ════════════════ HEADER ════════════════ */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#060918]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2.5 sm:px-8 sm:py-3">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -142,22 +143,23 @@ export function HomeContent({ currentYear }: HomeContentProps) {
               alt="AutosZap"
               width={36}
               height={36}
-              className="h-7 w-7 object-contain sm:h-8 sm:w-8"
+              className="brand-logo-shadow h-7 w-7 object-contain sm:h-8 sm:w-8"
               priority
             />
             <span className="font-heading text-base font-bold tracking-tight sm:text-lg">AutosZap</span>
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm text-white/60 md:flex">
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
             {navLinks.map((link) => (
-              <a key={link.href} href={link.href} className="transition-colors hover:text-white">
+              <a key={link.href} href={link.href} className="transition-colors hover:text-foreground">
                 {link.label}
               </a>
             ))}
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" className="hidden text-sm text-white/70 hover:text-white sm:inline-flex">
+            <ThemeToggle />
+            <Button asChild variant="ghost" className="hidden text-sm text-foreground/70 hover:text-foreground sm:inline-flex">
               <Link href="/login">Entrar</Link>
             </Button>
             <Button asChild className="hidden bg-blue-600 text-sm text-white hover:bg-blue-700 sm:inline-flex">
@@ -201,7 +203,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
 
             <motion.p
               variants={heroItem}
-              className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:mt-6 sm:text-lg"
+              className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:mt-6 sm:text-lg"
             >
               Gerencie conversas, distribua atendimento, opere seu CRM e prepare campanhas
               — tudo conectado à API oficial do WhatsApp.
@@ -217,7 +219,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                   <ArrowRight className="ml-1 h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild size="lg" variant="ghost" className="w-full border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08] sm:w-auto">
+              <Button asChild size="lg" variant="ghost" className="w-full border border-border bg-background-soft/40 text-foreground hover:bg-background-soft/60 sm:w-auto">
                 <a href="#produto">Ver a plataforma</a>
               </Button>
             </motion.div>
@@ -225,7 +227,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
             {/* trust badges */}
             <motion.div
               variants={heroItem}
-              className="mx-auto mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-white/35 sm:mt-12 sm:gap-x-8 sm:text-xs"
+              className="mx-auto mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-muted-foreground/50 sm:mt-12 sm:gap-x-8 sm:text-xs"
             >
               <span className="flex items-center gap-1.5"><Lock className="h-3 w-3 text-blue-400/60" /> API Oficial Meta</span>
               <span className="flex items-center gap-1.5"><ShieldCheck className="h-3 w-3 text-blue-400/60" /> Dados criptografados</span>
@@ -241,7 +243,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
             <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
               Tudo que sua equipe precisa
             </h2>
-            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+            <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-base">
               Módulos integrados do primeiro contato ao pós-venda.
             </p>
           </ScrollReveal>
@@ -261,7 +263,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                     <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </div>
                   <h3 className="text-base font-semibold sm:text-lg">{feat.title}</h3>
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{feat.description}</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">{feat.description}</p>
                 </motion.div>
               );
             })}
@@ -292,7 +294,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                     <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
                   <h3 className="text-[13px] font-semibold sm:text-base">{item.title}</h3>
-                  <p className="mt-1 text-[11px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{item.description}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">{item.description}</p>
                 </motion.div>
               );
             })}
@@ -306,7 +308,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
             <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
               Conheça os módulos
             </h2>
-            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+            <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-base">
               Explore cada área e veja como o AutosZap organiza sua operação.
             </p>
           </ScrollReveal>
@@ -323,7 +325,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
             <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
               4 passos para começar
             </h2>
-            <p className="mt-2 text-sm text-white/50 sm:mt-3 sm:text-base">
+            <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-base">
               Comece a usar em poucos minutos, sem complicação.
             </p>
           </ScrollReveal>
@@ -339,7 +341,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
               <motion.div key={step.number} variants={gridItem} className={`${glass} relative p-4 sm:p-6`}>
                 <span className="text-2xl font-black text-blue-500/15 sm:text-4xl">{step.number}</span>
                 <h3 className="mt-1 text-[13px] font-semibold sm:mt-2 sm:text-base">{step.title}</h3>
-                <p className="mt-1 text-[11px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{step.description}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">{step.description}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -364,7 +366,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
             {faqs.map((faq) => (
               <motion.div key={faq.q} variants={gridItem} className={`${glass} p-4 sm:p-5`}>
                 <h3 className="text-[13px] font-semibold sm:text-sm">{faq.q}</h3>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-white/50 sm:mt-2 sm:text-sm">{faq.a}</p>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">{faq.a}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -382,7 +384,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                   <h2 className="mt-2 font-heading text-2xl font-bold tracking-tight sm:mt-3 sm:text-4xl">
                     Pronto para profissionalizar seu atendimento?
                   </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-white/50 sm:mt-3 sm:text-base">
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:mt-3 sm:text-base">
                     Preencha o formulário e nosso time comercial entra em contato.
                   </p>
                 </div>
@@ -400,14 +402,14 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                         <div className="inline-flex shrink-0 rounded-lg border border-blue-500/20 bg-blue-500/10 p-1.5 text-blue-400 sm:p-2">
                           <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                         </div>
-                        <p className="text-[13px] text-white/70 sm:text-sm">{item.text}</p>
+                        <p className="text-[13px] text-foreground/70 sm:text-sm">{item.text}</p>
                       </div>
                     );
                   })}
                 </div>
 
                 <div className={`${glass} p-3 sm:p-4`}>
-                  <p className="text-[11px] text-white/40 sm:text-xs">
+                  <p className="text-[11px] text-muted-foreground/60 sm:text-xs">
                     A liberação de acesso acontece após validação comercial e técnica.
                     Nosso time alinha cenário, objetivos e conduz a integração completa.
                   </p>
@@ -418,7 +420,7 @@ export function HomeContent({ currentYear }: HomeContentProps) {
         </section>
 
         {/* ════════════════ FOOTER ════════════════ */}
-        <footer className="border-t border-white/[0.06] bg-[#050816]">
+        <footer className="border-t border-border bg-background-panel">
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8 sm:py-12">
             <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {/* brand */}
@@ -429,50 +431,50 @@ export function HomeContent({ currentYear }: HomeContentProps) {
                     alt="AutosZap"
                     width={28}
                     height={28}
-                    className="h-6 w-6 object-contain sm:h-7 sm:w-7"
+                    className="brand-logo-shadow h-6 w-6 object-contain sm:h-7 sm:w-7"
                   />
                   <span className="font-heading text-base font-bold tracking-tight sm:text-lg">AutosZap</span>
                 </Link>
-                <p className="text-[13px] leading-relaxed text-white/40 sm:text-sm">
+                <p className="text-[13px] leading-relaxed text-muted-foreground/60 sm:text-sm">
                   Plataforma profissional de atendimento, CRM e automação para WhatsApp Business.
                 </p>
               </div>
 
               {/* produto */}
               <div>
-                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Produto</p>
-                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
-                  <li><a href="#funcionalidades" className="transition-colors hover:text-white">Funcionalidades</a></li>
-                  <li><a href="#produto" className="transition-colors hover:text-white">Módulos</a></li>
-                  <li><a href="#como-funciona" className="transition-colors hover:text-white">Como funciona</a></li>
-                  <li><a href="#faq" className="transition-colors hover:text-white">FAQ</a></li>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 sm:mb-3 sm:text-xs">Produto</p>
+                <ul className="space-y-1.5 text-[13px] text-muted-foreground sm:space-y-2 sm:text-sm">
+                  <li><a href="#funcionalidades" className="transition-colors hover:text-foreground">Funcionalidades</a></li>
+                  <li><a href="#produto" className="transition-colors hover:text-foreground">Módulos</a></li>
+                  <li><a href="#como-funciona" className="transition-colors hover:text-foreground">Como funciona</a></li>
+                  <li><a href="#faq" className="transition-colors hover:text-foreground">FAQ</a></li>
                 </ul>
               </div>
 
               {/* empresa */}
               <div>
-                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Empresa</p>
-                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
-                  <li><Link href="/como-integrar" className="transition-colors hover:text-white">Guia de integração</Link></li>
-                  <li><a href="#contato" className="transition-colors hover:text-white">Falar com vendas</a></li>
-                  <li><Link href="/login" className="transition-colors hover:text-white">Acessar plataforma</Link></li>
-                  <li><Link href="/privacidade" className="transition-colors hover:text-white">Política de Privacidade</Link></li>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 sm:mb-3 sm:text-xs">Empresa</p>
+                <ul className="space-y-1.5 text-[13px] text-muted-foreground sm:space-y-2 sm:text-sm">
+                  <li><Link href="/como-integrar" className="transition-colors hover:text-foreground">Guia de integração</Link></li>
+                  <li><a href="#contato" className="transition-colors hover:text-foreground">Falar com vendas</a></li>
+                  <li><Link href="/login" className="transition-colors hover:text-foreground">Acessar plataforma</Link></li>
+                  <li><Link href="/privacidade" className="transition-colors hover:text-foreground">Política de Privacidade</Link></li>
                 </ul>
               </div>
 
               {/* contato */}
               <div>
-                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30 sm:mb-3 sm:text-xs">Contato</p>
-                <ul className="space-y-1.5 text-[13px] text-white/50 sm:space-y-2 sm:text-sm">
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground/50 sm:mb-3 sm:text-xs">Contato</p>
+                <ul className="space-y-1.5 text-[13px] text-muted-foreground sm:space-y-2 sm:text-sm">
                   <li className="flex items-center gap-2">
                     <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
-                    <a href="#contato" className="transition-colors hover:text-white">Formulário de contato</a>
+                    <a href="#contato" className="transition-colors hover:text-foreground">Formulário de contato</a>
                   </li>
                 </ul>
               </div>
             </div>
 
-            <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/[0.06] pt-5 text-[11px] text-white/30 sm:mt-10 sm:flex-row sm:pt-6 sm:text-xs">
+            <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-border pt-5 text-[11px] text-muted-foreground/50 sm:mt-10 sm:flex-row sm:pt-6 sm:text-xs">
               <p>&copy; {currentYear} AutosZap. Todos os direitos reservados.</p>
               <p>API oficial do WhatsApp Business Platform da Meta.</p>
             </div>

@@ -64,7 +64,7 @@ function SidebarContent({
           alt="AutosZap"
           width={36}
           height={36}
-          className="h-8 w-8 shrink-0 object-contain"
+          className="brand-logo-shadow h-8 w-8 shrink-0 object-contain"
           priority
         />
         <div className="min-w-0">
@@ -388,7 +388,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
               alt="AutosZap"
               width={28}
               height={28}
-              className="h-6 w-6 object-contain"
+              className="brand-logo-shadow h-6 w-6 object-contain"
             />
             <span className="font-heading text-[14px] font-bold tracking-tight">
               Platform

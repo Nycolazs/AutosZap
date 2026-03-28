@@ -40,7 +40,7 @@ export default function EmbeddedSignupCallbackPage() {
   const hasError = Boolean(result.error);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#060918] text-white">
+    <main className="flex min-h-dvh items-center justify-center bg-background text-white">
       <div className="space-y-3 p-8 text-center">
         {hasCode ? (
           <>

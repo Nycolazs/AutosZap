@@ -9,7 +9,7 @@ export function Switch(props: React.ComponentPropsWithoutRef<typeof SwitchPrimit
   return (
     <SwitchPrimitive.Root
       className={cn(
-        'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center justify-start overflow-hidden rounded-full border border-white/20 bg-white/[0.08] px-[2px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-all duration-200 data-[state=checked]:justify-end data-[state=checked]:border-primary/70 data-[state=checked]:bg-primary/30 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center justify-start overflow-hidden rounded-full border border-foreground/20 bg-foreground/[0.08] px-[2px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-all duration-200 data-[state=checked]:justify-end data-[state=checked]:border-primary/70 data-[state=checked]:bg-primary/30 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         className,
       )}
       {...rest}

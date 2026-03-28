@@ -21,13 +21,13 @@ const itemVariants = {
 export function PrivacidadeContent() {
   return (
     <motion.main
-      className="min-h-dvh bg-[#060918] text-white"
+      className="min-h-dvh bg-background text-foreground"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
     >
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#060918]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-8">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -35,14 +35,14 @@ export function PrivacidadeContent() {
               alt="AutosZap"
               width={32}
               height={32}
-              className="h-7 w-7 object-contain"
+              className="brand-logo-shadow h-7 w-7 object-contain"
               priority
             />
             <span className="font-heading text-base font-bold tracking-tight">AutosZap</span>
           </Link>
           <Link
             href="/"
-            className="flex items-center gap-1.5 text-sm text-white/60 transition hover:text-white"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Voltar
@@ -53,7 +53,7 @@ export function PrivacidadeContent() {
       <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8 sm:py-16">
         {/* Title */}
         <motion.div
-          className="mb-10 border-b border-white/[0.08] pb-8"
+          className="mb-10 border-b border-border pb-8"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -64,17 +64,17 @@ export function PrivacidadeContent() {
           <motion.h1 variants={itemVariants} className="mt-2 font-heading text-3xl font-bold tracking-tight sm:text-4xl">
             Política de Privacidade
           </motion.h1>
-          <motion.p variants={itemVariants} className="mt-3 text-sm text-white/50">
+          <motion.p variants={itemVariants} className="mt-3 text-sm text-muted-foreground">
             Última atualização: {lastUpdated}
           </motion.p>
         </motion.div>
 
         {/* Content */}
-        <article className="prose-policy space-y-8 text-[15px] leading-[1.8] text-white/70">
+        <article className="prose-policy space-y-8 text-[15px] leading-[1.8] text-foreground/70">
           <ScrollReveal>
             <Section title="1. Introdução">
               <p>
-                A <strong className="text-white">AutosZap</strong> (&ldquo;nós&rdquo;, &ldquo;nosso&rdquo; ou &ldquo;Plataforma&rdquo;), inscrita no CNPJ sob o número 65.822.899/0001-73, com sede em R. Pero Coelho, 442 - Centro, Fortaleza - CE, é a controladora dos dados pessoais tratados por meio da plataforma disponível em{' '}
+                A <strong className="text-foreground">AutosZap</strong> (&ldquo;nós&rdquo;, &ldquo;nosso&rdquo; ou &ldquo;Plataforma&rdquo;), inscrita no CNPJ sob o número 65.822.899/0001-73, com sede em R. Pero Coelho, 442 - Centro, Fortaleza - CE, é a controladora dos dados pessoais tratados por meio da plataforma disponível em{' '}
                 <a href="https://autoszap.com" className="text-blue-400 hover:underline">autoszap.com</a>.
               </p>
               <p>
@@ -90,7 +90,7 @@ export function PrivacidadeContent() {
             <Section title="2. Dados pessoais coletados">
               <p>Coletamos os seguintes dados, conforme a finalidade e o contexto de uso:</p>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.1 Dados de cadastro e conta</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.1 Dados de cadastro e conta</h4>
               <ul className="ml-4 list-disc space-y-1">
                 <li>Nome completo</li>
                 <li>Endereço de e-mail</li>
@@ -100,7 +100,7 @@ export function PrivacidadeContent() {
                 <li>Foto de perfil (opcional)</li>
               </ul>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.2 Dados de uso e acesso</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.2 Dados de uso e acesso</h4>
               <ul className="ml-4 list-disc space-y-1">
                 <li>Endereço IP</li>
                 <li>Identificador do navegador (User-Agent)</li>
@@ -108,7 +108,7 @@ export function PrivacidadeContent() {
                 <li>Registros de atividade (logs de auditoria)</li>
               </ul>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.3 Dados de contatos e conversas</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.3 Dados de contatos e conversas</h4>
               <ul className="ml-4 list-disc space-y-1">
                 <li>Nome e número de telefone dos contatos cadastrados pelo usuário</li>
                 <li>Conteúdo das mensagens enviadas e recebidas via WhatsApp</li>
@@ -117,7 +117,7 @@ export function PrivacidadeContent() {
                 <li>Tags e segmentações atribuídas aos contatos</li>
               </ul>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.4 Dados de campanhas</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.4 Dados de campanhas</h4>
               <ul className="ml-4 list-disc space-y-1">
                 <li>Nome e conteúdo de campanhas de mensagens</li>
                 <li>Listas de destinatários</li>
@@ -125,14 +125,14 @@ export function PrivacidadeContent() {
                 <li>Métricas de envio, entrega e leitura</li>
               </ul>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.5 Dados coletados via formulário de interesse</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.5 Dados coletados via formulário de interesse</h4>
               <ul className="ml-4 list-disc space-y-1">
                 <li>Nome, e-mail e telefone</li>
                 <li>Nome da empresa e quantidade estimada de atendentes</li>
                 <li>Observações adicionais</li>
               </ul>
 
-              <h4 className="mt-4 text-sm font-semibold text-white">2.6 Dados de login social</h4>
+              <h4 className="mt-4 text-sm font-semibold text-foreground">2.6 Dados de login social</h4>
               <p>
                 Ao utilizar login via Google ou Facebook, coletamos seu nome e e-mail do provedor para criar ou autenticar sua conta. Não temos acesso às senhas dessas contas.
               </p>
@@ -161,10 +161,10 @@ export function PrivacidadeContent() {
             <Section title="4. Base legal para o tratamento">
               <p>O tratamento dos dados pessoais é fundamentado nas seguintes bases legais previstas na LGPD:</p>
               <ul className="ml-4 list-disc space-y-1">
-                <li><strong className="text-white">Consentimento</strong> (Art. 7º, I): para coleta de dados via formulário de interesse e aceite dos termos durante o cadastro</li>
-                <li><strong className="text-white">Execução de contrato</strong> (Art. 7º, V): para prestação dos serviços contratados na Plataforma</li>
-                <li><strong className="text-white">Legítimo interesse</strong> (Art. 7º, IX): para segurança da Plataforma, prevenção de fraudes e melhoria do serviço</li>
-                <li><strong className="text-white">Cumprimento de obrigação legal</strong> (Art. 7º, II): para atender determinações legais e regulatórias</li>
+                <li><strong className="text-foreground">Consentimento</strong> (Art. 7º, I): para coleta de dados via formulário de interesse e aceite dos termos durante o cadastro</li>
+                <li><strong className="text-foreground">Execução de contrato</strong> (Art. 7º, V): para prestação dos serviços contratados na Plataforma</li>
+                <li><strong className="text-foreground">Legítimo interesse</strong> (Art. 7º, IX): para segurança da Plataforma, prevenção de fraudes e melhoria do serviço</li>
+                <li><strong className="text-foreground">Cumprimento de obrigação legal</strong> (Art. 7º, II): para atender determinações legais e regulatórias</li>
               </ul>
             </Section>
           </ScrollReveal>
@@ -174,17 +174,17 @@ export function PrivacidadeContent() {
               <p>Os dados pessoais podem ser compartilhados com:</p>
               <ul className="ml-4 list-disc space-y-1">
                 <li>
-                  <strong className="text-white">Meta Platforms, Inc.</strong> — compartilhamos números de telefone dos contatos, conteúdo de mensagens e mídias enviadas pelo usuário por meio da API oficial do WhatsApp Business Platform, conforme necessário para a operação do serviço de mensageria
+                  <strong className="text-foreground">Meta Platforms, Inc.</strong> — compartilhamos números de telefone dos contatos, conteúdo de mensagens e mídias enviadas pelo usuário por meio da API oficial do WhatsApp Business Platform, conforme necessário para a operação do serviço de mensageria
                 </li>
                 <li>
-                  <strong className="text-white">Google LLC</strong> — ao utilizar login social com Google, seu e-mail e nome são verificados por meio da API Google OAuth 2.0
+                  <strong className="text-foreground">Google LLC</strong> — ao utilizar login social com Google, seu e-mail e nome são verificados por meio da API Google OAuth 2.0
                 </li>
                 <li>
-                  <strong className="text-white">Meta Platforms, Inc. (Facebook Login)</strong> — ao utilizar login social com Facebook, seu e-mail e nome são verificados por meio do Facebook SDK
+                  <strong className="text-foreground">Meta Platforms, Inc. (Facebook Login)</strong> — ao utilizar login social com Facebook, seu e-mail e nome são verificados por meio do Facebook SDK
                 </li>
               </ul>
               <p className="mt-3">
-                <strong className="text-white">Não vendemos, comercializamos ou compartilhamos dados pessoais com terceiros para fins de marketing ou publicidade.</strong>
+                <strong className="text-foreground">Não vendemos, comercializamos ou compartilhamos dados pessoais com terceiros para fins de marketing ou publicidade.</strong>
               </p>
             </Section>
           </ScrollReveal>
@@ -193,13 +193,13 @@ export function PrivacidadeContent() {
             <Section title="6. Armazenamento e segurança">
               <p>Adotamos medidas técnicas e organizacionais para proteger os dados pessoais:</p>
               <ul className="ml-4 list-disc space-y-1">
-                <li><strong className="text-white">Isolamento de dados</strong>: cada empresa possui banco de dados dedicado e independente, impossibilitando o acesso cruzado entre clientes</li>
-                <li><strong className="text-white">Criptografia de credenciais</strong>: tokens de acesso ao WhatsApp e chaves sensíveis são criptografados com AES-256-CBC</li>
-                <li><strong className="text-white">Hash de senhas</strong>: senhas são armazenadas com hash bcrypt (10 rounds), nunca em texto plano</li>
-                <li><strong className="text-white">Cookies seguros</strong>: utilizamos cookies httpOnly, Secure e SameSite para autenticação, inacessíveis ao JavaScript do navegador</li>
-                <li><strong className="text-white">HTTPS</strong>: todas as comunicações em produção são realizadas por conexão criptografada TLS/SSL</li>
-                <li><strong className="text-white">Rate limiting</strong>: limitação de tentativas de login e cadastro para prevenir ataques de força bruta</li>
-                <li><strong className="text-white">Auditoria</strong>: registros detalhados de ações realizadas na Plataforma para rastreabilidade</li>
+                <li><strong className="text-foreground">Isolamento de dados</strong>: cada empresa possui banco de dados dedicado e independente, impossibilitando o acesso cruzado entre clientes</li>
+                <li><strong className="text-foreground">Criptografia de credenciais</strong>: tokens de acesso ao WhatsApp e chaves sensíveis são criptografados com AES-256-CBC</li>
+                <li><strong className="text-foreground">Hash de senhas</strong>: senhas são armazenadas com hash bcrypt (10 rounds), nunca em texto plano</li>
+                <li><strong className="text-foreground">Cookies seguros</strong>: utilizamos cookies httpOnly, Secure e SameSite para autenticação, inacessíveis ao JavaScript do navegador</li>
+                <li><strong className="text-foreground">HTTPS</strong>: todas as comunicações em produção são realizadas por conexão criptografada TLS/SSL</li>
+                <li><strong className="text-foreground">Rate limiting</strong>: limitação de tentativas de login e cadastro para prevenir ataques de força bruta</li>
+                <li><strong className="text-foreground">Auditoria</strong>: registros detalhados de ações realizadas na Plataforma para rastreabilidade</li>
               </ul>
             </Section>
           </ScrollReveal>
@@ -210,14 +210,14 @@ export function PrivacidadeContent() {
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-white/10 text-left text-white">
+                    <tr className="border-b border-border text-left text-foreground">
                       <th className="pb-2 pr-4 font-semibold">Cookie</th>
                       <th className="pb-2 pr-4 font-semibold">Finalidade</th>
                       <th className="pb-2 font-semibold">Duração</th>
                     </tr>
                   </thead>
-                  <tbody className="text-white/60">
-                    <tr className="border-b border-white/[0.05]">
+                  <tbody className="text-muted-foreground">
+                    <tr className="border-b border-border">
                       <td className="py-2 pr-4 font-mono text-xs">autoszap_access_token</td>
                       <td className="py-2 pr-4">Autenticação da sessão ativa</td>
                       <td className="py-2">15 minutos</td>
@@ -302,8 +302,8 @@ export function PrivacidadeContent() {
               <p>
                 Para dúvidas, solicitações ou reclamações relacionadas a esta Política de Privacidade ou ao tratamento de seus dados pessoais, entre em contato:
               </p>
-              <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-                <p><strong className="text-white">AutosZap</strong></p>
+              <div className="mt-3 rounded-xl border border-border bg-background-soft/40 p-4">
+                <p><strong className="text-foreground">AutosZap</strong></p>
                 <p>Email: <a href="mailto:suporte@autoszap.com" className="text-blue-400 hover:underline">suporte@autoszap.com</a></p>
                 <p>Website: <a href="https://autoszap.com" className="text-blue-400 hover:underline">autoszap.com</a></p>
               </div>
@@ -313,8 +313,8 @@ export function PrivacidadeContent() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-white/[0.06] py-6">
-        <div className="mx-auto max-w-4xl px-4 text-center text-xs text-white/30 sm:px-8">
+      <footer className="border-t border-border py-6">
+        <div className="mx-auto max-w-4xl px-4 text-center text-xs text-muted-foreground/50 sm:px-8">
           &copy; {new Date().getFullYear()} AutosZap. Todos os direitos reservados.
         </div>
       </footer>
@@ -325,7 +325,7 @@ export function PrivacidadeContent() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-3 text-xl font-semibold text-white">{title}</h2>
+      <h2 className="mb-3 text-xl font-semibold text-foreground">{title}</h2>
       {children}
     </section>
   );

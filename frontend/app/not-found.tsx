@@ -16,7 +16,7 @@ export default function NotFound() {
             alt="AutosZap"
             width={36}
             height={36}
-            className="h-9 w-9 object-contain"
+            className="brand-logo-shadow h-9 w-9 object-contain"
           />
           <span className="font-heading text-[18px] font-semibold tracking-tight">AutosZap</span>
         </Link>

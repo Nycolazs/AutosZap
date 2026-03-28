@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 export const Tabs = TabsPrimitive.Root;
 
 export function TabsList(props: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
-  return <TabsPrimitive.List className={cn('inline-flex rounded-lg bg-white/5 p-0.5', props.className)} {...props} />;
+  return <TabsPrimitive.List className={cn('inline-flex rounded-lg bg-foreground/5 p-0.5', props.className)} {...props} />;
 }
 
 export function TabsTrigger(props: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>) {

@@ -94,7 +94,7 @@ export function MobileBottomNav({
                   'flex min-h-11 flex-col items-center justify-center rounded-xl px-1.5 py-1.5 text-[10px] font-medium transition',
                   active
                     ? 'bg-primary text-white shadow-[0_10px_22px_rgba(50,151,255,0.28)]'
-                    : 'text-foreground/75 hover:bg-white/[0.05] hover:text-foreground',
+                    : 'text-foreground/75 hover:bg-foreground/[0.05] hover:text-foreground',
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -143,7 +143,7 @@ export function MobileBottomNav({
                           'flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition',
                           active
                             ? 'border-primary/35 bg-primary-soft text-foreground'
-                            : 'border-white/[0.06] bg-white/[0.02] text-foreground/82 hover:border-border hover:bg-white/[0.05]',
+                            : 'border-border bg-foreground/[0.02] text-foreground/82 hover:border-border hover:bg-foreground/[0.05]',
                         )}
                       >
                         <Icon className="h-4 w-4" />

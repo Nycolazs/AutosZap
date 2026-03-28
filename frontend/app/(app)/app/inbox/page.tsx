@@ -343,7 +343,7 @@ function ConversationContactAvatar({
   return (
     <Avatar
       className={cn(
-        "shrink-0 rounded-[18px] border-white/10 bg-white/[0.03]",
+        "shrink-0 rounded-[18px] border-foreground/10 bg-foreground/[0.03]",
         className,
       )}
     >
@@ -353,7 +353,7 @@ function ConversationContactAvatar({
       />
       <AvatarFallback
         className={cn(
-          "rounded-[18px] bg-white/[0.04] text-xs font-semibold text-foreground/82",
+          "rounded-[18px] bg-foreground/[0.04] text-xs font-semibold text-foreground/82",
           fallbackClassName,
         )}
       >
@@ -469,9 +469,9 @@ function MessageSenderAvatar({
   }
 
   return (
-    <Avatar className="h-6 w-6 shrink-0 border border-white/10 bg-[#132032] shadow-sm">
+    <Avatar className="h-6 w-6 shrink-0 border border-foreground/10 bg-[var(--surface-avatar-bg)] shadow-sm">
       <AvatarImage src={senderUser.avatarUrl ?? undefined} alt={senderUser.name} />
-      <AvatarFallback className="bg-[#132032] text-[9px] font-semibold text-white/88">
+      <AvatarFallback className="bg-[var(--surface-avatar-bg)] text-[9px] font-semibold text-foreground/88">
         {getNameInitials(senderUser.name, "EQ")}
       </AvatarFallback>
     </Avatar>
@@ -2682,7 +2682,7 @@ export function InboxPageContent({
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-white/10 bg-white/[0.02] px-2 py-4 text-center">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border border-dashed border-foreground/10 bg-foreground/[0.02] px-2 py-4 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                 <Inbox className="h-5 w-5" />
               </div>
@@ -2690,7 +2690,7 @@ export function InboxPageContent({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Inbox
                 </p>
-                <span className="inline-flex min-w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[12px] font-medium text-white/82">
+                <span className="inline-flex min-w-9 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-1 text-[12px] font-medium text-foreground/82">
                   {conversationSummaryQuery.data?.ALL ?? conversations.length}
                 </span>
               </div>
@@ -2764,7 +2764,7 @@ export function InboxPageContent({
                       className={`w-full rounded-[22px] border px-3.5 py-3.5 text-left transition ${
                         activeConversationId === conversation.id
                           ? "border-primary/40 bg-primary-soft"
-                          : "border-transparent bg-white/[0.03] hover:border-border"
+                          : "border-transparent bg-foreground/[0.03] hover:border-border"
                       }`}
                       onClick={() => setSelectedConversationId(conversation.id)}
                     >
@@ -2928,7 +2928,7 @@ export function InboxPageContent({
                           </span>
                         ) : null}
                         {selectedConversation.instance ? (
-                          <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] text-foreground/85">
+                          <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-foreground/8 bg-foreground/[0.04] px-2.5 py-1 text-[11px] text-foreground/85">
                             <span className="truncate">
                               {getConversationInstanceLabel(
                                 selectedConversation,
@@ -3032,7 +3032,7 @@ export function InboxPageContent({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="rounded-full border border-border/70 bg-[#102033]/70 px-3 text-[11px] text-muted-foreground hover:bg-[#152741] hover:text-foreground"
+                      className="rounded-full border border-border/70 bg-[var(--surface-context-menu)]/70 px-3 text-[11px] text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground"
                       onClick={() => {
                         const container = messagesScrollRef.current;
 
@@ -3055,7 +3055,7 @@ export function InboxPageContent({
 
                 {isFetchingHistory ? (
                   <div className="flex items-center justify-center py-2">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-[#102033]/80 px-3 py-1 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-[var(--surface-context-menu)]/80 px-3 py-1 text-[11px] text-muted-foreground">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       Carregando mensagens anteriores...
                     </span>
@@ -3080,7 +3080,7 @@ export function InboxPageContent({
                           index,
                         ) && (
                           <div className="my-3 flex items-center justify-center first:mt-0">
-                            <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                            <span className="rounded-lg bg-[var(--surface-bubble-inbound)]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
                               {getDateLabel(item.timestamp)}
                             </span>
                           </div>
@@ -3117,7 +3117,7 @@ export function InboxPageContent({
                         index,
                       ) && (
                         <div className="my-3 flex items-center justify-center first:mt-0">
-                          <span className="rounded-lg bg-[#1a2a3d]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                          <span className="rounded-lg bg-[var(--surface-bubble-inbound)]/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
                             {getDateLabel(item.timestamp)}
                           </span>
                         </div>
@@ -3148,12 +3148,12 @@ export function InboxPageContent({
                             className={cn(
                               "relative rounded-lg px-2.5 py-1.5 shadow-sm",
                               message.direction === "OUTBOUND"
-                                ? "rounded-tr-[4px] bg-[#1b4a8b] text-[#e9edef]"
+                                ? "rounded-tr-[4px] bg-[var(--surface-bubble-outbound)] text-[var(--text-on-bubble)]"
                                 : message.direction === "SYSTEM"
                                   ? internalMessage
                                     ? "rounded-2xl border border-violet-400/20 bg-violet-500/10 text-left text-violet-50"
-                                    : "rounded-lg border border-amber-500/20 bg-[#1a2a3d]/80 text-center text-[12px] text-muted-foreground"
-                                  : "rounded-tl-[4px] bg-[#1a2a3d] text-[#e9edef]",
+                                    : "rounded-lg border border-amber-500/20 bg-[var(--surface-bubble-inbound)]/80 text-center text-[12px] text-muted-foreground"
+                                  : "rounded-tl-[4px] bg-[var(--surface-bubble-inbound)] text-[var(--text-on-bubble)]",
                             )}
                             onDoubleClick={() => {
                               if (canReplyToMessage) {
@@ -3170,12 +3170,12 @@ export function InboxPageContent({
                               className={cn(
                                 "mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none",
                                 message.direction === "OUTBOUND"
-                                  ? "text-[#ffffff99]"
+                                  ? "text-[var(--text-bubble-meta)]"
                                   : message.direction === "SYSTEM"
                                     ? internalMessage
                                       ? "text-violet-100/70"
                                       : "text-muted-foreground/60"
-                                    : "text-[#ffffff66]",
+                                    : "text-[var(--text-bubble-time)]",
                               )}
                             >
                               {formatMessageTime(
@@ -3210,13 +3210,13 @@ export function InboxPageContent({
                 ) : null}
               </div>
 
-              <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[#0b141a] px-2.5 py-1.5 sm:px-3 sm:py-2">
+              <div className="safe-bottom-pad shrink-0 border-t border-border/40 bg-[var(--surface-chat-bg)] px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <div
                   className={cn(
                     "rounded-[18px] border p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm sm:p-2.5",
                     isInternalComposerMode
-                      ? "border-violet-400/20 bg-[#1a2541]"
-                      : "border-white/8 bg-[#162535]",
+                      ? "border-violet-400/20 bg-[var(--surface-chat-input-alt)]"
+                      : "border-foreground/8 bg-[var(--surface-chat-input)]",
                   )}
                 >
                   <input
@@ -3230,7 +3230,7 @@ export function InboxPageContent({
                     }}
                   />
                   {isRecording ? (
-                    <div className="flex items-center gap-2.5 rounded-xl bg-[#1a2a3d] px-2.5 py-2">
+                    <div className="flex items-center gap-2.5 rounded-xl bg-[var(--surface-bubble-inbound)] px-2.5 py-2">
                       <button
                         type="button"
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/85 transition hover:bg-white/6 hover:text-foreground"
@@ -3239,14 +3239,14 @@ export function InboxPageContent({
                         <Trash2 className="h-4 w-4" />
                       </button>
 
-                      <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.035] px-3.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full border border-foreground/10 bg-foreground/[0.035] px-3.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                         <span
                           className={cn(
                             "h-3 w-3 shrink-0 rounded-full bg-[#ff4d5e] shadow-[0_0_20px_rgba(255,77,94,0.75)]",
                             recordingPaused ? "opacity-55" : "animate-pulse",
                           )}
                         />
-                        <span className="w-10 shrink-0 font-semibold tabular-nums text-[12px] text-white/95">
+                        <span className="w-10 shrink-0 font-semibold tabular-nums text-[12px] text-foreground/95">
                           {formatMediaDuration(recordingDuration)}
                         </span>
                         <div className="flex min-w-0 flex-1 items-center justify-between gap-[2px] overflow-hidden">
@@ -3282,7 +3282,7 @@ export function InboxPageContent({
 
                       <button
                         type="button"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/85"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-foreground transition hover:bg-primary/85"
                         onClick={() => finishRecording("send")}
                         disabled={sendMediaMutation.isPending}
                       >
@@ -3290,7 +3290,7 @@ export function InboxPageContent({
                       </button>
                     </div>
                   ) : selectedFile ? (
-                    <div className="mb-2 flex items-center justify-between gap-2.5 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-1.5 text-xs">
+                    <div className="mb-2 flex items-center justify-between gap-2.5 rounded-xl border border-foreground/8 bg-foreground/[0.03] px-2.5 py-1.5 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
                         {selectedFile.type.startsWith("audio/") ? (
                           <Mic className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -3337,7 +3337,7 @@ export function InboxPageContent({
                           </button>
                         </div>
                       ) : quotedMessage ? (
-                        <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border-l-[3px] border-l-primary bg-[#1a2a3d] px-2 py-1.5">
+                        <div className="mb-1.5 flex items-start justify-between gap-2 rounded-[12px] border-l-[3px] border-l-primary bg-[var(--surface-bubble-inbound)] px-2 py-1.5">
                           <div className="min-w-0">
                             <p className="text-[11px] font-semibold text-primary">
                               Respondendo
@@ -3661,7 +3661,7 @@ export function InboxPageContent({
             }}
           />
           <div
-            className="fixed z-50 w-[180px] overflow-hidden rounded-2xl border border-white/10 bg-[#102033]/96 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+            className="fixed z-50 w-[180px] overflow-hidden rounded-2xl border border-foreground/10 bg-[var(--surface-context-menu)]/96 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
             style={{
               left: messageContextMenu.x,
               top: messageContextMenu.y,
@@ -3671,7 +3671,7 @@ export function InboxPageContent({
           >
             <button
               type="button"
-              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-white/92 transition hover:bg-white/10"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-foreground/92 transition hover:bg-foreground/10"
               onClick={() => void handleCopyMessage(messageContextMenu.message)}
             >
               <Copy className="h-4 w-4" />
@@ -3680,7 +3680,7 @@ export function InboxPageContent({
             {canQuoteMessage(messageContextMenu.message) ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-white/92 transition hover:bg-white/10"
+                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-foreground/92 transition hover:bg-foreground/10"
                 onClick={() => handleReplyToMessage(messageContextMenu.message)}
               >
                 <Reply className="h-4 w-4" />
@@ -3779,7 +3779,7 @@ function ChatConversationLoadingState() {
       </div>
 
       <div className="safe-bottom-pad shrink-0 border-t border-border p-3.5 sm:p-4">
-        <div className="rounded-[16px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,20,38,0.92),rgba(5,17,31,0.98))] p-3">
+        <div className="rounded-[16px] border border-foreground/8 bg-background-elevated p-3">
           <p className="text-xs text-muted-foreground">
             Preparando o chat para envio de mensagens...
           </p>
@@ -3897,7 +3897,7 @@ function ConversationSidebar({
           </div>
         </div>
 
-        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+        <div className="space-y-3 rounded-[20px] border border-border bg-foreground/[0.03] p-3.5">
           <p className="font-medium">Atribuição e status</p>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
@@ -3955,7 +3955,7 @@ function ConversationSidebar({
           ) : null}
         </div>
 
-        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+        <div className="space-y-3 rounded-[20px] border border-border bg-foreground/[0.03] p-3.5">
           <p className="font-medium">Tags da conversa</p>
           {tags.length ? (
             <div className="flex flex-wrap gap-2">
@@ -3969,8 +3969,8 @@ function ConversationSidebar({
                     className={cn(
                       "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition",
                       active
-                        ? "border-transparent bg-primary text-white shadow-[0_10px_24px_rgba(50,151,255,0.24)]"
-                        : "border-white/10 bg-white/[0.03] text-foreground/76 hover:border-primary/30 hover:text-foreground",
+                        ? "border-transparent bg-primary text-foreground shadow-[0_10px_24px_rgba(50,151,255,0.24)]"
+                        : "border-foreground/10 bg-foreground/[0.03] text-foreground/76 hover:border-primary/30 hover:text-foreground",
                     )}
                     onClick={() =>
                       onUpdateConversation({
@@ -3986,7 +3986,7 @@ function ConversationSidebar({
               })}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-3 py-4 text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-dashed border-foreground/10 bg-foreground/[0.02] px-3 py-4 text-sm text-muted-foreground">
               Nenhuma tag cadastrada ainda.
             </div>
           )}
@@ -4005,7 +4005,7 @@ function ConversationSidebar({
           remindersBusy={remindersBusy}
         />
 
-        <div className="space-y-3 rounded-[20px] border border-border bg-white/[0.03] p-3.5">
+        <div className="space-y-3 rounded-[20px] border border-border bg-foreground/[0.03] p-3.5">
           <div className="flex items-center gap-2">
             <StickyNote className="h-4 w-4 text-primary" />
             <p className="font-medium">Notas internas</p>
@@ -4223,18 +4223,18 @@ function DocumentMessagePreview({
   if (isPdf) {
     return (
       <>
-        <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/72">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/72">
               PDF
             </p>
-            <p className="truncate text-sm text-white/92">{fileName}</p>
+            <p className="truncate text-sm text-foreground/92">{fileName}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="secondary"
-              className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+              className="h-8 rounded-[11px] border-foreground/10 bg-foreground/10 px-3 text-xs text-foreground hover:bg-foreground/15"
               onClick={() => setOpen(true)}
             >
               <Expand className="mr-1.5 h-3.5 w-3.5" />
@@ -4243,7 +4243,7 @@ function DocumentMessagePreview({
             <Button
               asChild
               variant="secondary"
-              className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+              className="h-8 rounded-[11px] border-foreground/10 bg-foreground/10 px-3 text-xs text-foreground hover:bg-foreground/15"
             >
               <a href={src} download>
                 <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -4254,16 +4254,16 @@ function DocumentMessagePreview({
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-white/10 bg-black/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+          <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-foreground/10 bg-background/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
+            <div className="flex items-center justify-between gap-3 border-b border-foreground/10 px-4 py-3 text-foreground">
               <div className="min-w-0">
                 <p className="text-sm font-semibold">Visualizacao do PDF</p>
-                <p className="truncate text-xs text-white/60">{fileName}</p>
+                <p className="truncate text-xs text-foreground/60">{fileName}</p>
               </div>
               <Button
                 asChild
                 variant="secondary"
-                className="rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                className="rounded-xl border-foreground/10 bg-foreground/10 text-foreground hover:bg-foreground/15"
               >
                 <a href={src} download>
                   <Download className="mr-2 h-4 w-4" />
@@ -4271,11 +4271,11 @@ function DocumentMessagePreview({
                 </a>
               </Button>
             </div>
-            <div className="min-h-0 flex-1 bg-[#0b1117] p-3">
+            <div className="min-h-0 flex-1 bg-[var(--surface-message-area)] p-3">
               <iframe
                 src={src}
                 title={fileName}
-                className="h-full w-full rounded-[18px] border border-white/10 bg-white"
+                className="h-full w-full rounded-[18px] border border-foreground/10 bg-white"
               />
             </div>
           </DialogContent>
@@ -4285,18 +4285,18 @@ function DocumentMessagePreview({
   }
 
   return (
-    <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex w-full max-w-[340px] flex-col gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/72">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/72">
           Documento
         </p>
-        <p className="truncate text-sm text-white/92">{fileName}</p>
+        <p className="truncate text-sm text-foreground/92">{fileName}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           asChild
           variant="secondary"
-          className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+          className="h-8 rounded-[11px] border-foreground/10 bg-foreground/10 px-3 text-xs text-foreground hover:bg-foreground/15"
         >
           <a href={src} target="_blank" rel="noreferrer">
             <Expand className="mr-1.5 h-3.5 w-3.5" />
@@ -4306,7 +4306,7 @@ function DocumentMessagePreview({
         <Button
           asChild
           variant="secondary"
-          className="h-8 rounded-[11px] border-white/10 bg-white/10 px-3 text-xs text-white hover:bg-white/15"
+          className="h-8 rounded-[11px] border-foreground/10 bg-foreground/10 px-3 text-xs text-foreground hover:bg-foreground/15"
         >
           <a href={src} download>
             <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -4337,16 +4337,16 @@ function QuotedMessageBlock({
       className={cn(
         "rounded-md border-l-[3px] px-2 py-1.5",
         tone === "outgoing"
-          ? "border-l-[#5b9df5] bg-[#0d3568]/60"
+          ? "border-l-[var(--text-link-blue)] bg-[var(--surface-quote-bg)]/60"
           : tone === "system"
             ? "border-l-primary/50 bg-primary/10"
-            : "border-l-[#5b9df5] bg-white/[0.06]",
+            : "border-l-[var(--text-link-blue)] bg-foreground/[0.06]",
       )}
     >
       <p
         className={cn(
           "text-[11px] font-semibold",
-          tone === "outgoing" ? "text-[#7eb8ff]" : "text-[#5b9df5]",
+          tone === "outgoing" ? "text-[var(--text-link-blue)]" : "text-[var(--text-link-blue)]",
         )}
       >
         {sourceLabel}
@@ -4398,7 +4398,7 @@ function FormattedMessageText({
 
 function MessageStatusIcon({ status }: { status?: string | null }) {
   if (status === "READ") {
-    return <CheckCheck className="h-[14px] w-[14px] text-[#53bdeb]" />;
+    return <CheckCheck className="h-[14px] w-[14px] text-[var(--text-link-accent)]" />;
   }
   if (status === "DELIVERED") {
     return <CheckCheck className="h-[14px] w-[14px]" />;
@@ -4421,7 +4421,7 @@ function StatusBadge({
 }) {
   const badgeClassName =
     status === "NEW" || status === "OPEN"
-      ? "border-transparent bg-[#2f7df6]/20 text-[#7fc1ff]"
+      ? "border-transparent bg-primary/20 text-[var(--text-link-blue)]"
       : status === "IN_PROGRESS" || status === "PENDING"
         ? "border-transparent bg-primary/20 text-primary"
         : status === "WAITING"
@@ -4480,10 +4480,10 @@ function MessageBubbleSkeleton({ align }: { align: "start" | "end" }) {
     <div
       className={cn("flex", align === "end" ? "justify-end" : "justify-start")}
     >
-      <div className="w-full max-w-[min(65%,32rem)] space-y-2 rounded-2xl bg-[#1a2a3d]/50 px-3 py-2 shadow-sm">
-        <Skeleton className="h-4 w-24 bg-white/10" />
-        <Skeleton className="h-4 w-40 bg-white/10" />
-        <Skeleton className="ml-auto h-3 w-12 bg-white/10" />
+      <div className="w-full max-w-[min(65%,32rem)] space-y-2 rounded-2xl bg-[var(--surface-bubble-inbound)]/50 px-3 py-2 shadow-sm">
+        <Skeleton className="h-4 w-24 bg-foreground/10" />
+        <Skeleton className="h-4 w-40 bg-foreground/10" />
+        <Skeleton className="ml-auto h-3 w-12 bg-foreground/10" />
       </div>
     </div>
   );
@@ -4501,7 +4501,7 @@ function MediaLoadingSkeleton({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center bg-white/[0.06]",
+        "relative flex items-center justify-center bg-foreground/[0.06]",
         rounded,
         width,
         height,
@@ -4778,18 +4778,18 @@ function ImageMessagePreview({
             />
           ) : null}
           {hasError ? (
-            <span className="absolute inset-0 flex items-center justify-center bg-black/60 px-4 text-center text-xs text-white/70">
+            <span className="absolute inset-0 flex items-center justify-center bg-foreground/60 px-4 text-center text-xs text-foreground/70">
               Nao foi possivel carregar a imagem.
             </span>
           ) : null}
         </button>
       </div>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-white/10 bg-black/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
-          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
+        <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-foreground/10 bg-background/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
+          <div className="flex items-center justify-between gap-3 border-b border-foreground/10 px-4 py-3 text-foreground">
             <div>
               <p className="text-sm font-semibold">Visualizacao da imagem</p>
-              <p className="text-xs text-white/60">
+              <p className="text-xs text-foreground/60">
                 Use zoom, arraste a imagem ampliada e baixe a midia quando
                 precisar.
               </p>
@@ -4799,7 +4799,7 @@ function ImageMessagePreview({
                 type="button"
                 variant="secondary"
                 size="icon"
-                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                className="h-9 w-9 rounded-xl border-foreground/10 bg-foreground/10 text-foreground hover:bg-foreground/15"
                 onClick={() => adjustZoom(-0.25)}
                 disabled={zoom <= 1}
               >
@@ -4809,7 +4809,7 @@ function ImageMessagePreview({
                 type="button"
                 variant="secondary"
                 size="icon"
-                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                className="h-9 w-9 rounded-xl border-foreground/10 bg-foreground/10 text-foreground hover:bg-foreground/15"
                 onClick={() => {
                   setZoom(1);
                   setPan({ x: 0, y: 0 });
@@ -4824,7 +4824,7 @@ function ImageMessagePreview({
                 type="button"
                 variant="secondary"
                 size="icon"
-                className="h-9 w-9 rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                className="h-9 w-9 rounded-xl border-foreground/10 bg-foreground/10 text-foreground hover:bg-foreground/15"
                 onClick={() => adjustZoom(0.25)}
                 disabled={zoom >= 4}
               >
@@ -4833,7 +4833,7 @@ function ImageMessagePreview({
               <Button
                 asChild
                 variant="secondary"
-                className="rounded-xl border-white/10 bg-white/10 text-white hover:bg-white/15"
+                className="rounded-xl border-foreground/10 bg-foreground/10 text-foreground hover:bg-foreground/15"
               >
                 <a href={src} download>
                   <Download className="mr-2 h-4 w-4" />
@@ -5078,7 +5078,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
 
         {/* Loading state */}
         {(isLoading || !shouldLoad) && !hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-foreground/60">
             <MediaLoadingSkeleton
               width="w-full"
               height="h-full"
@@ -5090,7 +5090,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
         {/* Error state */}
         {hasError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
-            <span className="text-[12px] text-white/60">
+            <span className="text-[12px] text-foreground/60">
               Erro ao carregar video
             </span>
             <a
@@ -5114,7 +5114,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
               void togglePlayback();
             }}
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/70 sm:h-14 sm:w-14">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/50 text-foreground backdrop-blur-sm transition hover:bg-foreground/70 sm:h-14 sm:w-14">
               <Play className="ml-1 h-5 w-5 fill-current sm:h-6 sm:w-6" />
             </div>
           </div>
@@ -5151,7 +5151,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
                 onClick={togglePlayback}
               >
                 {isPlaying ? (
@@ -5160,13 +5160,13 @@ function VideoMessagePlayer({ src }: { src: string }) {
                   <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
                 )}
               </button>
-              <span className="flex-1 text-[10px] tabular-nums text-white/70">
+              <span className="flex-1 text-[10px] tabular-nums text-foreground/70">
                 {formatMediaDuration(currentTime)} /{" "}
                 {formatMediaDuration(duration)}
               </span>
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
                 onClick={toggleMute}
               >
                 {isMuted ? (
@@ -5177,7 +5177,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
               </button>
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-white transition hover:bg-white/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
                 onClick={enterFullscreen}
                 title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
               >
@@ -5287,13 +5287,13 @@ function CompactAudioPlayer({
       <audio ref={audioRef} src={src} preload="metadata" />
       {isLoading ? (
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground/10">
             <div className="relative flex h-5 w-5 items-center justify-center">
               <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-white/60" />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <div className="h-[8px] w-full animate-pulse rounded-full bg-white/10" />
+            <div className="h-[8px] w-full animate-pulse rounded-full bg-foreground/10" />
             <div className="h-[6px] w-16 animate-pulse rounded-full bg-white/[0.07]" />
           </div>
         </div>
@@ -5301,7 +5301,7 @@ function CompactAudioPlayer({
       <div className={cn("flex items-center gap-3", isLoading ? "hidden" : "")}>
         <button
           type="button"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground/15 text-foreground transition hover:bg-foreground/25"
           onClick={() => {
             void togglePlayback();
           }}

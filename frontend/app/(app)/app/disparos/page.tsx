@@ -359,7 +359,7 @@ export default function CampaignsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
-            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-border bg-white/[0.03] p-2">
+            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-border bg-foreground/[0.03] p-2">
               <Button type="button" size="sm" variant={editorStep === 1 ? 'default' : 'secondary'} onClick={() => setEditorStep(1)}>
                 1. Base
               </Button>
@@ -541,7 +541,7 @@ export default function CampaignsPage() {
                   error={formErrors.image}
                   helper="A imagem aparece na prévia em tempo real e é reaproveitada quando a campanha for enviada."
                   input={
-                    <div className="space-y-3 rounded-[22px] border border-border bg-white/[0.03] p-4">
+                    <div className="space-y-3 rounded-[22px] border border-border bg-foreground/[0.03] p-4">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -651,7 +651,7 @@ export default function CampaignsPage() {
         </Card>
 
         <Card className="order-1 overflow-hidden p-0 xl:order-2">
-          <CardHeader className="border-b border-border bg-white/[0.02] p-4 pb-4 sm:p-6 sm:pb-4">
+          <CardHeader className="border-b border-border bg-foreground/[0.02] p-4 pb-4 sm:p-6 sm:pb-4">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
               <CardTitle>Pré-visualização em tempo real</CardTitle>
@@ -661,8 +661,8 @@ export default function CampaignsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-4 sm:p-6">
-            <div className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(32,114,213,0.18),transparent_42%),linear-gradient(180deg,#071a31,#04111f)] p-3 shadow-[0_26px_60px_rgba(2,10,22,0.36)] sm:rounded-[32px] sm:p-4">
-              <div className="rounded-[24px] border border-white/10 bg-[#061729] p-3 sm:rounded-[26px] sm:p-4">
+            <div className="rounded-[28px] border border-border bg-background-elevated p-3 shadow-[0_26px_60px_rgba(2,10,22,0.12)] sm:rounded-[32px] sm:p-4">
+              <div className="rounded-[24px] border border-border bg-background-panel p-3 sm:rounded-[26px] sm:p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <p className="font-semibold">Mariana Costa</p>
@@ -673,9 +673,9 @@ export default function CampaignsPage() {
                   <Badge variant="secondary">Prévia</Badge>
                 </div>
 
-                <div className="space-y-3 rounded-[24px] bg-[#0a223d] p-3">
+                <div className="space-y-3 rounded-[24px] bg-background-soft p-3">
                   {previewImageUrl ? (
-                    <div className="overflow-hidden rounded-[20px] border border-white/10 bg-black/20">
+                    <div className="overflow-hidden rounded-[20px] border border-border bg-foreground/10">
                       <Image
                         src={previewImageUrl}
                         alt="Prévia da campanha"
@@ -704,7 +704,7 @@ export default function CampaignsPage() {
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">
+            <div className="rounded-[22px] border border-border bg-foreground/[0.03] p-4 text-sm text-muted-foreground">
               Use a prévia para conferir quebras de linha, tom da mensagem, combinação com a imagem e clareza do texto antes de enviar.
             </div>
           </CardContent>
@@ -723,7 +723,7 @@ export default function CampaignsPage() {
             campaignsQuery.data.map((campaign) => (
               <div
                 key={campaign.id}
-                className="rounded-[24px] border border-border bg-white/[0.03] p-4"
+                className="rounded-[24px] border border-border bg-foreground/[0.03] p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

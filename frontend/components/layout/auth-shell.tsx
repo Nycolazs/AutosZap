@@ -28,7 +28,7 @@ export function AuthShell({
         {/* Background layers */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_24%,rgba(56,148,255,0.28),transparent_38%),radial-gradient(circle_at_78%_78%,rgba(20,160,195,0.20),transparent_30%)]" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(4,17,36,0.88)_0%,rgba(3,12,24,0.70)_50%,rgba(2,10,20,0.90)_100%)]" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/[0.06]" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-foreground/[0.06]" />
 
         {/* Content */}
         <div className="desktop-low-height-auth-aside-inner relative z-10 mx-auto w-full max-w-[390px] 2xl:max-w-[410px]">
@@ -38,7 +38,7 @@ export function AuthShell({
               alt="AutosZap"
               width={48}
               height={48}
-              className="h-9 w-9 shrink-0 object-contain"
+              className="brand-logo-shadow h-9 w-9 shrink-0 object-contain"
               priority
             />
             <div>
@@ -99,7 +99,7 @@ export function AuthShell({
             alt="AutosZap"
             width={32}
             height={32}
-            className="h-8 w-8 object-contain"
+            className="brand-logo-shadow h-8 w-8 object-contain"
             priority
           />
           <div>

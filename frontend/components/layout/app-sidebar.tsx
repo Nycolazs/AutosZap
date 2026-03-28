@@ -202,7 +202,7 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
           alt="AutosZap"
           width={56}
           height={56}
-          className="h-10 w-10 shrink-0 object-contain 2xl:h-12 2xl:w-12"
+          className="brand-logo-shadow h-10 w-10 shrink-0 object-contain 2xl:h-12 2xl:w-12"
           priority
         />
         <div className="min-w-0">
@@ -232,7 +232,7 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
                           'flex items-center gap-3 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all 2xl:py-2.5',
                           active
                             ? 'bg-primary text-white shadow-[0_12px_28px_rgba(50,151,255,0.22)]'
-                            : 'text-foreground/72 hover:bg-white/5 hover:text-foreground',
+                            : 'text-foreground/72 hover:bg-foreground/5 hover:text-foreground',
                         )}
                       >
                         <Icon className="h-4 w-4" />

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Menu, Search } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { toast } from 'sonner';
 import { APP_NAV_SECTIONS } from '@/components/layout/app-sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -587,6 +588,7 @@ export function Topbar({
           >
             <Search className="h-4 w-4" />
           </Button>
+          <ThemeToggle />
           <Button
             variant="secondary"
             size="icon"
@@ -601,7 +603,7 @@ export function Topbar({
             ) : null}
           </Button>
 
-          <div className="hidden min-w-0 items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-1.5 sm:flex md:px-3 md:py-2">
+          <div className="hidden min-w-0 items-center gap-2 rounded-2xl border border-border bg-foreground/[0.03] px-2.5 py-1.5 sm:flex md:px-3 md:py-2">
             {companyAvatarUrl ? (
               <Avatar className="h-9 w-9">
                 <AvatarImage src={companyAvatarUrl} alt={companyName ?? 'Empresa'} />
@@ -620,7 +622,7 @@ export function Topbar({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-2xl border border-border bg-white/[0.03] px-2.5 py-1.5 md:gap-3 md:px-3 md:py-2">
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-foreground/[0.03] px-2.5 py-1.5 md:gap-3 md:px-3 md:py-2">
             <Avatar>
               {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={userName ?? 'Avatar'} />}
               <AvatarFallback>
@@ -677,7 +679,7 @@ export function Topbar({
                           'flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition',
                           active
                             ? 'bg-primary text-white shadow-[0_12px_28px_rgba(50,151,255,0.22)]'
-                            : 'bg-white/[0.03] text-foreground/78 hover:bg-white/[0.06] hover:text-foreground',
+                            : 'bg-foreground/[0.03] text-foreground/78 hover:bg-foreground/[0.06] hover:text-foreground',
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -772,7 +774,7 @@ export function Topbar({
                     className={cn(
                       'w-full rounded-[22px] border p-4 text-left transition',
                       notification.readAt
-                        ? 'border-border bg-white/[0.02] text-foreground/72'
+                        ? 'border-border bg-foreground/[0.02] text-foreground/72'
                         : 'border-primary/25 bg-primary-soft text-foreground shadow-[0_12px_30px_rgba(50,151,255,0.12)]',
                     )}
                   >

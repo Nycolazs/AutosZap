@@ -80,7 +80,7 @@ function getReminderPresentation(reminder: ConversationReminder): ReminderPresen
       label: 'Concluído',
       tone: 'success',
       cardClassName:
-        'border-emerald-400/12 bg-[linear-gradient(180deg,rgba(16,185,129,0.07),rgba(4,18,34,0.92))]',
+        'border-emerald-400/12 bg-background-elevated',
       badgeClassName: 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100',
       dotClassName: 'bg-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.34)]',
     };
@@ -91,7 +91,7 @@ function getReminderPresentation(reminder: ConversationReminder): ReminderPresen
       label: 'Cancelado',
       tone: 'danger',
       cardClassName:
-        'border-rose-400/10 bg-[linear-gradient(180deg,rgba(244,63,94,0.06),rgba(4,18,34,0.92))]',
+        'border-rose-400/10 bg-background-elevated',
       badgeClassName: 'border-rose-300/18 bg-rose-500/10 text-rose-100',
       dotClassName: 'bg-rose-300 shadow-[0_0_14px_rgba(251,113,133,0.3)]',
     };
@@ -102,7 +102,7 @@ function getReminderPresentation(reminder: ConversationReminder): ReminderPresen
       label: 'Atrasado',
       tone: 'warning',
       cardClassName:
-        'border-amber-300/14 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(4,18,34,0.92))]',
+        'border-amber-300/14 bg-background-elevated',
       badgeClassName: 'border-amber-300/18 bg-amber-400/10 text-amber-100',
       dotClassName: 'bg-amber-300 shadow-[0_0_14px_rgba(252,211,77,0.36)]',
     };
@@ -113,8 +113,8 @@ function getReminderPresentation(reminder: ConversationReminder): ReminderPresen
       label: 'Hoje',
       tone: 'primary',
       cardClassName:
-        'border-primary/16 bg-[linear-gradient(180deg,rgba(50,151,255,0.08),rgba(4,18,34,0.92))]',
-      badgeClassName: 'border-primary/18 bg-primary/10 text-[#d2ebff]',
+        'border-primary/16 bg-background-elevated',
+      badgeClassName: 'border-primary/18 bg-primary/10 text-foreground',
       dotClassName: 'bg-[#7fc1ff] shadow-[0_0_14px_rgba(127,193,255,0.38)]',
     };
   }
@@ -123,9 +123,9 @@ function getReminderPresentation(reminder: ConversationReminder): ReminderPresen
     label: 'Pendente',
     tone: 'neutral',
     cardClassName:
-      'border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(4,18,34,0.92))]',
-    badgeClassName: 'border-white/[0.08] bg-white/[0.05] text-white/78',
-    dotClassName: 'bg-white/70 shadow-[0_0_12px_rgba(255,255,255,0.16)]',
+      'border-foreground/[0.08] bg-background-elevated',
+    badgeClassName: 'border-foreground/[0.08] bg-foreground/[0.05] text-foreground/78',
+    dotClassName: 'bg-foreground/70 shadow-[0_0_12px_rgba(255,255,255,0.16)]',
   };
 }
 
@@ -170,14 +170,14 @@ function SummaryPill({
       className={cn(
         'inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-medium',
         tone === 'primary'
-          ? 'border-primary/20 bg-primary/10 text-[#d7ecff]'
+          ? 'border-primary/20 bg-primary/10 text-foreground'
           : tone === 'warning'
             ? 'border-amber-300/18 bg-amber-400/10 text-amber-100'
             : tone === 'success'
               ? 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100'
               : tone === 'danger'
                 ? 'border-rose-300/18 bg-rose-500/10 text-rose-100'
-                : 'border-white/[0.08] bg-white/[0.05] text-white/74',
+                : 'border-foreground/[0.08] bg-foreground/[0.05] text-foreground/74',
       )}
     >
       {label}
@@ -204,13 +204,13 @@ function ReminderMetric({
             ? 'border-amber-300/14 bg-amber-400/8'
             : tone === 'success'
               ? 'border-emerald-300/14 bg-emerald-500/8'
-              : 'border-white/[0.06] bg-white/[0.03]',
+              : 'border-foreground/[0.06] bg-foreground/[0.03]',
       )}
     >
-      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-foreground/40">
         {label}
       </p>
-      <p className="mt-1 text-base font-semibold text-white">{value}</p>
+      <p className="mt-1 text-base font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -367,7 +367,7 @@ export function ConversationRemindersPanel({
 
   return (
     <>
-      <section className="overflow-hidden rounded-[22px] border border-white/[0.07] bg-[linear-gradient(180deg,rgba(10,22,38,0.94),rgba(5,16,29,0.98))] shadow-[0_18px_32px_rgba(2,10,22,0.2)]">
+      <section className="overflow-hidden rounded-[22px] border border-foreground/[0.07] bg-background-elevated shadow-[0_18px_32px_rgba(2,10,22,0.2)]">
         <div className="space-y-4 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -375,7 +375,7 @@ export function ConversationRemindersPanel({
                 <Bell className="h-3.5 w-3.5" />
                 Lembretes
               </div>
-              <h3 className="mt-1.5 text-[17px] font-semibold leading-6 text-white">
+              <h3 className="mt-1.5 text-[17px] font-semibold leading-6 text-foreground">
                 Lembrete de mensagem
               </h3>
               <p className="mt-1 max-w-[28ch] text-sm leading-5 text-muted-foreground">
@@ -406,12 +406,12 @@ export function ConversationRemindersPanel({
                   key={reminder.id}
                   type="button"
                   onClick={() => openEditDialog(reminder)}
-                  className="group w-full rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-3.5 text-left transition-all duration-200 hover:border-primary/18 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  className="group w-full rounded-[18px] border border-foreground/[0.06] bg-foreground/[0.03] p-3.5 text-left transition-all duration-200 hover:border-primary/18 hover:bg-foreground/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
                   <div className="flex flex-col gap-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium leading-5 text-white transition group-hover:text-white">
+                        <p className="text-sm font-medium leading-5 text-foreground transition group-hover:text-foreground">
                           {reminder.internalDescription?.trim() ||
                             'Retorno planejado para esta conversa'}
                         </p>
@@ -420,11 +420,11 @@ export function ConversationRemindersPanel({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#07192a] px-2.5 py-1 text-white/74">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.06] bg-background-panel px-2.5 py-1 text-foreground/74">
                         <CalendarDays className="h-3.5 w-3.5 text-primary" />
                         {formatReminderMoment(reminder.remindAt)}
                       </span>
-                      <span className="truncate text-[11px] text-white/48">
+                      <span className="truncate text-[11px] text-foreground/48">
                         Criado por {reminder.createdBy.name}
                       </span>
                     </div>
@@ -438,7 +438,7 @@ export function ConversationRemindersPanel({
 
               <Button
                 variant="ghost"
-                className="w-full justify-between rounded-[16px] border border-white/[0.05] bg-white/[0.02] px-3.5"
+                className="w-full justify-between rounded-[16px] border border-foreground/[0.05] bg-foreground/[0.02] px-3.5"
                 onClick={openPanel}
               >
                 Ver central de lembretes
@@ -446,13 +446,13 @@ export function ConversationRemindersPanel({
               </Button>
             </div>
           ) : (
-            <div className="rounded-[18px] border border-dashed border-white/[0.08] bg-white/[0.02] p-4">
+            <div className="rounded-[18px] border border-dashed border-foreground/[0.08] bg-foreground/[0.02] p-4">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border border-white/[0.06] bg-white/[0.03] text-primary">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border border-foreground/[0.06] bg-foreground/[0.03] text-primary">
                   <Bell className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-white">
+                  <p className="text-sm font-medium text-foreground">
                     Nenhum lembrete criado
                   </p>
                   <p className="mt-1 text-sm leading-5 text-muted-foreground">
@@ -474,7 +474,7 @@ export function ConversationRemindersPanel({
       </section>
 
       <Dialog open={activeDialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="min-h-[82vh] max-h-[97vh] w-[min(1120px,calc(100vw-0.75rem))] border-white/10 bg-[#04111f]/96 p-0 sm:min-h-[88vh] sm:max-h-[96vh]">
+        <DialogContent className="min-h-[82vh] max-h-[97vh] w-[min(1120px,calc(100vw-0.75rem))] border-foreground/10 bg-background/96 p-0 sm:min-h-[88vh] sm:max-h-[96vh]">
           <div className="max-h-[95vh] overflow-y-auto p-4 sm:max-h-[93vh] sm:p-5">
             <DialogHeader className="pr-10">
               <div className="mb-2.5 flex items-start gap-2">
@@ -482,7 +482,7 @@ export function ConversationRemindersPanel({
                   <Bell className="h-3.5 w-3.5 text-primary" />
                 </span>
                 <div className="min-w-0">
-                  <DialogTitle className="text-[18px] text-white">
+                  <DialogTitle className="text-[18px] text-foreground">
                     Lembrete de mensagem
                   </DialogTitle>
                   <DialogDescription className="mt-0.5 max-w-[72ch] text-xs leading-5 text-muted-foreground">
@@ -494,7 +494,7 @@ export function ConversationRemindersPanel({
             </DialogHeader>
 
             <div className="grid gap-3.5">
-              <div className="flex flex-col gap-3 rounded-[20px] border border-white/[0.06] bg-[linear-gradient(180deg,rgba(8,23,42,0.88),rgba(4,16,30,0.98))] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="flex flex-col gap-3 rounded-[20px] border border-foreground/[0.06] bg-background-elevated p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2.5">
                     <div className="flex flex-wrap gap-2">
@@ -546,14 +546,14 @@ export function ConversationRemindersPanel({
                 </div>
 
                 {summary.nextReminder ? (
-                  <div className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] px-3 py-3">
+                  <div className="rounded-[16px] border border-foreground/[0.06] bg-foreground/[0.03] px-3 py-3">
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-white/40">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-foreground/40">
                             Próximo alerta
                           </p>
-                          <p className="mt-1 text-[13px] font-semibold leading-5 text-white">
+                          <p className="mt-1 text-[13px] font-semibold leading-5 text-foreground">
                             {summary.nextReminder.internalDescription?.trim() ||
                               'Retorno planejado para esta conversa'}
                           </p>
@@ -562,11 +562,11 @@ export function ConversationRemindersPanel({
                       </div>
 
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-[#071a2c] px-3 py-1.5 text-white/80">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-foreground/[0.06] bg-background-panel px-3 py-1.5 text-foreground/80">
                           <CalendarDays className="h-3.5 w-3.5 text-primary" />
                           {formatReminderMoment(summary.nextReminder.remindAt)}
                         </span>
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-[#071a2c] px-3 py-1.5 text-white/70">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-foreground/[0.06] bg-background-panel px-3 py-1.5 text-foreground/70">
                           <Sparkles className="h-3.5 w-3.5 text-primary" />
                           Alerta interno para ação manual
                         </span>
@@ -584,10 +584,10 @@ export function ConversationRemindersPanel({
                   )}
                 >
                   <div className="overflow-hidden">
-                    <div className="grid gap-3 rounded-[18px] border border-primary/12 bg-[linear-gradient(180deg,rgba(4,17,31,0.96),rgba(3,13,24,0.98))] p-3.5">
+                    <div className="grid gap-3 rounded-[18px] border border-primary/12 bg-background-elevated p-3.5">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <p className="text-[13px] font-semibold text-white">
+                          <p className="text-[13px] font-semibold text-foreground">
                             {editingReminderId
                               ? 'Editar lembrete'
                               : 'Criar novo lembrete'}
@@ -611,7 +611,7 @@ export function ConversationRemindersPanel({
                       <div className="space-y-2">
                         <Label
                           htmlFor="reminder-internal-description"
-                          className="text-[13px] font-medium text-white/92"
+                          className="text-[13px] font-medium text-foreground/92"
                         >
                           Descrição interna
                         </Label>
@@ -622,7 +622,7 @@ export function ConversationRemindersPanel({
                             updateField('internalDescription', event.target.value)
                           }
                           placeholder="Ex.: Retornar com proposta final e condições atualizadas"
-                          className="h-8 rounded-[12px] border-white/[0.07] bg-[#061525]/80 text-xs"
+                          className="h-8 rounded-[12px] border-foreground/[0.07] bg-background-soft/80 text-xs"
                         />
                       </div>
 
@@ -630,7 +630,7 @@ export function ConversationRemindersPanel({
                         <div className="flex items-center justify-between gap-3">
                           <Label
                             htmlFor="reminder-message-to-send"
-                            className="text-[13px] font-medium text-white/92"
+                            className="text-[13px] font-medium text-foreground/92"
                           >
                             Mensagem prevista para o cliente
                           </Label>
@@ -647,7 +647,7 @@ export function ConversationRemindersPanel({
                           aria-invalid={messageInvalid}
                           placeholder="Ex.: Oi! Passando para retomar nosso atendimento e te enviar a proposta atualizada."
                           className={cn(
-                            'min-h-[112px] rounded-[14px] border-white/[0.07] bg-[#061525]/80 text-xs leading-5',
+                            'min-h-[112px] rounded-[14px] border-foreground/[0.07] bg-background-soft/80 text-xs leading-5',
                             messageInvalid
                               ? 'border-rose-400/30 focus:border-rose-400/40 focus:ring-rose-500/20'
                               : '',
@@ -669,13 +669,13 @@ export function ConversationRemindersPanel({
                         <div className="space-y-2">
                           <Label
                             htmlFor="reminder-date"
-                            className="text-[13px] font-medium text-white/92"
+                            className="text-[13px] font-medium text-foreground/92"
                           >
                             Data
                           </Label>
                           <div
                             className={cn(
-                              'rounded-[14px] border border-white/[0.06] bg-[#061525]/80 p-1.5',
+                              'rounded-[14px] border border-foreground/[0.06] bg-background-soft/80 p-1.5',
                               dateInvalid ? 'border-rose-400/30' : '',
                             )}
                           >
@@ -688,7 +688,7 @@ export function ConversationRemindersPanel({
                                   updateField('date', event.target.value)
                                 }
                                 aria-invalid={dateInvalid}
-                                className="h-8 rounded-[10px] border-white/[0.04] bg-transparent pr-10 text-xs shadow-none"
+                                className="h-8 rounded-[10px] border-foreground/[0.04] bg-transparent pr-10 text-xs shadow-none"
                               />
                               <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             </div>
@@ -703,13 +703,13 @@ export function ConversationRemindersPanel({
                         <div className="space-y-2">
                           <Label
                             htmlFor="reminder-time"
-                            className="text-[13px] font-medium text-white/92"
+                            className="text-[13px] font-medium text-foreground/92"
                           >
                             Hora
                           </Label>
                           <div
                             className={cn(
-                              'rounded-[14px] border border-white/[0.06] bg-[#061525]/80 p-1.5',
+                              'rounded-[14px] border border-foreground/[0.06] bg-background-soft/80 p-1.5',
                               timeInvalid ? 'border-rose-400/30' : '',
                             )}
                           >
@@ -722,7 +722,7 @@ export function ConversationRemindersPanel({
                                   updateField('time', event.target.value)
                                 }
                                 aria-invalid={timeInvalid}
-                                className="h-8 rounded-[10px] border-white/[0.04] bg-transparent pr-10 text-xs shadow-none"
+                                className="h-8 rounded-[10px] border-foreground/[0.04] bg-transparent pr-10 text-xs shadow-none"
                               />
                               <Clock3 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             </div>
@@ -735,13 +735,13 @@ export function ConversationRemindersPanel({
                         </div>
                       </div>
 
-                      <div className="rounded-[16px] border border-white/[0.05] bg-white/[0.03] px-3.5 py-2.5 text-[11px] leading-5 text-muted-foreground">
+                      <div className="rounded-[16px] border border-foreground/[0.05] bg-foreground/[0.03] px-3.5 py-2.5 text-[11px] leading-5 text-muted-foreground">
                         O sistema vai notificar a equipe quando esse horário
                         chegar. O envio ao cliente continua manual para manter
                         controle total do atendimento.
                       </div>
 
-                      <div className="flex flex-col-reverse gap-2.5 border-t border-white/[0.06] pt-3.5 sm:flex-row sm:justify-end">
+                      <div className="flex flex-col-reverse gap-2.5 border-t border-foreground/[0.06] pt-3.5 sm:flex-row sm:justify-end">
                         <Button
                           variant="ghost"
                           className="h-8 w-full rounded-[12px] px-3 text-xs sm:w-auto"
@@ -787,7 +787,7 @@ export function ConversationRemindersPanel({
                         <div className="flex flex-col gap-3">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
-                              <p className="text-xs font-semibold leading-5 text-white">
+                              <p className="text-xs font-semibold leading-5 text-foreground">
                                 {reminder.internalDescription?.trim() ||
                                   'Lembrete sem descrição'}
                               </p>
@@ -802,7 +802,7 @@ export function ConversationRemindersPanel({
                             {reminder.messageToSend}
                           </p>
 
-                          <div className="flex flex-col gap-3 border-t border-white/[0.05] pt-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-col gap-3 border-t border-foreground/[0.05] pt-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-[11px] leading-5 text-muted-foreground">
                               Criado por {reminder.createdBy.name}
                               {reminder.completedBy
@@ -849,11 +849,11 @@ export function ConversationRemindersPanel({
                   })}
                 </div>
               ) : (
-                <div className="rounded-[18px] border border-dashed border-white/[0.1] bg-white/[0.02] px-4 py-7 text-center">
+                <div className="rounded-[18px] border border-dashed border-foreground/[0.1] bg-foreground/[0.02] px-4 py-7 text-center">
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[16px] border border-primary/18 bg-primary/10 shadow-[0_10px_24px_rgba(50,151,255,0.16)]">
                     <Bell className="h-4.5 w-4.5 text-primary" />
                   </div>
-                  <h4 className="mt-3 text-sm font-semibold text-white">
+                  <h4 className="mt-3 text-sm font-semibold text-foreground">
                     Nenhum lembrete criado
                   </h4>
                   <p className="mx-auto mt-2 max-w-[46ch] text-xs leading-5 text-muted-foreground">

@@ -252,7 +252,7 @@ export function QuickMessagesDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="min-h-[78vh] max-h-[96vh] w-[min(980px,calc(100vw-0.75rem))] border-white/[0.1] bg-[#04111f]/96 p-0 sm:min-h-0 sm:h-[min(90vh,860px)] sm:max-h-[90vh] sm:w-[min(940px,calc(100vw-1.25rem))]">
+      <DialogContent className="min-h-[78vh] max-h-[96vh] w-[min(980px,calc(100vw-0.75rem))] border-white/[0.1] bg-background/96 p-0 sm:min-h-0 sm:h-[min(90vh,860px)] sm:max-h-[90vh] sm:w-[min(940px,calc(100vw-1.25rem))]">
         <div className="flex h-full min-h-0 flex-col">
           <DialogHeader className="border-b border-white/[0.06] bg-background-panel/70 px-4 pb-4 pt-4 pr-12 sm:px-5 sm:pt-5">
             <div className="flex items-start gap-3">
@@ -270,7 +270,7 @@ export function QuickMessagesDialog({
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge className="border-primary/20 bg-primary/12 px-2.5 py-1 text-[10px] text-[#d4ebff]">
+              <Badge className="border-primary/20 bg-primary/12 px-2.5 py-1 text-[10px] text-foreground">
                 {totalQuickMessages} template{totalQuickMessages === 1 ? '' : 's'}
               </Badge>
               {canManage ? (
@@ -311,7 +311,7 @@ export function QuickMessagesDialog({
                 {HELP_VARIABLES.map((variable) => (
                   <span
                     key={variable}
-                    className="rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-[11px] font-medium text-[#cde8ff]"
+                    className="rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-[11px] font-medium text-foreground"
                   >
                     {variable}
                   </span>
@@ -361,7 +361,7 @@ export function QuickMessagesDialog({
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Buscar por titulo ou trecho da mensagem"
-                    className="h-10 rounded-[12px] border-white/[0.1] bg-[#07182b]/70 pl-9 text-sm"
+                    className="h-10 rounded-[12px] border-white/[0.1] bg-background-soft/70 pl-9 text-sm"
                   />
                 </div>
 
@@ -521,7 +521,7 @@ export function QuickMessagesDialog({
                             value={titleDraft}
                             onChange={(event) => setTitleDraft(event.target.value)}
                             placeholder="Ex.: Retomada de atendimento"
-                            className="h-10 rounded-[12px] border-white/[0.1] bg-[#07182b]/70 text-sm"
+                            className="h-10 rounded-[12px] border-white/[0.1] bg-background-soft/70 text-sm"
                           />
                         </div>
 
@@ -537,7 +537,7 @@ export function QuickMessagesDialog({
                             value={contentDraft}
                             onChange={(event) => setContentDraft(event.target.value)}
                             placeholder="Ex.: Ola {nome}, aqui e {vendedor}, vou dar continuidade ao seu atendimento."
-                            className="min-h-28 rounded-[12px] border-white/[0.1] bg-[#07182b]/70 text-sm leading-5"
+                            className="min-h-28 rounded-[12px] border-white/[0.1] bg-background-soft/70 text-sm leading-5"
                           />
                         </div>
 
@@ -615,7 +615,7 @@ export function QuickMessagesDialog({
                           value={search}
                           onChange={(event) => setSearch(event.target.value)}
                           placeholder="Filtrar templates"
-                          className="h-10 rounded-[12px] border-white/[0.1] bg-[#07182b]/70 pl-9 text-sm"
+                          className="h-10 rounded-[12px] border-white/[0.1] bg-background-soft/70 pl-9 text-sm"
                         />
                       </div>
 

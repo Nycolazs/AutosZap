@@ -29,7 +29,7 @@ export function MobileNav({ links }: { links: NavLink[] }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center justify-center rounded-lg p-2 text-white/70 transition-colors hover:bg-white/[0.06] hover:text-white"
+        className="inline-flex items-center justify-center rounded-lg p-2 text-foreground/70 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         aria-label="Menu"
       >
         <AnimatePresence mode="wait" initial={false}>
@@ -60,7 +60,7 @@ export function MobileNav({ links }: { links: NavLink[] }) {
       <AnimatePresence>
         {open && (
           <motion.div
-            className="absolute left-0 right-0 top-full overflow-hidden border-b border-white/[0.06] bg-[#060918]/95 backdrop-blur-xl"
+            className="absolute left-0 right-0 top-full overflow-hidden border-b border-border bg-background/95 backdrop-blur-xl"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
@@ -72,7 +72,7 @@ export function MobileNav({ links }: { links: NavLink[] }) {
                   key={link.href}
                   href={link.href}
                   onClick={() => handleClick(link.href)}
-                  className="rounded-lg px-3 py-2.5 text-sm text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white"
+                  className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.2, delay: i * 0.04, ease: 'easeOut' }}
@@ -81,7 +81,7 @@ export function MobileNav({ links }: { links: NavLink[] }) {
                 </motion.a>
               ))}
               <motion.div
-                className="mt-2 flex flex-col gap-2 border-t border-white/[0.06] pt-3"
+                className="mt-2 flex flex-col gap-2 border-t border-border pt-3"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2, delay: links.length * 0.04 }}
@@ -89,7 +89,7 @@ export function MobileNav({ links }: { links: NavLink[] }) {
                 <Link
                   href="/login"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-2.5 text-sm text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white"
+                  className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
                 >
                   Entrar na plataforma
                 </Link>
