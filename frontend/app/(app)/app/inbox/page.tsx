@@ -330,9 +330,9 @@ function getConversationContactAvatarUrl(
 }
 
 function shouldShowConversationContactAvatar(
-  conversation?: Pick<Conversation, "instance"> | null,
+  _conversation?: Pick<Conversation, "instance"> | null,
 ) {
-  return conversation?.instance?.provider !== "META_WHATSAPP";
+  return true;
 }
 
 function ConversationContactAvatar({

@@ -146,10 +146,9 @@ export class ConversationsService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where = this.buildConversationWhere(user, query);
 
-    const [data, groupedContacts] = await this.prisma.$transaction([
+    const [data, total] = await this.prisma.$transaction([
       this.prisma.conversation.findMany({
         where,
-        distinct: ['contactId'],
         include: {
           contact: true,
           instance: {
@@ -183,16 +182,8 @@ export class ConversationsService {
         skip,
         take,
       }),
-      this.prisma.conversation.groupBy({
-        where,
-        by: ['contactId'],
-        orderBy: {
-          contactId: 'asc',
-        },
-      }),
+      this.prisma.conversation.count({ where }),
     ]);
-
-    const total = groupedContacts.length;
 
     return paginatedResponse(
       data.map((conversation) => {
