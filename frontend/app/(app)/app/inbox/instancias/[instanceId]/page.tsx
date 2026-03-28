@@ -1,5 +1,8 @@
 import { Suspense } from 'react';
-import { InboxPageContent, InboxPageSkeleton } from '../../page';
+import {
+  InboxPageContent,
+  InboxPageSkeleton,
+} from '../../inbox-page-content';
 
 export default async function InstanceInboxPage({
   params,

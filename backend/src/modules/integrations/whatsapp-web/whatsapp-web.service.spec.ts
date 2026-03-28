@@ -206,6 +206,124 @@ describe('WhatsAppWebService inbound event mapping', () => {
     });
   });
 
+  it('updates qr history sync progress while batched messages are being imported', async () => {
+    const prisma = {
+      instance: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'instance-1',
+            workspaceId: 'workspace-1',
+            providerMetadata: null,
+          })
+          .mockResolvedValueOnce({
+            providerMetadata: {
+              historySyncJob: {
+                status: 'RUNNING',
+                messagesProcessed: 1,
+                inboundMessages: 1,
+                outboundMessages: 0,
+                mediaMessages: 0,
+              },
+            },
+          }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      whatsAppWebhookEvent: {
+        create: jest.fn().mockResolvedValue({
+          id: 'webhook-1',
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const messagingService = {
+      processIncomingPayload: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new WhatsAppWebService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      messagingService as never,
+    );
+
+    await privateApi(service).handleGatewayEventInTenantContext('instance-1', {
+      instanceId: 'instance-1',
+      event: 'messages.batch',
+      data: {
+        messages: [
+          {
+            from: '5511999999999',
+            to: '5511888888888',
+            fromRaw: '5511999999999@c.us',
+            toRaw: '5511888888888@c.us',
+            remoteJid: '5511999999999@c.us',
+            messageId: 'wamid.private.inbound.1',
+            type: 'text',
+            body: 'Oi',
+            timestamp: 1710000000000,
+          },
+          {
+            from: '5511999999999',
+            to: '5511888888888',
+            fromRaw: '5511888888888@c.us',
+            toRaw: '5511999999999@c.us',
+            remoteJid: '5511999999999@c.us',
+            fromMe: true,
+            messageId: 'wamid.private.outbound.1',
+            type: 'text',
+            body: 'Resposta',
+            timestamp: 1710000001000,
+          },
+          {
+            fromRaw: '120363025570111111@g.us',
+            remoteJid: '120363025570111111@g.us',
+            isGroupMsg: true,
+            messageId: 'wamid.group.1',
+            type: 'text',
+            body: 'Grupo',
+            timestamp: 1710000002000,
+          },
+        ],
+        statuses: [],
+      },
+    });
+
+    expect(messagingService.processIncomingPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historical: true,
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            externalMessageId: 'wamid.private.inbound.1',
+          }),
+          expect.objectContaining({
+            externalMessageId: 'wamid.private.outbound.1',
+          }),
+        ]),
+      }),
+    );
+    expect(prisma.instance.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'instance-1',
+        deletedAt: null,
+      },
+      data: {
+        providerMetadata: expect.objectContaining({
+          historySyncJob: expect.objectContaining({
+            status: 'RUNNING',
+            messagesProcessed: 3,
+            inboundMessages: 2,
+            outboundMessages: 1,
+            mediaMessages: 0,
+            detail: expect.stringContaining('3 mensagens carregadas'),
+            lastBatchAt: expect.any(String),
+          }),
+        }),
+      },
+    });
+  });
+
   it('auto-syncs connected qr history when the connection state is refreshed without a fresh snapshot', async () => {
     const prisma = {
       instance: {

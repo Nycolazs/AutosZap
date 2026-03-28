@@ -651,6 +651,7 @@ export class WhatsAppMessagingService {
         { historical: isHistorical },
       );
       const shouldTreatAsNewInboundActivity =
+        !isHistorical &&
         !isStaleMessage &&
         (!conversation.lastMessageAt ||
           messageSentAt.getTime() >= conversation.lastMessageAt.getTime());

@@ -148,6 +148,39 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     expect(result.instanceId).toBe('instance-2');
   });
 
+  it('creates first-time qr history conversations as open instead of new', async () => {
+    const { service, prisma } = createService();
+
+    prisma.conversation.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prisma.conversation.create.mockResolvedValue({
+      id: 'conv-history-1',
+      workspaceId: 'ws-1',
+      contactId: 'contact-1',
+      instanceId: 'instance-2',
+    });
+
+    await (service as any).ensureConversation(
+      'ws-1',
+      'contact-1',
+      'instance-2',
+      null,
+      { historical: true },
+    );
+
+    expect(prisma.conversation.create).toHaveBeenCalledWith({
+      data: {
+        workspaceId: 'ws-1',
+        contactId: 'contact-1',
+        instanceId: 'instance-2',
+        assignedUserId: undefined,
+        status: ConversationStatus.OPEN,
+        ownership: ConversationOwnership.UNASSIGNED,
+      },
+    });
+  });
+
   it('adopts legacy conversations without instance when the contact receives a new qr message', async () => {
     const { service, prisma } = createService();
 
@@ -705,5 +738,136 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     });
 
     expect(recipient).toBe('+5541999999999');
+  });
+});
+
+describe('WhatsAppMessagingService qr history ingestion', () => {
+  function createService() {
+    const prisma = {
+      conversation: {
+        updateMany: jest.fn(),
+      },
+      conversationMessage: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+      },
+      instance: {
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const conversationWorkflowService = {
+      registerInboundActivity: jest.fn(),
+      emitConversationRealtimeEvent: jest.fn(),
+    };
+
+    const service = new WhatsAppMessagingService(
+      prisma as never,
+      {
+        get: jest.fn(),
+      } as never,
+      {
+        decrypt: jest.fn(),
+      } as never,
+      {} as never,
+      {} as never,
+      conversationWorkflowService as never,
+      {} as never,
+      {
+        createForUsers: jest.fn(),
+      } as never,
+      {} as never,
+      {
+        save: jest.fn(),
+        read: jest.fn(),
+      } as never,
+    );
+
+    jest.spyOn(service as any, 'ensureContact').mockResolvedValue({
+      id: 'contact-1',
+      name: 'Maria QR',
+    });
+    jest.spyOn(service as any, 'ensureConversation').mockResolvedValue({
+      id: 'conversation-1',
+      lastMessageAt: null,
+    });
+    jest.spyOn(service as any, 'enrichInboundMessageMetadata').mockResolvedValue(
+      {
+        providerMessageContext: {
+          fromMe: false,
+          remoteJid: '5511999999999@c.us',
+        },
+      },
+    );
+    jest
+      .spyOn(service as any, 'updateConversationLastMessageSnapshot')
+      .mockResolvedValue(undefined);
+    jest
+      .spyOn(service as any, 'notifyConversationRecipientsAboutInboundMessage')
+      .mockResolvedValue(undefined);
+    jest
+      .spyOn(service as any, 'maybeSendInteractiveMenuReply')
+      .mockResolvedValue(false);
+    jest
+      .spyOn(service as any, 'maybeSendAutomaticReply')
+      .mockResolvedValue(undefined);
+
+    return {
+      service,
+      prisma,
+      conversationWorkflowService,
+    };
+  }
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('does not reopen or flag historical qr messages as new activity', async () => {
+    const { service, prisma, conversationWorkflowService } = createService();
+
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'ws-1',
+      provider: InstanceProvider.WHATSAPP_WEB,
+    });
+    prisma.conversationMessage.findFirst.mockResolvedValue(null);
+    prisma.conversationMessage.create.mockResolvedValue({
+      id: 'message-1',
+    });
+    prisma.instance.update.mockResolvedValue({});
+
+    await service.processIncomingPayload({
+      historical: true,
+      messages: [
+        {
+          instanceId: 'instance-1',
+          from: '5511999999999',
+          profileName: 'Maria QR',
+          externalMessageId: 'wamid.history.1',
+          messageType: 'text',
+          body: 'Mensagem antiga',
+          timestamp: String(Math.floor(Date.now() / 1000)),
+          metadata: {
+            providerMessageContext: {
+              fromMe: false,
+              remoteJid: '5511999999999@c.us',
+              fromRaw: '5511999999999@c.us',
+              toRaw: '5511888888888@c.us',
+            },
+          },
+        },
+      ],
+      statuses: [],
+    });
+
+    expect(
+      conversationWorkflowService.registerInboundActivity,
+    ).not.toHaveBeenCalled();
+    expect(
+      (service as any).maybeSendInteractiveMenuReply,
+    ).not.toHaveBeenCalled();
+    expect((service as any).maybeSendAutomaticReply).not.toHaveBeenCalled();
   });
 });

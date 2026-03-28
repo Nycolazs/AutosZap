@@ -273,26 +273,29 @@ export class WhatsAppWebService {
 
     if (payload.event === 'messages.batch') {
       const batchPayload = this.readMessageBatchPayload(payload.data);
+      const privateMessages = batchPayload.messages.filter((message) => {
+        const shouldIgnore = this.shouldIgnoreInboundPayload(message);
+
+        if (shouldIgnore) {
+          this.logger.warn(
+            `Ignorando item nao privado do lote sincronizado do WhatsApp para a instancia ${instance.id}.`,
+          );
+        }
+
+        return !shouldIgnore;
+      });
 
       await this.messagingService.processIncomingPayload({
-        messages: batchPayload.messages
-          .filter((message) => {
-            const shouldIgnore = this.shouldIgnoreInboundPayload(message);
-
-            if (shouldIgnore) {
-              this.logger.warn(
-                `Ignorando item nao privado do lote sincronizado do WhatsApp para a instancia ${instance.id}.`,
-              );
-            }
-
-            return !shouldIgnore;
-          })
-          .map((message) => this.mapInboundEvent(instance.id, message)),
+        messages: privateMessages.map((message) =>
+          this.mapInboundEvent(instance.id, message),
+        ),
         statuses: batchPayload.statuses.map((status) =>
           this.mapStatusEvent(instance.id, status),
         ),
         historical: true,
       });
+
+      await this.incrementHistorySyncProgress(instance.id, privateMessages);
     }
 
     if (payload.event === 'message.status') {
@@ -767,6 +770,10 @@ export class WhatsAppWebService {
           ...this.readHistorySyncJob(providerMetadata),
           status: 'COMPLETED',
           finishedAt: new Date().toISOString(),
+          messagesProcessed: historySync.messagesDiscovered,
+          inboundMessages: historySync.inboundMessages,
+          outboundMessages: historySync.outboundMessages,
+          mediaMessages: historySync.mediaMessages,
           detail: this.buildHistorySyncDetail(historySync),
         },
         autoHistorySyncLastError: null,
@@ -905,6 +912,13 @@ export class WhatsAppWebService {
   }
 
   private async markHistorySyncStarted(instanceId: string, trigger: string) {
+    const initialProgress = {
+      messagesProcessed: 0,
+      inboundMessages: 0,
+      outboundMessages: 0,
+      mediaMessages: 0,
+    };
+
     await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => ({
       ...(providerMetadata ?? {}),
       historySyncJob: {
@@ -913,8 +927,8 @@ export class WhatsAppWebService {
         startedAt: new Date().toISOString(),
         finishedAt: null,
         trigger,
-        detail:
-          'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+        ...initialProgress,
+        detail: this.buildRunningHistorySyncDetail(initialProgress),
       },
       autoHistorySyncLastError: null,
     }));
@@ -996,6 +1010,87 @@ export class WhatsAppWebService {
     return this.toRecord(
       providerMetadata?.historySyncJob as Prisma.JsonValue | null | undefined,
     );
+  }
+
+  private readHistorySyncJobCount(
+    historySyncJob: Record<string, unknown> | null,
+    key:
+      | 'messagesProcessed'
+      | 'inboundMessages'
+      | 'outboundMessages'
+      | 'mediaMessages',
+  ) {
+    const value = historySyncJob?.[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  }
+
+  private buildRunningHistorySyncDetail(progress: {
+    messagesProcessed: number;
+    inboundMessages: number;
+    outboundMessages: number;
+    mediaMessages: number;
+  }) {
+    const baseDetail =
+      `Sincronizando historico do WhatsApp Web: ${progress.messagesProcessed} mensagens carregadas ate agora ` +
+      `(${progress.outboundMessages} enviadas, ${progress.inboundMessages} recebidas).`;
+
+    if (progress.mediaMessages <= 0) {
+      return baseDetail;
+    }
+
+    return `${baseDetail} ${progress.mediaMessages} contem midia.`;
+  }
+
+  private async incrementHistorySyncProgress(
+    instanceId: string,
+    messages: Array<Record<string, unknown>>,
+  ) {
+    if (!messages.length) {
+      return;
+    }
+
+    const batchProgress = {
+      messagesProcessed: messages.length,
+      outboundMessages: messages.filter((message) => message.fromMe === true)
+        .length,
+      inboundMessages: messages.filter((message) => message.fromMe !== true)
+        .length,
+      mediaMessages: messages.filter((message) => message.media !== undefined)
+        .length,
+    };
+
+    await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => {
+      const historySyncJob = this.readHistorySyncJob(providerMetadata);
+
+      if (historySyncJob?.status !== 'RUNNING') {
+        return providerMetadata ?? {};
+      }
+
+      const nextProgress = {
+        messagesProcessed:
+          this.readHistorySyncJobCount(historySyncJob, 'messagesProcessed') +
+          batchProgress.messagesProcessed,
+        inboundMessages:
+          this.readHistorySyncJobCount(historySyncJob, 'inboundMessages') +
+          batchProgress.inboundMessages,
+        outboundMessages:
+          this.readHistorySyncJobCount(historySyncJob, 'outboundMessages') +
+          batchProgress.outboundMessages,
+        mediaMessages:
+          this.readHistorySyncJobCount(historySyncJob, 'mediaMessages') +
+          batchProgress.mediaMessages,
+      };
+
+      return {
+        ...(providerMetadata ?? {}),
+        historySyncJob: {
+          ...historySyncJob,
+          ...nextProgress,
+          lastBatchAt: new Date().toISOString(),
+          detail: this.buildRunningHistorySyncDetail(nextProgress),
+        },
+      };
+    });
   }
 
   private buildHistorySyncDetail(
