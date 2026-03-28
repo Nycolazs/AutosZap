@@ -78,6 +78,10 @@ function buildPuppeteerArgs() {
     "--no-first-run",
     "--no-zygote",
     "--disable-gpu",
+    "--single-process",
+    "--memory-pressure-off",
+    "--disable-site-isolation-trials",
+    "--js-flags=--max-old-space-size=512",
   ];
 }
 

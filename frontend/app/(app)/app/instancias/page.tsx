@@ -1983,7 +1983,7 @@ export default function InstancesPage() {
                       Gerando QR code
                     </p>
                     <p className="text-xs leading-5 text-muted-foreground">
-                      A instancia esta sendo iniciada. Quando o QR estiver pronto, ele aparece aqui automaticamente.
+                      A instancia esta sendo iniciada. Isso pode levar alguns minutos. O QR aparece aqui automaticamente quando estiver pronto.
                     </p>
                   </div>
                 </div>
