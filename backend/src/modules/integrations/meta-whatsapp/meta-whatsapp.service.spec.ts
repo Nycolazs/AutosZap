@@ -1,9 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import {
-  AutoMessageType,
-  InstanceProvider,
-  MessageDirection,
-} from '@prisma/client';
+import { AutoMessageType, MessageDirection } from '@prisma/client';
 import { MetaWhatsAppService } from './meta-whatsapp.service';
 
 describe('MetaWhatsAppService automatic replies', () => {
@@ -157,7 +153,9 @@ describe('MetaWhatsAppService automatic replies', () => {
       'Olá, tudo bem?',
     );
 
-    expect(whatsappMessagingService.sendConversationMessage).toHaveBeenCalledWith(
+    expect(
+      whatsappMessagingService.sendConversationMessage,
+    ).toHaveBeenCalledWith(
       'ws-1',
       'conv-1',
       'seller-1',
@@ -182,7 +180,9 @@ describe('MetaWhatsAppService automatic replies', () => {
       options,
     );
 
-    expect(whatsappMessagingService.sendConversationMessage).toHaveBeenCalledWith(
+    expect(
+      whatsappMessagingService.sendConversationMessage,
+    ).toHaveBeenCalledWith(
       'ws-1',
       'conv-1',
       null,
@@ -278,7 +278,9 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       .spyOn(service as any, 'assertWebhookSignature')
       .mockResolvedValue(undefined);
 
-    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(null);
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
+      null,
+    );
     provider.parseWebhook.mockReturnValue({
       messages: [
         {
@@ -303,7 +305,9 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
     await service.handleWebhook({ entry: [] }, { rawBody: Buffer.from('{}') });
 
     expect(prisma.whatsAppWebhookEvent.create).toHaveBeenCalled();
-    expect(whatsappMessagingService.processIncomingPayload).toHaveBeenCalledWith(
+    expect(
+      whatsappMessagingService.processIncomingPayload,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ externalMessageId: 'wamid.1' }),
@@ -331,14 +335,18 @@ describe('MetaWhatsAppService inbound webhook timestamps', () => {
       .spyOn(service as any, 'assertWebhookSignature')
       .mockResolvedValue(undefined);
 
-    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(null);
+    tenantConnectionService.resolveTenantByPhoneNumberId.mockResolvedValue(
+      null,
+    );
     provider.parseWebhook.mockReturnValue({ messages: [], statuses: [] });
     prisma.instance.findFirst.mockResolvedValue(null);
     prisma.whatsAppWebhookEvent.create.mockResolvedValue({ id: 'webhook-2' });
 
     await service.handleWebhook({ entry: [] }, { rawBody: Buffer.from('{}') });
 
-    expect(whatsappMessagingService.processIncomingPayload).toHaveBeenCalledWith(
+    expect(
+      whatsappMessagingService.processIncomingPayload,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({ messages: [], statuses: [] }),
     );
     expect(prisma.whatsAppWebhookEvent.update).toHaveBeenCalledWith(
