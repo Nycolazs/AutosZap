@@ -440,12 +440,11 @@ function shouldShowMessageSenderAvatar(
     return false;
   }
 
-  // Only show avatar on the last message of a consecutive group from the same sender
+  // Only show avatar on the last message of a consecutive outbound group
   if (
     nextItem &&
     nextItem.kind === "message" &&
-    nextItem.message.direction === "OUTBOUND" &&
-    nextItem.message.senderUser?.id === senderUser.id
+    nextItem.message.direction === "OUTBOUND"
   ) {
     return false;
   }
@@ -549,6 +548,7 @@ export function InboxPageContent({
   const recordingMimeConfigRef = useRef<RecordingMimeConfig | null>(null);
   const pendingReadConversationIdsRef = useRef(new Map<string, number>());
   const suppressMessageRefetchUntilRef = useRef(0);
+  const optimisticMessageIdsRef = useRef(new Map<string, string>());
   const requestedConversationId = searchParams.get("conversationId");
   const requestedInstanceId = searchParams.get("instanceId");
   const effectiveInstanceId = lockedInstanceId ?? requestedInstanceId;
@@ -1141,7 +1141,8 @@ export function InboxPageContent({
         );
       }
 
-      // Replace optimistic message with real one in cache (no full refetch)
+      // Replace optimistic message with real server data but KEEP
+      // the optimistic ID so the React key stays stable (no unmount/remount flash)
       const convId = activeConversationId;
       if (convId) {
         queryClient.setQueryData<
@@ -1152,9 +1153,16 @@ export function InboxPageContent({
             ...current,
             pages: current.pages.map((page) => ({
               ...page,
-              items: page.items.map((item) =>
-                item.id.startsWith("optimistic-") ? message : item,
-              ),
+              items: page.items.map((item) => {
+                if (item.id.startsWith("optimistic-")) {
+                  // Track mapping so SSE refetches can deduplicate
+                  optimisticMessageIdsRef.current.set(message.id, item.id);
+                  // Keep the optimistic ID for stable React key,
+                  // but update all other fields with real server data
+                  return { ...message, id: item.id };
+                }
+                return item;
+              }),
             })),
           };
         });
@@ -1182,8 +1190,10 @@ export function InboxPageContent({
           queryKey: ["conversation", convId, "details"],
         });
         // Schedule a delayed messages sync after cooldown expires
+        // to get real IDs and any server-side changes
         setTimeout(() => {
           suppressMessageRefetchUntilRef.current = 0;
+          optimisticMessageIdsRef.current.clear();
           void queryClient.invalidateQueries({
             queryKey: ["conversation", convId, "messages"],
           });
@@ -1442,7 +1452,8 @@ export function InboxPageContent({
       setQuotedMessageId(null);
       shouldStickToBottomRef.current = true;
 
-      // Replace optimistic internal message with real one in cache
+      // Replace optimistic internal message with real server data
+      // but keep the optimistic ID for stable React key
       const convId = activeConversationId;
       if (convId) {
         queryClient.setQueryData<
@@ -1453,9 +1464,13 @@ export function InboxPageContent({
             ...current,
             pages: current.pages.map((page) => ({
               ...page,
-              items: page.items.map((item) =>
-                item.id.startsWith("optimistic-") ? message : item,
-              ),
+              items: page.items.map((item) => {
+                if (item.id.startsWith("optimistic-")) {
+                  optimisticMessageIdsRef.current.set(message.id, item.id);
+                  return { ...message, id: item.id };
+                }
+                return item;
+              }),
             })),
           };
         });
@@ -1466,6 +1481,13 @@ export function InboxPageContent({
         queryClient.invalidateQueries({
           queryKey: ["conversation", convId, "details"],
         });
+        // Delayed sync to get real IDs
+        setTimeout(() => {
+          optimisticMessageIdsRef.current.clear();
+          void queryClient.invalidateQueries({
+            queryKey: ["conversation", convId, "messages"],
+          });
+        }, 5500);
       }
       toast.success("Mensagem interna registrada no chat.");
     },
