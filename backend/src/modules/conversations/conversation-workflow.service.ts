@@ -145,6 +145,7 @@ export class ConversationWorkflowService {
         id: conversationId,
         workspaceId: user.workspaceId,
         deletedAt: null,
+        ...this.buildActiveInboxInstanceWhere(),
       },
       select: {
         id: true,
@@ -188,6 +189,23 @@ export class ConversationWorkflowService {
     }
 
     return conversation;
+  }
+
+  private buildActiveInboxInstanceWhere(): Prisma.ConversationWhereInput {
+    return {
+      OR: [
+        {
+          instanceId: null,
+        },
+        {
+          instance: {
+            is: {
+              deletedAt: null,
+            },
+          },
+        },
+      ],
+    };
   }
 
   async prepareManualReply(

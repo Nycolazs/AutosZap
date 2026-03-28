@@ -57,6 +57,11 @@ type ResolvedPeerContact = {
   phoneNumber: string | null;
 };
 
+type ResolvedRecipientCandidate = {
+  jid: string;
+  source: "normalized" | "lid" | "phone";
+};
+
 type ResolvedMessageContactContext = {
   contact: WhatsAppContactSnapshot | null;
   peerPhoneNumber: string | null;
@@ -328,8 +333,9 @@ export class WhatsAppSession {
     quotedMessageId?: string;
   }): Promise<SendResult> {
     const client = await this.ensureClientReady();
-    const message = await client.sendMessage(
-      normalizeRecipient(payload.to),
+    const { message, recipient } = await this.sendMessageWithResolvedRecipient(
+      client,
+      payload.to,
       payload.body,
       {
         quotedMessageId: payload.quotedMessageId,
@@ -342,19 +348,9 @@ export class WhatsAppSession {
       raw: {
         messageId: message.id?._serialized,
         ack: message.ack,
-        to: normalizeRecipient(payload.to),
+        to: recipient,
       },
     };
-
-    await this.emit("message.status", {
-      instanceId: this.options.instanceId,
-      messageId: result.messageId,
-      status: result.status,
-      ack: message.ack,
-      to: payload.to,
-      body: payload.body,
-      type: "text",
-    });
 
     return result;
   }
@@ -376,8 +372,9 @@ export class WhatsAppSession {
       payload.fileName,
     );
 
-    const message = await client.sendMessage(
-      normalizeRecipient(payload.to),
+    const { message, recipient } = await this.sendMessageWithResolvedRecipient(
+      client,
+      payload.to,
       media,
       {
         caption: payload.caption,
@@ -393,23 +390,12 @@ export class WhatsAppSession {
       raw: {
         messageId: message.id?._serialized,
         ack: message.ack,
-        to: normalizeRecipient(payload.to),
+        to: recipient,
         fileName: payload.fileName,
         mimeType: payload.mimeType,
         voice: payload.voice ?? false,
       },
     };
-
-    await this.emit("message.status", {
-      instanceId: this.options.instanceId,
-      messageId: result.messageId,
-      status: result.status,
-      ack: message.ack,
-      to: payload.to,
-      body: payload.caption ?? payload.fileName,
-      type: payload.voice ? "ptt" : "media",
-      voice: payload.voice ?? false,
-    });
 
     return result;
   }
@@ -647,32 +633,40 @@ export class WhatsAppSession {
           contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
         },
       );
+      const normalizedWithMedia =
+        normalized.hasMedia === true
+          ? await this.materializeMessageMediaPayload(
+              message,
+              normalized,
+              "history-sync",
+            )
+          : normalized;
 
       if (!options?.retryPass) {
         result.messagesDiscovered += 1;
 
-        if (normalized.fromMe === true) {
+        if (normalizedWithMedia.fromMe === true) {
           result.outboundMessages += 1;
         } else {
           result.inboundMessages += 1;
         }
 
-        if (normalized.hasMedia === true) {
+        if (normalizedWithMedia.hasMedia === true) {
           result.mediaMessages += 1;
         }
       }
 
-      if (normalized.hasMedia === true) {
+      if (normalizedWithMedia.hasMedia === true) {
         await this.flushHistoryBatch(batch, result);
         await this.emit("messages.batch", {
-          messages: [normalized],
+          messages: [normalizedWithMedia],
           statuses: [],
         });
         result.messagesEmitted += 1;
         continue;
       }
 
-      batch.push(normalized);
+      batch.push(normalizedWithMedia);
 
       if (batch.length >= HISTORY_SYNC_BATCH_SIZE) {
         await this.flushHistoryBatch(batch, result);
@@ -684,6 +678,76 @@ export class WhatsAppSession {
     return {
       shouldRetry: shouldRetry && messages.length > 0,
     };
+  }
+
+  private async materializeMessageMediaPayload(
+    message: Message,
+    payload: Record<string, unknown>,
+    downloadStrategy: "history-sync" | "realtime",
+  ) {
+    const media =
+      typeof payload.media === "object" &&
+      payload.media !== null &&
+      !Array.isArray(payload.media)
+        ? (payload.media as Record<string, unknown>)
+        : null;
+
+    if (!media || !message.hasMedia) {
+      return payload;
+    }
+
+    try {
+      const downloaded = await message.downloadMedia();
+
+      if (!downloaded?.data) {
+        return {
+          ...payload,
+          media: {
+            ...media,
+            downloadError: "WhatsApp media is not available for download right now.",
+          },
+        };
+      }
+
+      const mimeType =
+        downloaded.mimetype?.trim() ||
+        (typeof media.mimeType === "string" ? media.mimeType : null) ||
+        null;
+      const fileName =
+        downloaded.filename?.trim() ||
+        (typeof media.fileName === "string" ? media.fileName : null) ||
+        null;
+      const size =
+        typeof downloaded.filesize === "number"
+          ? downloaded.filesize
+          : typeof media.size === "number"
+            ? media.size
+            : null;
+
+      return {
+        ...payload,
+        media: {
+          ...media,
+          dataBase64: downloaded.data,
+          mimeType,
+          fileName,
+          size,
+          isBase64: true,
+          downloadStrategy,
+          downloadError: null,
+        },
+        mimeType,
+        fileName,
+      };
+    } catch (error) {
+      return {
+        ...payload,
+        media: {
+          ...media,
+          downloadError: normalizeSyncError(error),
+        },
+      };
+    }
   }
 
   private async initializeClientWithRecovery() {
@@ -804,11 +868,15 @@ export class WhatsAppSession {
 
       await this.emit(
         "message.inbound",
-        await buildInboundMessageData(this.options.instanceId, message, {
-          contact: contactContext.contact ?? contact,
-          peerPhoneNumber: contactContext.peerPhoneNumber,
-          contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
-        }),
+        await this.materializeMessageMediaPayload(
+          message,
+          await buildInboundMessageData(this.options.instanceId, message, {
+            contact: contactContext.contact ?? contact,
+            peerPhoneNumber: contactContext.peerPhoneNumber,
+            contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
+          }),
+          "realtime",
+        ),
       );
     });
 
@@ -833,6 +901,124 @@ export class WhatsAppSession {
         }),
       );
     });
+  }
+
+  private async sendMessageWithResolvedRecipient(
+    client: Client,
+    to: string,
+    content: string | MessageMedia,
+    options?: Record<string, unknown>,
+  ) {
+    const recipientCandidates = await this.resolveRecipientCandidates(
+      client,
+      to,
+    );
+    let lastError: unknown = null;
+
+    for (let index = 0; index < recipientCandidates.length; index += 1) {
+      const candidate = recipientCandidates[index];
+
+      try {
+        const message = await client.sendMessage(
+          candidate.jid,
+          content,
+          options,
+        );
+
+        return {
+          message,
+          recipient: candidate.jid,
+        };
+      } catch (error) {
+        lastError = error;
+
+        if (
+          index + 1 >= recipientCandidates.length ||
+          !this.shouldRetryWithAlternateRecipient(error)
+        ) {
+          throw error;
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Unable to send WhatsApp message.");
+  }
+
+  private async resolveRecipientCandidates(client: Client, to: string) {
+    const normalizedRecipient = normalizeRecipient(to);
+    const candidates: ResolvedRecipientCandidate[] = [
+      {
+        jid: normalizedRecipient,
+        source: "normalized",
+      },
+    ];
+
+    const clientWithIdentityLookup = client as Client & {
+      getContactLidAndPhone?: (
+        contactIds: string[],
+      ) => Promise<Array<{ lid?: string | null; pn?: string | null }>>;
+    };
+
+    if (typeof clientWithIdentityLookup.getContactLidAndPhone === "function") {
+      try {
+        const [resolvedIdentity] = await clientWithIdentityLookup.getContactLidAndPhone(
+          [normalizedRecipient],
+        );
+        const resolvedLid = resolvedIdentity?.lid?.trim() || null;
+        const resolvedPhoneJid = resolvedIdentity?.pn?.trim() || null;
+
+        if (normalizedRecipient.endsWith("@c.us")) {
+          if (resolvedLid) {
+            candidates.unshift({
+              jid: resolvedLid,
+              source: "lid",
+            });
+          }
+
+          if (resolvedPhoneJid) {
+            candidates.push({
+              jid: resolvedPhoneJid,
+              source: "phone",
+            });
+          }
+        } else if (normalizedRecipient.endsWith("@lid")) {
+          if (resolvedPhoneJid) {
+            candidates.push({
+              jid: resolvedPhoneJid,
+              source: "phone",
+            });
+          }
+
+          if (resolvedLid) {
+            candidates.unshift({
+              jid: resolvedLid,
+              source: "lid",
+            });
+          }
+        }
+      } catch {
+        // Ignore identity lookup failures and use the normalized recipient.
+      }
+    }
+
+    return candidates.filter(
+      (candidate, index, list) =>
+        candidate.jid.trim().length > 0 &&
+        list.findIndex((value) => value.jid === candidate.jid) === index,
+    );
+  }
+
+  private shouldRetryWithAlternateRecipient(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalizedMessage = message.toLowerCase();
+
+    return (
+      normalizedMessage.includes("no lid for user") ||
+      normalizedMessage.includes("invalid wid") ||
+      normalizedMessage.includes("invalid whatsapp recipient")
+    );
   }
 
   private async flushHistoryBatch(

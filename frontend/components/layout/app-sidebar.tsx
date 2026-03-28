@@ -229,14 +229,29 @@ export function AppSidebar({ permissionMap }: { permissionMap?: PermissionMap })
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          'flex items-center gap-3 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all 2xl:py-2.5',
+                          'group flex items-center gap-3 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-all 2xl:py-2.5',
                           active
                             ? 'bg-primary text-white shadow-[0_12px_28px_rgba(50,151,255,0.22)]'
                             : 'text-foreground/72 hover:bg-foreground/5 hover:text-foreground',
                         )}
                       >
-                        <Icon className="h-4 w-4" />
-                        {item.label}
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            active
+                              ? 'text-white'
+                              : 'text-foreground/72 group-hover:text-foreground',
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            active
+                              ? 'text-white'
+                              : 'text-foreground/72 group-hover:text-foreground',
+                          )}
+                        >
+                          {item.label}
+                        </span>
                       </Link>
                     );
                   })}

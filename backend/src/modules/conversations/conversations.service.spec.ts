@@ -20,6 +20,7 @@ describe('ConversationsService summary', () => {
       prisma as never,
       {} as never,
       {} as never,
+      {} as never,
       workflow as never,
       {} as never,
     );
@@ -104,6 +105,20 @@ describe('ConversationsService summary', () => {
           workspaceId: 'ws-1',
           deletedAt: null,
         }),
+        expect.objectContaining({
+          OR: [
+            {
+              instanceId: null,
+            },
+            {
+              instance: {
+                is: {
+                  deletedAt: null,
+                },
+              },
+            },
+          ],
+        }),
       ]),
     );
     expect(result).toEqual({
@@ -167,6 +182,7 @@ describe('ConversationsService list', () => {
 
     const service = new ConversationsService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       workflow as never,
@@ -269,7 +285,7 @@ describe('ConversationsService list', () => {
     expect(workflow.buildVisibilityWhere).toHaveBeenCalled();
     expect(prisma.conversation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        distinct: ['contactId', 'instanceId'],
+        distinct: ['contactId'],
         include: expect.objectContaining({
           instance: expect.any(Object),
         }),
@@ -277,7 +293,7 @@ describe('ConversationsService list', () => {
     );
     expect(prisma.conversation.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
-        by: ['contactId', 'instanceId'],
+        by: ['contactId'],
       }),
     );
     expect(result.meta.total).toBe(2);
@@ -311,6 +327,20 @@ describe('ConversationsService list', () => {
           AND: expect.arrayContaining([
             expect.objectContaining({
               instanceId: 'instance-qr-1',
+            }),
+            expect.objectContaining({
+              OR: [
+                {
+                  instanceId: null,
+                },
+                {
+                  instance: {
+                    is: {
+                      deletedAt: null,
+                    },
+                  },
+                },
+              ],
             }),
           ]),
         }),
@@ -378,6 +408,7 @@ describe('ConversationsService listInboxInstances', () => {
 
     const service = new ConversationsService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       workflow as never,
@@ -465,6 +496,20 @@ describe('ConversationsService listInboxInstances', () => {
               workspaceId: 'ws-1',
               deletedAt: null,
             }),
+            expect.objectContaining({
+              OR: [
+                {
+                  instanceId: null,
+                },
+                {
+                  instance: {
+                    is: {
+                      deletedAt: null,
+                    },
+                  },
+                },
+              ],
+            }),
           ]),
         }),
       }),
@@ -502,6 +547,7 @@ describe('ConversationsService findOne', () => {
 
     const service = new ConversationsService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       workflow as never,
@@ -577,6 +623,20 @@ describe('ConversationsService findOne', () => {
 
     expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              instanceId: null,
+            },
+            {
+              instance: {
+                is: {
+                  deletedAt: null,
+                },
+              },
+            },
+          ],
+        }),
         include: expect.objectContaining({
           messages: expect.objectContaining({
             take: 25,
@@ -607,6 +667,7 @@ describe('ConversationsService markAsRead', () => {
 
     const service = new ConversationsService(
       prisma as never,
+      {} as never,
       {} as never,
       {} as never,
       workflow as never,

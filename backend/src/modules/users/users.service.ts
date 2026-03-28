@@ -33,7 +33,7 @@ export class UsersService {
   ) {}
 
   async list(workspaceId: string) {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: {
         workspaceId,
         deletedAt: null,
@@ -49,8 +49,45 @@ export class UsersService {
         status: true,
         title: true,
         avatarUrl: true,
+        globalUserId: true,
       },
     });
+
+    const globalUserIds = Array.from(
+      new Set(
+        users
+          .map((user) => user.globalUserId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const globalUsers =
+      globalUserIds.length > 0
+        ? await this.controlPlanePrisma.globalUser.findMany({
+            where: {
+              id: {
+                in: globalUserIds,
+              },
+            },
+            select: {
+              id: true,
+              avatarStoragePath: true,
+              avatarUrl: true,
+              updatedAt: true,
+            },
+          })
+        : [];
+    const globalUserMap = new Map(
+      globalUsers.map((globalUser) => [globalUser.id, globalUser]),
+    );
+
+    return users.map(({ globalUserId, avatarUrl, ...user }) => ({
+      ...user,
+      avatarUrl: this.resolveWorkspaceUserAvatarUrl(
+        user.id,
+        globalUserId ? (globalUserMap.get(globalUserId) ?? null) : null,
+        avatarUrl,
+      ),
+    }));
   }
 
   async updateProfile(
@@ -403,6 +440,38 @@ export class UsersService {
 
   private buildProfileAvatarUrl() {
     return `/api/proxy/users/profile/avatar?v=${Date.now()}`;
+  }
+
+  private resolveWorkspaceUserAvatarUrl(
+    userId: string,
+    globalUser?: {
+      avatarStoragePath: string | null;
+      avatarUrl: string | null;
+      updatedAt: Date;
+    } | null,
+    fallback?: string | null,
+  ) {
+    if (globalUser?.avatarStoragePath) {
+      return this.buildWorkspaceUserAvatarUrl(userId, globalUser.updatedAt);
+    }
+
+    return globalUser?.avatarUrl ?? fallback ?? null;
+  }
+
+  private buildWorkspaceUserAvatarUrl(
+    userId: string,
+    cacheKey?: string | number | Date | null,
+  ) {
+    const normalizedCacheKey =
+      cacheKey instanceof Date ? cacheKey.getTime() : cacheKey;
+
+    if (!normalizedCacheKey) {
+      return `/api/proxy/users/${userId}/avatar`;
+    }
+
+    return `/api/proxy/users/${userId}/avatar?v=${encodeURIComponent(
+      String(normalizedCacheKey),
+    )}`;
   }
 
   private asObject(value: unknown) {

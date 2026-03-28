@@ -390,6 +390,7 @@ export class ConversationsService {
         id,
         workspaceId: user.workspaceId,
         deletedAt: null,
+        ...this.buildActiveInboxInstanceWhere(),
         ...this.buildPrivateConversationOnlyWhere(),
       },
       include: {
@@ -818,6 +819,7 @@ export class ConversationsService {
     const conditions: Prisma.ConversationWhereInput[] = [accessWhere];
 
     conditions.push(this.buildPrivateConversationOnlyWhere());
+    conditions.push(this.buildActiveInboxInstanceWhere());
 
     if (statusWhere) {
       conditions.push(statusWhere);
@@ -863,6 +865,23 @@ export class ConversationsService {
 
     return {
       AND: conditions,
+    };
+  }
+
+  private buildActiveInboxInstanceWhere(): Prisma.ConversationWhereInput {
+    return {
+      OR: [
+        {
+          instanceId: null,
+        },
+        {
+          instance: {
+            is: {
+              deletedAt: null,
+            },
+          },
+        },
+      ],
     };
   }
 
@@ -1156,7 +1175,7 @@ export class ConversationsService {
       'conversation.updated',
     );
 
-    return message;
+    return this.loadDecoratedConversationMessage(message.id);
   }
 
   async listMessages(
@@ -1390,6 +1409,23 @@ export class ConversationsService {
     });
   }
 
+  private async loadDecoratedConversationMessage(messageId: string) {
+    const message = await this.prisma.conversationMessage.findUnique({
+      where: {
+        id: messageId,
+      },
+      include: INBOX_MESSAGE_INCLUDE,
+    });
+
+    if (!message) {
+      throw new NotFoundException('Mensagem nao encontrada.');
+    }
+
+    const [decoratedMessage] = await this.decorateConversationMessages([message]);
+
+    return decoratedMessage ?? message;
+  }
+
   private resolveInboxSenderAvatarUrl(
     userId: string,
     globalUser?: {
@@ -1464,7 +1500,7 @@ export class ConversationsService {
       });
     }
 
-    return message;
+    return this.loadDecoratedConversationMessage(message.id);
   }
 
   async sendMediaMessage(

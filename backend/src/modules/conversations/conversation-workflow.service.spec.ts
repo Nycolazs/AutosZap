@@ -119,6 +119,46 @@ describe('ConversationWorkflowService', () => {
     jest.clearAllMocks();
   });
 
+  it('ignores conversations tied to deleted instances when checking access', async () => {
+    const { service, prisma } = createService();
+
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      assignedUserId: null,
+      status: ConversationStatus.NEW,
+      resolvedById: null,
+      closedById: null,
+    });
+
+    await service.assertConversationAccess(
+      'conv-1',
+      {
+        sub: 'admin-1',
+        workspaceId: 'ws-1',
+        role: 'ADMIN',
+      } as never,
+    );
+
+    expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              instanceId: null,
+            },
+            {
+              instance: {
+                is: {
+                  deletedAt: null,
+                },
+              },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it('assigns the first seller who replies and emits a private inbox update', async () => {
     const { service, prisma, inboxEventsService } = createService();
     const tx: TransactionMock = {

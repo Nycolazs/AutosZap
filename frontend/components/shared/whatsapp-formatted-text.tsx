@@ -35,7 +35,7 @@ export function WhatsAppFormattedText({
       className={cn(
         'space-y-1 text-[14px] leading-6 tracking-[0.01em]',
         tone === 'outgoing'
-          ? 'text-white/96'
+          ? 'text-[var(--text-on-bubble)]'
           : tone === 'preview'
             ? 'text-[#102012]'
             : 'text-foreground/92',
@@ -50,7 +50,7 @@ export function WhatsAppFormattedText({
               className={cn(
                 'overflow-x-auto rounded-[14px] border px-3 py-2.5 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words',
                 tone === 'outgoing'
-                  ? 'border-white/14 bg-white/10 text-white/96'
+                  ? 'border-white/14 bg-white/10 text-[var(--text-on-bubble)]'
                   : tone === 'preview'
                     ? 'border-[#b8d4a7] bg-[#cfe9bc] text-[#102012]'
                     : 'border-black/8 bg-black/[0.04] text-foreground/92',
@@ -93,7 +93,7 @@ function renderInlineNodes(
           className={cn(
             'rounded-[7px] border px-1.5 py-0.5 font-mono text-[0.92em]',
             tone === 'outgoing'
-              ? 'border-white/14 bg-white/12 text-white'
+              ? 'border-white/14 bg-white/12 text-[var(--text-on-bubble)]'
               : tone === 'preview'
                 ? 'border-[#b8d4a7] bg-[#cfe9bc] text-[#102012]'
                 : 'border-black/8 bg-black/[0.04] text-foreground/92',

@@ -33,6 +33,12 @@ export class TenantConnectionService implements OnModuleDestroy {
   private readonly logger = new Logger(TenantConnectionService.name);
   private readonly tenantClients = new Map<string, TenantClientEntry>();
   private readonly configCache = new Map<string, TenantRuntimeConfig>();
+  /**
+   * Short-circuit cache: instanceId → companyId.
+   * Avoids the O(n·tenants) scan on every inbound QR gateway event.
+   * Invalidated together with the tenant when invalidateTenant() is called.
+   */
+  private readonly instanceToCompanyCache = new Map<string, string>();
 
   constructor(
     private readonly controlPlanePrisma: ControlPlanePrismaService,
@@ -47,10 +53,14 @@ export class TenantConnectionService implements OnModuleDestroy {
     await Promise.allSettled(disconnectPromises);
     this.tenantClients.clear();
     this.configCache.clear();
+    this.instanceToCompanyCache.clear();
   }
 
   async invalidateTenant(companyId: string) {
     this.configCache.delete(companyId);
+    for (const [instanceId, cId] of this.instanceToCompanyCache) {
+      if (cId === companyId) this.instanceToCompanyCache.delete(instanceId);
+    }
     const existing = this.tenantClients.get(companyId);
     if (existing) {
       await existing.client.$disconnect();
@@ -145,6 +155,24 @@ export class TenantConnectionService implements OnModuleDestroy {
   }
 
   async resolveTenantByInstanceId(instanceId: string) {
+    const cached = this.instanceToCompanyCache.get(instanceId);
+    if (cached) {
+      try {
+        const tenantClient = await this.getTenantClient(cached);
+        const instance = await tenantClient.instance.findFirst({
+          where: { id: instanceId, deletedAt: null },
+          select: { id: true, workspaceId: true },
+        });
+        if (instance) {
+          return { companyId: cached, workspaceId: instance.workspaceId, instanceId: instance.id };
+        }
+        // Instance was deleted or moved — fall through to full scan
+        this.instanceToCompanyCache.delete(instanceId);
+      } catch {
+        this.instanceToCompanyCache.delete(instanceId);
+      }
+    }
+
     const tenantIds = await this.listActiveTenantIds();
     const candidateTenantIds = tenantIds.length
       ? tenantIds
@@ -173,6 +201,7 @@ export class TenantConnectionService implements OnModuleDestroy {
         continue;
       }
 
+      this.instanceToCompanyCache.set(instanceId, tenantId);
       return {
         companyId: tenantId,
         workspaceId: instance.workspaceId,

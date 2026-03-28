@@ -191,6 +191,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       expect.objectContaining({
         id: 'instance-1',
       }),
+      expect.objectContaining({
+        trigger: 'session.connected',
+      }),
     );
     expect(prisma.whatsAppWebhookEvent.update).toHaveBeenCalledWith({
       where: {
@@ -202,7 +205,120 @@ describe('WhatsAppWebService inbound event mapping', () => {
     });
   });
 
-  it('unregisters a qr instance directly in the gateway when deleting it', async () => {
+  it('auto-syncs connected qr history when the connection state is refreshed without a fresh snapshot', async () => {
+    const prisma = {
+      instance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'instance-1',
+          workspaceId: 'workspace-1',
+          provider: 'WHATSAPP_WEB',
+          providerMetadata: null,
+          connectedAt: null,
+          deletedAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const gatewayClient = {
+      registerInstance: jest.fn().mockResolvedValue({
+        state: {
+          instanceId: 'instance-1',
+          status: 'connected',
+        },
+      }),
+      getState: jest.fn().mockResolvedValue({
+        instanceId: 'instance-1',
+        status: 'connected',
+        desiredState: 'running',
+        hasSession: true,
+        connectedAt: '2026-03-28T15:00:00.000Z',
+        lastSeenAt: '2026-03-28T15:00:05.000Z',
+      }),
+      syncHistory: jest.fn().mockResolvedValue({
+        instanceId: 'instance-1',
+        startedAt: '2026-03-28T15:00:10.000Z',
+        finishedAt: '2026-03-28T15:00:12.000Z',
+        durationMs: 2000,
+        chatsEvaluated: 1,
+        chatsEligible: 1,
+        chatsSynced: 1,
+        messagesDiscovered: 2,
+        messagesEmitted: 2,
+        inboundMessages: 1,
+        outboundMessages: 1,
+        mediaMessages: 0,
+        errors: [],
+      }),
+    };
+    const service = new WhatsAppWebService(
+      prisma as never,
+      {
+        get: jest.fn().mockReturnValue('http://127.0.0.1:3001'),
+      } as never,
+      {} as never,
+      gatewayClient as never,
+      {} as never,
+    );
+
+    await service.getConnectionState('workspace-1', 'instance-1');
+    await Promise.resolve();
+
+    expect(gatewayClient.syncHistory).toHaveBeenCalledWith('instance-1');
+  });
+
+  it('does not auto-sync connected qr history again when the latest snapshot already matches the current session', async () => {
+    const prisma = {
+      instance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'instance-1',
+          workspaceId: 'workspace-1',
+          provider: 'WHATSAPP_WEB',
+          providerMetadata: {
+            historySync: {
+              finishedAt: '2026-03-28T15:00:12.000Z',
+            },
+          },
+          connectedAt: new Date('2026-03-28T15:00:00.000Z'),
+          deletedAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const gatewayClient = {
+      registerInstance: jest.fn().mockResolvedValue({
+        state: {
+          instanceId: 'instance-1',
+          status: 'connected',
+        },
+      }),
+      getState: jest.fn().mockResolvedValue({
+        instanceId: 'instance-1',
+        status: 'connected',
+        desiredState: 'running',
+        hasSession: true,
+        connectedAt: '2026-03-28T15:00:00.000Z',
+        lastSeenAt: '2026-03-28T15:00:05.000Z',
+      }),
+      syncHistory: jest.fn(),
+    };
+    const service = new WhatsAppWebService(
+      prisma as never,
+      {
+        get: jest.fn().mockReturnValue('http://127.0.0.1:3001'),
+      } as never,
+      {} as never,
+      gatewayClient as never,
+      {} as never,
+    );
+
+    await service.getConnectionState('workspace-1', 'instance-1');
+    await Promise.resolve();
+
+    expect(gatewayClient.syncHistory).not.toHaveBeenCalled();
+  });
+
+  it('unregisters a qr instance directly in the gateway and marks it disconnected in the db', async () => {
+    const instanceUpdate = jest.fn().mockResolvedValue({});
     const gatewayClient = {
       unregister: jest.fn().mockResolvedValue({
         success: true,
@@ -218,6 +334,7 @@ describe('WhatsAppWebService inbound event mapping', () => {
             provider: 'WHATSAPP_WEB',
             deletedAt: null,
           }),
+          update: instanceUpdate,
         },
       } as never,
       {} as never,
@@ -233,6 +350,14 @@ describe('WhatsAppWebService inbound event mapping', () => {
       instanceId: 'instance-1',
     });
     expect(gatewayClient.unregister).toHaveBeenCalledWith('instance-1');
+    expect(instanceUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'instance-1' },
+        data: expect.objectContaining({
+          status: 'DISCONNECTED',
+        }),
+      }),
+    );
   });
 
   it('identifies status@broadcast payloads so they are ignored before persistence', () => {

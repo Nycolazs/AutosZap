@@ -6,7 +6,6 @@ import type {
   MouseEvent as ReactMouseEvent,
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
-  SetStateAction,
 } from "react";
 import {
   Suspense,
@@ -120,6 +119,11 @@ const HIDDEN_MEDIA_LABELS = new Set([
   "Documento",
   "Documento anexado",
 ]);
+type ConversationsInfiniteData = InfiniteData<
+  PaginatedResponse<Conversation>,
+  number
+>;
+
 function formatMessageTime(value?: string | Date | null) {
   if (!value) return "";
   const date = value instanceof Date ? value : new Date(value);
@@ -325,6 +329,12 @@ function getConversationContactAvatarUrl(
   return conversation?.contactAvatarUrl?.trim() || null;
 }
 
+function shouldShowConversationContactAvatar(
+  conversation?: Pick<Conversation, "instance"> | null,
+) {
+  return conversation?.instance?.provider !== "META_WHATSAPP";
+}
+
 function ConversationContactAvatar({
   conversation,
   className,
@@ -335,10 +345,6 @@ function ConversationContactAvatar({
   fallbackClassName?: string;
 }) {
   const avatarUrl = getConversationContactAvatarUrl(conversation);
-
-  if (!avatarUrl && !isQrConversation(conversation)) {
-    return null;
-  }
 
   return (
     <Avatar
@@ -441,17 +447,16 @@ function resolveMessageSenderUser(
 function shouldShowMessageSenderAvatar(
   message: ConversationMessage,
   senderUser?: ConversationMessageSender | null,
-  nextItem?: ConversationTimelineItem | null,
+  nextMessage?: ConversationMessage | null,
+  nextSenderUser?: ConversationMessageSender | null,
 ) {
   if (message.direction !== "OUTBOUND" || !senderUser?.id) {
     return false;
   }
 
-  // Only show avatar on the last message of a consecutive outbound group
   if (
-    nextItem &&
-    nextItem.kind === "message" &&
-    nextItem.message.direction === "OUTBOUND"
+    nextMessage?.direction === "OUTBOUND" &&
+    nextSenderUser?.id === senderUser.id
   ) {
     return false;
   }
@@ -459,19 +464,26 @@ function shouldShowMessageSenderAvatar(
   return true;
 }
 
+function shouldIgnoreMessageQuoteGesture(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest('[data-prevent-message-quote="true"]'))
+  );
+}
+
 function MessageSenderAvatar({
   senderUser,
 }: {
-  senderUser?: ConversationMessage["senderUser"];
+  senderUser?: ConversationMessageSender | null;
 }) {
   if (!senderUser) {
     return null;
   }
 
   return (
-    <Avatar className="h-6 w-6 shrink-0 border border-foreground/10 bg-[var(--surface-avatar-bg)] shadow-sm">
+    <Avatar className="h-6 w-6 shrink-0 rounded-full border border-foreground/10 bg-[var(--surface-avatar-bg)] shadow-[0_6px_16px_rgba(2,10,22,0.12)]">
       <AvatarImage src={senderUser.avatarUrl ?? undefined} alt={senderUser.name} />
-      <AvatarFallback className="bg-[var(--surface-avatar-bg)] text-[9px] font-semibold text-foreground/88">
+      <AvatarFallback className="rounded-full bg-[var(--surface-avatar-bg)] text-[9px] font-semibold text-foreground/88">
         {getNameInitials(senderUser.name, "EQ")}
       </AvatarFallback>
     </Avatar>
@@ -575,34 +587,7 @@ export function InboxPageContent({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<ConversationStatusFilterValue>("ALL");
-  const conversationScopeKey = `${effectiveInstanceId ?? "all"}::${search}::${statusFilter}`;
-  const [conversationPagination, setConversationPagination] = useState<{
-    scopeKey: string;
-    page: number;
-  }>({
-    scopeKey: "",
-    page: 1,
-  });
-  const conversationPage =
-    conversationPagination.scopeKey === conversationScopeKey
-      ? conversationPagination.page
-      : 1;
-  const setConversationPage = useCallback(
-    (nextPage: SetStateAction<number>) => {
-      setConversationPagination((current) => {
-        const currentPage =
-          current.scopeKey === conversationScopeKey ? current.page : 1;
-        const resolvedPage =
-          typeof nextPage === "function" ? nextPage(currentPage) : nextPage;
-
-        return {
-          scopeKey: conversationScopeKey,
-          page: resolvedPage,
-        };
-      });
-    },
-    [conversationScopeKey],
-  );
+  const conversationsScrollRef = useRef<HTMLDivElement | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<
     string | null
   >(null);
@@ -628,25 +613,22 @@ export function InboxPageContent({
   const [conversationsPanelCollapsed, setConversationsPanelCollapsed] =
     useState(false);
   const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
+  const [activeVideoNoteId, setActiveVideoNoteId] = useState<string | null>(
+    null,
+  );
   const [messageContextMenu, setMessageContextMenu] =
     useState<MessageContextMenuState | null>(null);
   const conversationsQueryKey = useMemo(
-    () =>
-      [
-        "conversations",
-        search,
-        statusFilter,
-        effectiveInstanceId ?? "all",
-        conversationPage,
-      ] as const,
-    [conversationPage, effectiveInstanceId, search, statusFilter],
+    () => ["conversations", search, statusFilter, effectiveInstanceId ?? "all"] as const,
+    [effectiveInstanceId, search, statusFilter],
   );
 
-  const conversationsQuery = useQuery({
+  const conversationsQuery = useInfiniteQuery({
     queryKey: conversationsQueryKey,
-    queryFn: () => {
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => {
       const query = new URLSearchParams();
-      query.set("page", String(conversationPage));
+      query.set("page", String(pageParam));
       query.set("limit", isInstanceInbox ? "100" : "50");
 
       if (search) {
@@ -665,11 +647,20 @@ export function InboxPageContent({
         `conversations?${query.toString()}`,
       );
     },
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.page < lastPage.meta.totalPages
+        ? lastPage.meta.page + 1
+        : undefined,
     refetchInterval: INBOX_REFRESH_INTERVAL,
     refetchIntervalInBackground: true,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
   });
+  const {
+    fetchNextPage: fetchNextConversationPage,
+    hasNextPage: hasNextConversationPage,
+    isFetchingNextPage: isFetchingNextConversationPage,
+  } = conversationsQuery;
   const meQuery = useQuery({
     queryKey: ["auth-me"],
     queryFn: () => apiRequest<AuthMeResponse>("auth/me"),
@@ -822,7 +813,8 @@ export function InboxPageContent({
         : null;
 
   const conversations = useMemo(() => {
-    const list = conversationsQuery.data?.data ?? [];
+    const list =
+      conversationsQuery.data?.pages.flatMap((page) => page.data) ?? [];
     return [...list].sort((a, b) => {
       const aTime = a.lastMessageAt
         ? new Date(a.lastMessageAt).getTime()
@@ -832,12 +824,31 @@ export function InboxPageContent({
         : new Date(b.createdAt).getTime();
       return bTime - aTime;
     });
-  }, [conversationsQuery.data]);
-  const conversationsTotalPages = conversationsQuery.data?.meta.totalPages ?? 1;
-  const conversationsCurrentPage =
-    conversationsQuery.data?.meta.page ?? conversationPage;
+  }, [conversationsQuery.data?.pages]);
   const conversationsTotal =
-    conversationsQuery.data?.meta.total ?? conversations.length;
+    conversationsQuery.data?.pages[0]?.meta.total ?? conversations.length;
+
+  useEffect(() => {
+    const container = conversationsScrollRef.current;
+
+    if (
+      !container ||
+      !conversations.length ||
+      !hasNextConversationPage ||
+      isFetchingNextConversationPage
+    ) {
+      return;
+    }
+
+    if (container.scrollHeight <= container.clientHeight + 48) {
+      void fetchNextConversationPage();
+    }
+  }, [
+    conversations.length,
+    fetchNextConversationPage,
+    hasNextConversationPage,
+    isFetchingNextConversationPage,
+  ]);
   const activeConversationId = useMemo(() => {
     if (!conversations.length) {
       return null;
@@ -918,6 +929,38 @@ export function InboxPageContent({
     queryFn: () => apiRequest<Tag[]>("tags"),
   });
 
+  const updateConversationsCache = useCallback(
+    (updater: (items: Conversation[]) => Conversation[]) => {
+      queryClient.setQueryData<ConversationsInfiniteData>(
+        conversationsQueryKey,
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const pageSizes = current.pages.map((page) => page.data.length);
+          const updatedItems = updater(current.pages.flatMap((page) => page.data));
+          let offset = 0;
+
+          return {
+            ...current,
+            pages: current.pages.map((page, index) => {
+              const nextOffset = offset + pageSizes[index];
+              const nextPageItems = updatedItems.slice(offset, nextOffset);
+              offset = nextOffset;
+
+              return {
+                ...page,
+                data: nextPageItems,
+              };
+            }),
+          };
+        },
+      );
+    },
+    [conversationsQueryKey, queryClient],
+  );
+
   const updateConversationUnreadState = useCallback(
     (conversationId: string, unreadCount: number) => {
       const updateConversationSnapshot = (queryKey: readonly unknown[]) => {
@@ -939,28 +982,18 @@ export function InboxPageContent({
       updateConversationSnapshot(["conversation", conversationId, "base"]);
       updateConversationSnapshot(["conversation", conversationId, "details"]);
 
-      queryClient.setQueryData<PaginatedResponse<Conversation>>(
-        conversationsQueryKey,
-        (current) => {
-          if (!current) {
-            return current;
-          }
-
-          return {
-            ...current,
-            data: current.data.map((conversation) =>
-              conversation.id === conversationId
-                ? {
-                    ...conversation,
-                    unreadCount,
-                  }
-                : conversation,
-            ),
-          };
-        },
+      updateConversationsCache((items) =>
+        items.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                unreadCount,
+              }
+            : conversation,
+        ),
       );
     },
-    [conversationsQueryKey, queryClient],
+    [queryClient, updateConversationsCache],
   );
 
   const applyOptimisticConversationMessage = (
@@ -1022,40 +1055,30 @@ export function InboxPageContent({
     });
 
     if (options?.updateConversationPreview) {
-      queryClient.setQueryData<PaginatedResponse<Conversation>>(
-        conversationsQueryKey,
-        (current) => {
-          if (!current) {
-            return current;
-          }
+      updateConversationsCache((items) => {
+        const updatedConversations = items.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                lastMessageAt: getConversationMessageTimestamp(message),
+                lastMessagePreview: options.preview,
+              }
+            : conversation,
+        );
 
-          const updatedConversations = current.data.map((conversation) =>
-            conversation.id === conversationId
-              ? {
-                  ...conversation,
-                  lastMessageAt: getConversationMessageTimestamp(message),
-                  lastMessagePreview: options.preview,
-                }
-              : conversation,
-          );
+        updatedConversations.sort((left, right) => {
+          const leftTimestamp = left.lastMessageAt
+            ? new Date(left.lastMessageAt).getTime()
+            : 0;
+          const rightTimestamp = right.lastMessageAt
+            ? new Date(right.lastMessageAt).getTime()
+            : 0;
 
-          updatedConversations.sort((left, right) => {
-            const leftTimestamp = left.lastMessageAt
-              ? new Date(left.lastMessageAt).getTime()
-              : 0;
-            const rightTimestamp = right.lastMessageAt
-              ? new Date(right.lastMessageAt).getTime()
-              : 0;
+          return rightTimestamp - leftTimestamp;
+        });
 
-            return rightTimestamp - leftTimestamp;
-          });
-
-          return {
-            ...current,
-            data: updatedConversations,
-          };
-        },
-      );
+        return updatedConversations;
+      });
     }
   };
 
@@ -1128,7 +1151,7 @@ export function InboxPageContent({
         queryKey: ["conversation", activeConversationId],
       });
       const conversationsSnapshot = queryClient.getQueryData<
-        PaginatedResponse<Conversation>
+        ConversationsInfiniteData
       >(conversationsQueryKey);
 
       await queryClient.cancelQueries({
@@ -1253,7 +1276,7 @@ export function InboxPageContent({
         queryKey: ["conversation", conversationId],
       });
       const conversationsSnapshot = queryClient.getQueryData<
-        PaginatedResponse<Conversation>
+        ConversationsInfiniteData
       >(conversationsQueryKey);
 
       await Promise.all([
@@ -2180,6 +2203,7 @@ export function InboxPageContent({
       setQuickMessagesOpen(false);
       setComposerMode("reply");
       setQuotedMessageId(null);
+      setActiveVideoNoteId(null);
       pendingHistoryAnchorRef.current = null;
     }, 0);
 
@@ -2345,6 +2369,7 @@ export function InboxPageContent({
       try {
         const payload = JSON.parse(event.data) as {
           conversationId?: string;
+          type?: string;
         };
 
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -2359,11 +2384,13 @@ export function InboxPageContent({
           payload.conversationId &&
           payload.conversationId === activeConversationId
         ) {
+          const shouldForceStatusRefresh =
+            payload.type === "conversation.message.status.updated";
           // Skip message refetch if a send mutation is in progress
           // to avoid replacing optimistic data and causing flicker
           const isSendCooldown =
             Date.now() < suppressMessageRefetchUntilRef.current;
-          if (!isSendCooldown) {
+          if (!isSendCooldown || shouldForceStatusRefresh) {
             void queryClient.invalidateQueries({
               queryKey: ["conversation", activeConversationId, "messages"],
             });
@@ -2718,8 +2745,7 @@ export function InboxPageContent({
                       conversationSummaryQuery.data ?? {
                         ...DEFAULT_CONVERSATION_STATUS_SUMMARY,
                         ALL:
-                          conversationsQuery.data?.meta.total ??
-                          conversations.length,
+                          conversationsTotal ?? conversations.length,
                       }
                     }
                   />
@@ -2749,7 +2775,24 @@ export function InboxPageContent({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+            <div
+              ref={conversationsScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto p-2.5"
+              onScroll={(event) => {
+                const container = event.currentTarget;
+
+                if (
+                  hasNextConversationPage &&
+                  !isFetchingNextConversationPage &&
+                  !conversationsQuery.isLoading &&
+                  !conversationsQuery.isFetching &&
+                  container.scrollTop + container.clientHeight >=
+                    container.scrollHeight - 180
+                ) {
+                  void fetchNextConversationPage();
+                }
+              }}
+            >
               {conversationsLoadError ? (
                 <EmptyState
                   icon={Inbox}
@@ -2770,10 +2813,12 @@ export function InboxPageContent({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 items-start gap-3">
-                          <ConversationContactAvatar
-                            conversation={conversation}
-                            className="mt-0.5 h-11 w-11"
-                          />
+                          {shouldShowConversationContactAvatar(conversation) ? (
+                            <ConversationContactAvatar
+                              conversation={conversation}
+                              className="mt-0.5 h-11 w-11"
+                            />
+                          ) : null}
                           <div className="min-w-0">
                             <p className="truncate font-medium">
                               {conversation.contact.name}
@@ -2829,6 +2874,14 @@ export function InboxPageContent({
                       </div>
                     </button>
                   ))}
+                  {isFetchingNextConversationPage ? (
+                    <div className="flex items-center justify-center py-2">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur-sm">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Carregando mais conversas...
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <EmptyState
@@ -2846,46 +2899,16 @@ export function InboxPageContent({
                 />
               )}
             </div>
-            {conversationsTotalPages > 1 ? (
-              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3.5 py-3 sm:px-4">
-                <p className="text-xs text-muted-foreground">
-                  Pagina {conversationsCurrentPage} de {conversationsTotalPages}{" "}
-                  • {conversationsTotal} conversa
-                  {conversationsTotal === 1 ? "" : "s"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={
-                      conversationPage <= 1 || conversationsQuery.isFetching
-                    }
-                    onClick={() =>
-                      setConversationPage((current) => Math.max(current - 1, 1))
-                    }
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={
-                      conversationPage >= conversationsTotalPages ||
-                      conversationsQuery.isFetching
-                    }
-                    onClick={() =>
-                      setConversationPage((current) =>
-                        Math.min(current + 1, conversationsTotalPages),
-                      )
-                    }
-                  >
-                    Proxima
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3.5 py-3 sm:px-4">
+              <p className="text-xs text-muted-foreground">
+                {conversationsTotal} conversa{conversationsTotal === 1 ? "" : "s"}
+              </p>
+              {hasNextConversationPage ? (
+                <span className="text-[11px] text-muted-foreground">
+                  Role para carregar mais
+                </span>
+              ) : null}
+            </div>
           </CardContent>
         )}
       </Card>
@@ -2913,10 +2936,12 @@ export function InboxPageContent({
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <ConversationContactAvatar
-                      conversation={selectedConversation}
-                      className="mt-0.5 h-11 w-11"
-                    />
+                    {shouldShowConversationContactAvatar(selectedConversation) ? (
+                      <ConversationContactAvatar
+                        conversation={selectedConversation}
+                        className="mt-0.5 h-11 w-11"
+                      />
+                    ) : null}
                     <div className="min-w-0">
                       <h2 className="font-heading text-[18px] font-semibold">
                         {selectedConversation.contact.name}
@@ -3102,13 +3127,63 @@ export function InboxPageContent({
                     currentUser: meQuery.data,
                     users: usersQuery.data,
                   });
-                  const nextItem = conversationTimelineItems[index + 1] ?? null;
-                  const canReplyToMessage = canQuoteMessage(message);
+                  const fallbackQrSenderUser =
+                    !resolvedSenderUser &&
+                    message.direction === "OUTBOUND" &&
+                    isQrConversation(selectedConversation) &&
+                    meQuery.data
+                      ? {
+                          id: meQuery.data.id,
+                          name: meQuery.data.name,
+                          avatarUrl: normalizeMessageSenderAvatarUrl(
+                            meQuery.data.id,
+                            meQuery.data.avatarUrl,
+                            meQuery.data.id,
+                          ),
+                        }
+                      : null;
+                  const senderAvatarUser =
+                    resolvedSenderUser ?? fallbackQrSenderUser;
+                  const nextTimelineItem = conversationTimelineItems[index + 1];
+                  const nextMessage =
+                    nextTimelineItem?.kind === "message"
+                      ? nextTimelineItem.message
+                      : null;
+                  const nextResolvedSenderUser = nextMessage
+                    ? resolveMessageSenderUser(nextMessage, {
+                        currentUser: meQuery.data,
+                        users: usersQuery.data,
+                      })
+                    : null;
+                  const nextFallbackQrSenderUser =
+                    !nextResolvedSenderUser &&
+                    nextMessage?.direction === "OUTBOUND" &&
+                    isQrConversation(selectedConversation) &&
+                    meQuery.data
+                      ? {
+                          id: meQuery.data.id,
+                          name: meQuery.data.name,
+                          avatarUrl: normalizeMessageSenderAvatarUrl(
+                            meQuery.data.id,
+                            meQuery.data.avatarUrl,
+                            meQuery.data.id,
+                          ),
+                        }
+                      : null;
+                  const nextSenderAvatarUser =
+                    nextResolvedSenderUser ?? nextFallbackQrSenderUser;
+                  const canReplyToMessage =
+                    canQuoteMessageByDoubleClick(message);
                   const showSenderAvatar = shouldShowMessageSenderAvatar(
                     message,
-                    resolvedSenderUser,
-                    nextItem,
+                    senderAvatarUser,
+                    nextMessage,
+                    nextSenderAvatarUser,
                   );
+                  const shouldUseStandaloneMediaBubble =
+                    shouldUseStandaloneConversationMediaBubble(message);
+                  const shouldOverlayStandaloneMediaMeta =
+                    shouldOverlayStandaloneConversationMediaMeta(message);
 
                   return (
                     <div key={item.key}>
@@ -3135,6 +3210,9 @@ export function InboxPageContent({
                         <div
                           className={cn(
                             "relative mb-[2px] w-fit max-w-[88%] text-[13.5px] leading-[1.35] sm:max-w-[min(65%,32rem)]",
+                            shouldUseStandaloneMediaBubble
+                              ? "max-w-[calc(100%-2rem)] sm:max-w-[min(72%,26rem)]"
+                              : "",
                             message.direction === "OUTBOUND"
                               ? "ml-auto"
                               : message.direction === "SYSTEM"
@@ -3147,15 +3225,26 @@ export function InboxPageContent({
                           <div
                             className={cn(
                               "relative rounded-lg px-2.5 py-1.5 shadow-sm",
+                              shouldUseStandaloneMediaBubble
+                                ? "rounded-[24px] bg-transparent px-0 py-0 shadow-none"
+                                : "",
                               message.direction === "OUTBOUND"
-                                ? "rounded-tr-[4px] bg-[var(--surface-bubble-outbound)] text-[var(--text-on-bubble)]"
+                                ? shouldUseStandaloneMediaBubble
+                                  ? "text-[var(--text-on-bubble)]"
+                                  : "rounded-tr-[4px] bg-[var(--surface-bubble-outbound)] text-[var(--text-on-bubble)]"
                                 : message.direction === "SYSTEM"
                                   ? internalMessage
-                                    ? "rounded-2xl border border-violet-400/20 bg-violet-500/10 text-left text-violet-50"
+                                    ? "rounded-2xl border border-[var(--surface-internal-note-border)] bg-[var(--surface-internal-note)] text-left text-foreground shadow-[0_10px_24px_rgba(30,70,130,0.08)]"
                                     : "rounded-lg border border-amber-500/20 bg-[var(--surface-bubble-inbound)]/80 text-center text-[12px] text-muted-foreground"
-                                  : "rounded-tl-[4px] bg-[var(--surface-bubble-inbound)] text-[var(--text-on-bubble)]",
+                                  : shouldUseStandaloneMediaBubble
+                                    ? "text-[var(--text-on-bubble)]"
+                                    : "rounded-tl-[4px] bg-[var(--surface-bubble-inbound)] text-[var(--text-on-bubble)]",
                             )}
-                            onDoubleClick={() => {
+                            onDoubleClick={(event) => {
+                              if (shouldIgnoreMessageQuoteGesture(event.target)) {
+                                return;
+                              }
+
                               if (canReplyToMessage) {
                                 setQuotedMessageId(message.id);
                                 composerTextareaRef.current?.focus();
@@ -3165,32 +3254,50 @@ export function InboxPageContent({
                               openMessageContextMenu(event, message)
                             }
                           >
-                            <MessageBubbleContent message={message} />
-                            <span
-                              className={cn(
-                                "mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none",
-                                message.direction === "OUTBOUND"
-                                  ? "text-[var(--text-bubble-meta)]"
-                                  : message.direction === "SYSTEM"
-                                    ? internalMessage
-                                      ? "text-violet-100/70"
-                                      : "text-muted-foreground/60"
-                                    : "text-[var(--text-bubble-time)]",
-                              )}
-                            >
-                              {formatMessageTime(
-                                getConversationMessageTimestamp(message),
-                              )}
-                              {message.direction === "OUTBOUND" &&
-                              message.status !== "QUEUED" ? (
-                                <MessageStatusIcon status={message.status} />
-                              ) : null}
-                            </span>
+                            <MessageBubbleContent
+                              message={message}
+                              activeVideoNoteId={activeVideoNoteId}
+                              onActiveVideoNoteChange={setActiveVideoNoteId}
+                            />
+                            {shouldUseStandaloneMediaBubble ? (
+                              shouldOverlayStandaloneMediaMeta ? (
+                                <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center justify-end gap-1 rounded-full bg-black/50 px-2 py-1 text-[10px] leading-none text-white shadow-[0_8px_18px_rgba(15,23,42,0.2)] backdrop-blur-sm">
+                                  {formatMessageTime(
+                                    getConversationMessageTimestamp(message),
+                                  )}
+                                  {message.direction === "OUTBOUND" &&
+                                  message.status !== "QUEUED" ? (
+                                    <MessageStatusIcon status={message.status} />
+                                  ) : null}
+                                </span>
+                              ) : null
+                            ) : (
+                              <span
+                                className={cn(
+                                  "mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none",
+                                  message.direction === "OUTBOUND"
+                                    ? "text-[var(--text-bubble-meta)]"
+                                    : message.direction === "SYSTEM"
+                                      ? internalMessage
+                                        ? "text-[var(--text-internal-note-meta)]"
+                                        : "text-muted-foreground/60"
+                                      : "text-[var(--text-bubble-time)]",
+                                )}
+                              >
+                                {formatMessageTime(
+                                  getConversationMessageTimestamp(message),
+                                )}
+                                {message.direction === "OUTBOUND" &&
+                                message.status !== "QUEUED" ? (
+                                  <MessageStatusIcon status={message.status} />
+                                ) : null}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {showSenderAvatar ? (
-                          <MessageSenderAvatar senderUser={resolvedSenderUser} />
-                        ) : message.direction === "OUTBOUND" && resolvedSenderUser?.id ? (
+                          <MessageSenderAvatar senderUser={senderAvatarUser} />
+                        ) : message.direction === "OUTBOUND" && senderAvatarUser?.id ? (
                           <div className="h-6 w-6 shrink-0" />
                         ) : null}
                       </div>
@@ -3434,10 +3541,10 @@ export function InboxPageContent({
                             onClick={toggleInternalComposerMode}
                             disabled={!canToggleInternalComposerMode}
                             className={cn(
-                              "h-8 rounded-[11px] border-violet-400/20 px-2.5 text-[11px] font-medium sm:px-3 sm:text-xs",
+                              "h-8 rounded-[11px] border px-2.5 text-[11px] font-medium transition-colors sm:px-3 sm:text-xs",
                               isInternalComposerMode
-                                ? "bg-violet-500/20 text-violet-50 hover:bg-violet-500/25"
-                                : "bg-violet-500/10 text-violet-100 hover:bg-violet-500/20 hover:text-violet-50",
+                                ? "border-[var(--surface-internal-note-pill-border)] bg-[var(--surface-internal-note)] text-[var(--text-internal-note-accent)] hover:bg-[var(--surface-internal-note-pill)]"
+                                : "border-[var(--surface-internal-note-pill-border)] bg-[var(--surface-internal-note-pill)] text-[var(--text-internal-note-accent)] hover:bg-[var(--surface-internal-note)]",
                             )}
                             title={
                               isInternalComposerMode
@@ -3866,11 +3973,13 @@ function ConversationSidebar({
       <div className="space-y-4">
         <div>
           <div className="flex items-start gap-3.5">
-            <ConversationContactAvatar
-              conversation={selectedConversation}
-              className="h-16 w-16 rounded-[22px]"
-              fallbackClassName="rounded-[22px] text-base"
-            />
+            {shouldShowConversationContactAvatar(selectedConversation) ? (
+              <ConversationContactAvatar
+                conversation={selectedConversation}
+                className="h-16 w-16 rounded-[22px]"
+                fallbackClassName="rounded-[22px] text-base"
+              />
+            ) : null}
             <div className="min-w-0 flex-1">
               <p className="text-sm text-muted-foreground">Contato</p>
               <h3 className="mt-1 font-heading text-[22px] font-semibold">
@@ -4042,7 +4151,15 @@ function ConversationSidebar({
   );
 }
 
-function MessageBubbleContent({ message }: { message: ConversationMessage }) {
+function MessageBubbleContent({
+  message,
+  activeVideoNoteId,
+  onActiveVideoNoteChange,
+}: {
+  message: ConversationMessage;
+  activeVideoNoteId: string | null;
+  onActiveVideoNoteChange: (messageId: string | null) => void;
+}) {
   const mediaUrl = `/api/proxy/messages/${message.id}/media`;
   const messageCaption = getMessageCaption(message);
   const normalizedMessageType = normalizeConversationMessageType(
@@ -4064,7 +4181,7 @@ function MessageBubbleContent({ message }: { message: ConversationMessage }) {
   ) : null;
   const isPdfDocument = isPdfConversationMedia(mediaMetadata);
   const hasUnknownMedia =
-    Boolean(mediaMetadata.mediaId) &&
+    mediaMetadata.hasAttachment &&
     ![
       "image",
       "sticker",
@@ -4128,10 +4245,28 @@ function MessageBubbleContent({ message }: { message: ConversationMessage }) {
   }
 
   if (effectiveType === "video") {
+    const isVideoNote = isVideoNoteConversationMessageType(message.messageType);
+
     return (
       <div className="space-y-2">
         {quoteBlock}
-        <VideoMessagePlayer src={mediaUrl} />
+        {isVideoNote ? (
+          <VideoNoteMessagePlayer
+            messageId={message.id}
+            src={mediaUrl}
+            isExpanded={activeVideoNoteId === message.id}
+            onActiveChange={onActiveVideoNoteChange}
+          />
+        ) : (
+          <VideoMessagePlayer
+            src={mediaUrl}
+            timestampLabel={formatMessageTime(
+              getConversationMessageTimestamp(message),
+            )}
+            status={message.status}
+            outgoing={message.direction === "OUTBOUND"}
+          />
+        )}
         {messageCaption ? (
           <FormattedMessageText content={messageCaption} tone={tone} />
         ) : null}
@@ -4194,13 +4329,13 @@ function InternalConversationMessageContent({
   return (
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-100/90">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--surface-internal-note-pill-border)] bg-[var(--surface-internal-note-pill)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-internal-note-accent)]">
           <StickyNote className="h-3 w-3" />
           {label}
         </span>
       </div>
       {internalMessage.authorName ? (
-        <p className="text-[11px] text-violet-100/65">
+        <p className="text-[11px] text-[var(--text-internal-note-meta)]">
           Registrada por {internalMessage.authorName}
         </p>
       ) : null}
@@ -4453,10 +4588,22 @@ function ConversationTimelineEvent({
 }) {
   const toneClassName =
     tone === "danger"
-      ? "border-rose-500/20 bg-rose-500/10 text-rose-200"
+      ? "border-[var(--timeline-event-danger-border)] bg-[var(--timeline-event-danger-bg)]"
       : tone === "warning"
-        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
-        : "border-primary/20 bg-primary/10 text-primary/90";
+        ? "border-[var(--timeline-event-warning-border)] bg-[var(--timeline-event-warning-bg)]"
+        : "border-[var(--timeline-event-info-border)] bg-[var(--timeline-event-info-bg)]";
+  const labelClassName =
+    tone === "danger"
+      ? "text-[var(--timeline-event-danger-text)]"
+      : tone === "warning"
+        ? "text-[var(--timeline-event-warning-text)]"
+        : "text-[var(--timeline-event-info-text)]";
+  const timestampClassName =
+    tone === "danger"
+      ? "text-[11px] font-medium text-[var(--timeline-event-danger-meta)]"
+      : tone === "warning"
+        ? "text-[11px] font-medium text-[var(--timeline-event-warning-meta)]"
+        : "text-[11px] text-[var(--timeline-event-info-meta)]";
 
   return (
     <div className="my-3 flex items-center justify-center first:mt-0">
@@ -4466,10 +4613,15 @@ function ConversationTimelineEvent({
           toneClassName,
         )}
       >
-        <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">
+        <span
+          className={cn(
+            "text-[11px] font-semibold uppercase tracking-[0.16em]",
+            labelClassName,
+          )}
+        >
           {label}
         </span>
-        <span className="text-[11px] opacity-80">{formatDate(timestamp)}</span>
+        <span className={timestampClassName}>{formatDate(timestamp)}</span>
       </div>
     </div>
   );
@@ -4576,6 +4728,10 @@ function ImageMessagePreview({
   const [open, setOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [previewImageSize, setPreviewImageSize] = useState({
+    width: 0,
+    height: 0,
+  });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -4593,6 +4749,21 @@ function ImageMessagePreview({
     isSticker ? "120px" : "260px",
   );
   const shouldRenderImage = shouldLoad || open;
+  const constrainedPreviewSize = useMemo(
+    () =>
+      previewImageSize.width && previewImageSize.height
+        ? getConstrainedMediaDimensions(previewImageSize, {
+            maxWidth: 320,
+            maxHeight: 420,
+          })
+        : null,
+    [previewImageSize],
+  );
+  const previewAspectRatio =
+    previewImageSize.width && previewImageSize.height
+      ? previewImageSize.width / previewImageSize.height
+      : 4 / 3;
+  const previewWidth = constrainedPreviewSize?.width ?? 300;
 
   const clampPan = useCallback(
     (nextPan: { x: number; y: number }, nextZoom = zoom) => {
@@ -4713,13 +4884,13 @@ function ImageMessagePreview({
     return (
       <div
         ref={containerRef}
-        className="relative h-24 w-24 overflow-hidden rounded-xl"
+        className="relative h-32 w-32 overflow-hidden rounded-2xl sm:h-36 sm:w-36"
       >
         {!isLoaded && !hasError && (
           <MediaLoadingSkeleton
-            width="w-24"
-            height="h-24"
-            rounded="rounded-xl"
+            width="w-32 sm:w-36"
+            height="h-32 sm:h-36"
+            rounded="rounded-2xl"
           />
         )}
         {shouldRenderImage ? (
@@ -4746,11 +4917,19 @@ function ImageMessagePreview({
 
   return (
     <>
-      <div ref={containerRef} className="w-[240px] max-w-full sm:w-[300px]">
+      <div
+        ref={containerRef}
+        className="max-w-full"
+        data-prevent-message-quote="true"
+      >
         <button
           type="button"
-          className="relative block aspect-[4/3] w-full overflow-hidden rounded-xl bg-black/20"
+          className="relative inline-block max-w-full overflow-hidden rounded-[22px] bg-black/10 align-top shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
           onClick={() => handleOpenChange(true)}
+          style={{
+            aspectRatio: `${previewAspectRatio}`,
+            width: `min(${previewWidth}px, calc(100vw - 7rem))`,
+          }}
         >
           {!isLoaded && !hasError && (
             <MediaLoadingSkeleton
@@ -4767,10 +4946,16 @@ function ImageMessagePreview({
               loading="lazy"
               decoding="async"
               className={cn(
-                "absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
+                "absolute inset-0 h-full w-full object-contain transition-opacity duration-300",
                 isLoaded ? "opacity-100" : "opacity-0",
               )}
-              onLoad={() => setIsLoaded(true)}
+              onLoad={(event) => {
+                setPreviewImageSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                });
+                setIsLoaded(true);
+              }}
               onError={() => {
                 setHasError(true);
                 setIsLoaded(true);
@@ -4906,7 +5091,17 @@ function ImageMessagePreview({
   );
 }
 
-function VideoMessagePlayer({ src }: { src: string }) {
+function VideoMessagePlayer({
+  src,
+  timestampLabel,
+  status,
+  outgoing,
+}: {
+  src: string;
+  timestampLabel: string;
+  status?: string | null;
+  outgoing: boolean;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -4923,7 +5118,26 @@ function VideoMessagePlayer({ src }: { src: string }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [previewVideoSize, setPreviewVideoSize] = useState({
+    width: 0,
+    height: 0,
+  });
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const constrainedPreviewSize = useMemo(
+    () =>
+      previewVideoSize.width && previewVideoSize.height
+        ? getConstrainedMediaDimensions(previewVideoSize, {
+            maxWidth: 340,
+            maxHeight: 460,
+          })
+        : null,
+    [previewVideoSize],
+  );
+  const previewAspectRatio =
+    previewVideoSize.width && previewVideoSize.height
+      ? previewVideoSize.width / previewVideoSize.height
+      : 16 / 9;
+  const previewWidth = constrainedPreviewSize?.width ?? 320;
 
   useEffect(() => {
     if (!shouldLoad) {
@@ -4935,6 +5149,10 @@ function VideoMessagePlayer({ src }: { src: string }) {
 
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      setPreviewVideoSize({
+        width: video.videoWidth,
+        height: video.videoHeight,
+      });
       setIsLoading(false);
     };
     const handleCanPlay = () => setIsLoading(false);
@@ -5050,14 +5268,23 @@ function VideoMessagePlayer({ src }: { src: string }) {
   return (
     <div
       ref={visibilityRef}
-      className={cn(isFullscreen ? "h-full w-full" : "w-full max-w-[300px]")}
+      className={cn(isFullscreen ? "h-full w-full" : "max-w-full")}
+      data-prevent-message-quote="true"
     >
       <div
         ref={containerRef}
         className={cn(
-          "group relative aspect-video overflow-hidden rounded-xl bg-black",
-          isFullscreen ? "h-full w-full" : "w-full",
+          "group relative overflow-hidden rounded-[24px] bg-black shadow-[0_18px_34px_rgba(15,23,42,0.18)]",
+          isFullscreen ? "h-full w-full" : "inline-block max-w-full align-top",
         )}
+        style={
+          isFullscreen
+            ? undefined
+            : {
+                aspectRatio: `${previewAspectRatio}`,
+                width: `min(${previewWidth}px, calc(100vw - 7rem))`,
+              }
+        }
         onMouseMove={showControlsTemporarily}
         onTouchStart={showControlsTemporarily}
         onClick={() => {
@@ -5078,7 +5305,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
 
         {/* Loading state */}
         {(isLoading || !shouldLoad) && !hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-foreground/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/28">
             <MediaLoadingSkeleton
               width="w-full"
               height="h-full"
@@ -5090,7 +5317,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
         {/* Error state */}
         {hasError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
-            <span className="text-[12px] text-foreground/60">
+            <span className="text-[12px] text-white/78">
               Erro ao carregar video
             </span>
             <a
@@ -5114,24 +5341,36 @@ function VideoMessagePlayer({ src }: { src: string }) {
               void togglePlayback();
             }}
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/50 text-foreground backdrop-blur-sm transition hover:bg-foreground/70 sm:h-14 sm:w-14">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/16 bg-black/34 text-white shadow-[0_16px_32px_rgba(15,23,42,0.22)] backdrop-blur-sm transition hover:bg-black/48 sm:h-14 sm:w-14">
               <Play className="ml-1 h-5 w-5 fill-current sm:h-6 sm:w-6" />
             </div>
           </div>
         )}
 
+        {!isLoading && !hasError && shouldLoad && !isFullscreen ? (
+          <div className="pointer-events-none absolute bottom-[3.35rem] right-3 z-10 inline-flex items-center justify-end gap-1 rounded-full border border-white/14 bg-black/52 px-2.5 py-1 text-[10px] leading-none text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)] backdrop-blur-md">
+            <span>{timestampLabel}</span>
+            {outgoing && status !== "QUEUED" ? (
+              <MessageStatusIcon status={status} />
+            ) : null}
+          </div>
+        ) : null}
+
         {/* Controls overlay */}
         {!isLoading && !hasError && shouldLoad && (
           <div
             className={cn(
-              "absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/80 to-transparent p-2 transition-opacity duration-200",
+              "absolute inset-x-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/82 via-black/24 to-transparent transition-opacity duration-200",
+              isFullscreen
+                ? "bottom-0 p-3"
+                : "bottom-0 px-3 pb-3 pt-4",
               showControls || !isPlaying ? "opacity-100" : "opacity-0",
             )}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Seekbar */}
             <div className="relative h-1.5 w-full">
-              <div className="absolute inset-0 rounded-full bg-white/20" />
+              <div className="absolute inset-0 rounded-full bg-white/24" />
               <div
                 className="absolute inset-y-0 left-0 rounded-full bg-primary transition-all"
                 style={{ width: `${progress}%` }}
@@ -5151,7 +5390,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-white/92 transition hover:bg-white/10"
                 onClick={togglePlayback}
               >
                 {isPlaying ? (
@@ -5160,13 +5399,13 @@ function VideoMessagePlayer({ src }: { src: string }) {
                   <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
                 )}
               </button>
-              <span className="flex-1 text-[10px] tabular-nums text-foreground/70">
+              <span className="flex-1 text-[10px] tabular-nums text-white/82">
                 {formatMediaDuration(currentTime)} /{" "}
                 {formatMediaDuration(duration)}
               </span>
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-white/92 transition hover:bg-white/10"
                 onClick={toggleMute}
               >
                 {isMuted ? (
@@ -5177,7 +5416,7 @@ function VideoMessagePlayer({ src }: { src: string }) {
               </button>
               <button
                 type="button"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-foreground transition hover:bg-foreground/10"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-white/92 transition hover:bg-white/10"
                 onClick={enterFullscreen}
                 title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
               >
@@ -5187,6 +5426,236 @@ function VideoMessagePlayer({ src }: { src: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function VideoNoteMessagePlayer({
+  messageId,
+  src,
+  isExpanded,
+  onActiveChange,
+}: {
+  messageId: string;
+  src: string;
+  isExpanded: boolean;
+  onActiveChange: (messageId: string | null) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isExpandedRef = useRef(isExpanded);
+  const { containerRef, shouldLoad, forceLoad } = useDeferredMediaLoad("220px");
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const shouldAutoPlayRef = useRef(false);
+
+  useLayoutEffect(() => {
+    isExpandedRef.current = isExpanded;
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (!shouldLoad) {
+      return;
+    }
+
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    const handleLoadedMetadata = () => {
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      setIsLoading(false);
+    };
+    const handleCanPlay = () => {
+      setIsLoading(false);
+
+      if (!shouldAutoPlayRef.current) {
+        return;
+      }
+
+      shouldAutoPlayRef.current = false;
+      void video.play().catch(() => {
+        onActiveChange(null);
+        toast.error("Nao foi possivel reproduzir o video.");
+      });
+    };
+    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      video.currentTime = 0;
+      onActiveChange(null);
+    };
+    const handlePlay = () => {
+      setIsPlaying(true);
+      onActiveChange(messageId);
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+
+      if (
+        !isExpandedRef.current ||
+        video.ended ||
+        video.currentTime === 0 ||
+        document.hidden
+      ) {
+        return;
+      }
+
+      onActiveChange(null);
+    };
+    const handleError = () => {
+      setIsLoading(false);
+      setHasError(true);
+      shouldAutoPlayRef.current = false;
+      onActiveChange(null);
+    };
+
+    video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    video.addEventListener("ended", handleEnded);
+    video.addEventListener("play", handlePlay);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("error", handleError);
+
+    return () => {
+      video.pause();
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("timeupdate", handleTimeUpdate);
+      video.removeEventListener("ended", handleEnded);
+      video.removeEventListener("play", handlePlay);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("error", handleError);
+    };
+  }, [messageId, onActiveChange, shouldLoad, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || isExpanded || video.paused) {
+      return;
+    }
+
+    shouldAutoPlayRef.current = false;
+    video.pause();
+  }, [isExpanded]);
+
+  const togglePlayback = async () => {
+    if (!shouldLoad) {
+      onActiveChange(messageId);
+      shouldAutoPlayRef.current = true;
+      forceLoad();
+      return;
+    }
+
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    if (video.paused) {
+      try {
+        onActiveChange(messageId);
+        await video.play();
+      } catch {
+        onActiveChange(null);
+        toast.error("Nao foi possivel reproduzir o video.");
+      }
+      return;
+    }
+
+    shouldAutoPlayRef.current = false;
+    video.pause();
+  };
+
+  const displayedTime =
+    isPlaying && currentTime > 0
+      ? formatMediaDuration(Math.max(duration - currentTime, 0))
+      : formatMediaDuration(duration > 0 ? duration : currentTime);
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn(
+        "max-w-full origin-center transition-[width,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        isExpanded ? "w-[252px] sm:w-[264px]" : "w-[220px]",
+      )}
+      data-prevent-message-quote="true"
+    >
+      <button
+        type="button"
+        className={cn(
+          "group relative block aspect-square w-full overflow-hidden rounded-full bg-black/85 transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          isExpanded
+            ? "scale-[1.02] shadow-[0_24px_48px_rgba(15,23,42,0.24)]"
+            : "scale-100 shadow-[0_18px_34px_rgba(15,23,42,0.18)]",
+        )}
+        onClick={() => {
+          void togglePlayback();
+        }}
+        aria-label={isPlaying ? "Pausar video" : "Reproduzir video"}
+      >
+        <video
+          ref={videoRef}
+          src={shouldLoad ? src : undefined}
+          playsInline
+          preload={shouldLoad ? "metadata" : "none"}
+          className={cn(
+            "absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-300",
+            isLoading || !shouldLoad || hasError ? "opacity-0" : "opacity-100",
+          )}
+        />
+
+        {(isLoading || !shouldLoad) && !hasError ? (
+          <MediaLoadingSkeleton
+            width="w-full"
+            height="h-full"
+            rounded="rounded-full"
+          />
+        ) : null}
+
+        {hasError ? (
+          <span className="absolute inset-0 flex items-center justify-center px-8 text-center text-xs text-white/80">
+            Nao foi possivel carregar o video.
+          </span>
+        ) : null}
+
+        {!hasError ? (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/42" />
+        ) : null}
+
+        {!isLoading && !hasError ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div
+              className={cn(
+                "flex h-16 w-16 items-center justify-center rounded-full border border-white/18 bg-white/28 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] backdrop-blur-md transition-all duration-200",
+                isPlaying
+                  ? "opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100"
+                  : "opacity-100 scale-100",
+              )}
+            >
+              {isPlaying ? (
+                <Pause className="h-6 w-6 fill-current" />
+              ) : (
+                <Play className="ml-1 h-6 w-6 fill-current" />
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {!hasError ? (
+          <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/16 bg-black/42 px-3 py-1 text-[11px] font-medium tabular-nums text-white/92 backdrop-blur-sm">
+            {displayedTime}
+          </span>
+        ) : null}
+      </button>
     </div>
   );
 }
@@ -5289,12 +5758,12 @@ function CompactAudioPlayer({
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground/10">
             <div className="relative flex h-5 w-5 items-center justify-center">
-              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-white/60" />
+              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[var(--text-bubble-meta)]" />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <div className="h-[8px] w-full animate-pulse rounded-full bg-foreground/10" />
-            <div className="h-[6px] w-16 animate-pulse rounded-full bg-white/[0.07]" />
+            <div className="h-[6px] w-16 animate-pulse rounded-full bg-foreground/10" />
           </div>
         </div>
       ) : null}
@@ -5327,11 +5796,11 @@ function CompactAudioPlayer({
                       "rounded-full transition-colors duration-150",
                       progress >= threshold
                         ? outgoing
-                          ? "bg-[#a8c9f5]"
+                          ? "bg-[var(--text-link-blue)]"
                           : "bg-primary"
                         : outgoing
-                          ? "bg-white/30"
-                          : "bg-white/20",
+                          ? "bg-[var(--text-bubble-meta)]"
+                          : "bg-foreground/18",
                     )}
                     style={{
                       height: `${Math.max(3, Math.round(barHeight * 0.7))}px`,
@@ -5346,7 +5815,7 @@ function CompactAudioPlayer({
             <div
               className={cn(
                 "pointer-events-none absolute top-1/2 -translate-y-1/2 h-[10px] w-[10px] rounded-full shadow-sm transition-[left]",
-                outgoing ? "bg-[#a8c9f5]" : "bg-primary",
+                outgoing ? "bg-[var(--text-link-blue)]" : "bg-primary",
               )}
               style={{ left: `calc(${Math.min(progress, 100)}% - 5px)` }}
             />
@@ -5379,6 +5848,7 @@ function normalizeConversationMessageType(messageType?: string | null) {
   const normalized = (messageType ?? "").trim().toLowerCase();
 
   const typeMap: Record<string, string> = {
+    chat: "text",
     voice: "audio",
     ptt: "audio",
     video_note: "video",
@@ -5393,8 +5863,119 @@ function normalizeConversationMessageType(messageType?: string | null) {
   return typeMap[normalized] ?? normalized;
 }
 
+function isVideoNoteConversationMessageType(messageType?: string | null) {
+  const normalized = (messageType ?? "").trim().toLowerCase();
+
+  return (
+    normalized === "video_note" ||
+    normalized === "video_note_message" ||
+    normalized === "videonote" ||
+    normalized === "video note" ||
+    normalized === "ptv" ||
+    normalized === "round_video"
+  );
+}
+
+function getEffectiveConversationMessageType(message: ConversationMessage) {
+  const normalizedMessageType = normalizeConversationMessageType(
+    message.messageType,
+  );
+  const mediaMetadata = resolveMessageMediaMetadata(message.metadata);
+  const hasUnknownMedia =
+    mediaMetadata.hasAttachment &&
+    ![
+      "image",
+      "sticker",
+      "audio",
+      "video",
+      "document",
+      "template",
+      "text",
+    ].includes(normalizedMessageType);
+
+  if (!hasUnknownMedia) {
+    return normalizedMessageType;
+  }
+
+  const mimeType = mediaMetadata.mimeType ?? "";
+
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return normalizedMessageType;
+}
+
+function shouldUseStandaloneConversationMediaBubble(
+  message: ConversationMessage,
+) {
+  if (message.direction === "SYSTEM") {
+    return false;
+  }
+
+  if (hasRenderableConversationQuote(message.metadata?.quote)) {
+    return false;
+  }
+
+  if (isVideoNoteConversationMessageType(message.messageType)) {
+    return true;
+  }
+
+  if (getMessageCaption(message)) {
+    return false;
+  }
+
+  const effectiveType = getEffectiveConversationMessageType(message);
+
+  if (effectiveType === "image" || effectiveType === "sticker") {
+    return true;
+  }
+
+  if (
+    effectiveType === "video" &&
+    !isVideoNoteConversationMessageType(message.messageType)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function shouldOverlayStandaloneConversationMediaMeta(
+  message: ConversationMessage,
+) {
+  const effectiveType = getEffectiveConversationMessageType(message);
+
+  return (
+    (effectiveType === "image" || effectiveType === "sticker") &&
+    !isVideoNoteConversationMessageType(message.messageType)
+  );
+}
+
 function canQuoteMessage(message: ConversationMessage) {
   return message.direction !== "SYSTEM" && message.status !== "QUEUED";
+}
+
+function canQuoteMessageByDoubleClick(message: ConversationMessage) {
+  if (!canQuoteMessage(message)) {
+    return false;
+  }
+
+  const effectiveType = getEffectiveConversationMessageType(message);
+
+  return (
+    effectiveType === "text" ||
+    effectiveType === "template" ||
+    Boolean(resolveInternalMessageMetadata(message.metadata))
+  );
 }
 
 function resolveInternalMessageMetadata(
@@ -5435,6 +6016,29 @@ function resolveMessageMediaMetadata(
   };
 
   return {
+    hasAttachment:
+      Boolean(mediaAsRecord) ||
+      Boolean(
+        pickString(
+          messageMetadata?.fileName,
+          metadataAsRecord?.file_name,
+          metadataAsRecord?.filename,
+          mediaAsRecord?.fileName,
+          mediaAsRecord?.file_name,
+          mediaAsRecord?.filename,
+          metadataAsRecord?.documentName,
+        ),
+      ) ||
+      Boolean(
+        pickString(
+          messageMetadata?.mimeType,
+          metadataAsRecord?.mime_type,
+          metadataAsRecord?.mimetype,
+          mediaAsRecord?.mimeType,
+          mediaAsRecord?.mime_type,
+          mediaAsRecord?.mimetype,
+        ),
+      ),
     mediaId: pickString(
       messageMetadata?.mediaId,
       metadataAsRecord?.media_id,
@@ -5562,6 +6166,26 @@ function formatMediaDuration(value: number) {
   const seconds = Math.floor(value % 60);
 
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function getConstrainedMediaDimensions(
+  size: { width: number; height: number },
+  limits: { maxWidth: number; maxHeight: number },
+) {
+  if (size.width <= 0 || size.height <= 0) {
+    return null;
+  }
+
+  const scale = Math.min(
+    1,
+    limits.maxWidth / size.width,
+    limits.maxHeight / size.height,
+  );
+
+  return {
+    width: Math.round(size.width * scale),
+    height: Math.round(size.height * scale),
+  };
 }
 
 function getPreferredRecordingMimeType(): RecordingMimeConfig | null {

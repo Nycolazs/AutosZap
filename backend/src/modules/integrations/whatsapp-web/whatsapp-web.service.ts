@@ -28,6 +28,8 @@ import type {
 @Injectable()
 export class WhatsAppWebService {
   private readonly logger = new Logger(WhatsAppWebService.name);
+  private readonly autoHistorySyncPromises = new Map<string, Promise<void>>();
+  private readonly autoHistorySyncRetryCooldownUntil = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -102,6 +104,19 @@ export class WhatsAppWebService {
     const instance = await this.getInstanceOrThrow(instanceId, workspaceId);
     await this.gatewayClient.unregister(instance.id);
 
+    await this.prisma.instance.update({
+      where: { id: instance.id },
+      data: {
+        status: InstanceStatus.DISCONNECTED,
+        providerSessionState: {
+          state: 'STOPPED',
+          desiredState: 'stopped',
+          hasSession: false,
+        },
+        lastSeenAt: new Date(),
+      },
+    });
+
     return {
       success: true,
       instanceId: instance.id,
@@ -113,6 +128,7 @@ export class WhatsAppWebService {
     await this.registerInstance(instance);
     const state = await this.gatewayClient.getState(instance.id);
     await this.updateInstanceFromGatewayState(instance.id, state);
+    this.maybeScheduleConnectedHistorySync(instance, state, 'connection-state');
     return this.serializeGatewayState(state);
   }
 
@@ -170,6 +186,10 @@ export class WhatsAppWebService {
         this.handleGatewayEventInTenantContext(instanceId, payload),
       );
     }
+
+    this.logger.warn(
+      `Tenant nao encontrado para a instancia ${instanceId} (evento: ${payload.event}). Processando no contexto padrao (modo legado).`,
+    );
 
     return this.handleGatewayEventInTenantContext(instanceId, payload);
   }
@@ -256,7 +276,17 @@ export class WhatsAppWebService {
     }
 
     if (payload.event === 'session.connected') {
-      void this.syncConnectedInstanceHistory(instance);
+      this.maybeScheduleConnectedHistorySync(
+        instance,
+        {
+          status: 'connected',
+          connectedAt:
+            typeof payload.data.connectedAt === 'string'
+              ? payload.data.connectedAt
+              : new Date().toISOString(),
+        },
+        'session.connected',
+      );
     }
 
     await this.prisma.whatsAppWebhookEvent.update({
@@ -709,26 +739,114 @@ export class WhatsAppWebService {
             detail: this.buildHistorySyncDetail(historySync),
             errorCount: historySync.errors.length,
           },
+          autoHistorySyncLastError: null,
         },
         lastSyncAt: new Date(),
       },
     });
   }
 
+  private maybeScheduleConnectedHistorySync(
+    instance: {
+      id: string;
+      providerMetadata?: Prisma.JsonValue | null;
+      connectedAt?: Date | null;
+    },
+    state: {
+      status: WhatsAppWebGatewayState['status'];
+      connectedAt?: string | null;
+    },
+    trigger: 'connection-state' | 'session.connected',
+  ) {
+    if (!this.shouldAutoSyncConnectedHistory(instance, state)) {
+      return;
+    }
+
+    const syncPromise = this.syncConnectedInstanceHistory(instance, { trigger })
+      .catch(() => undefined)
+      .finally(() => {
+        this.autoHistorySyncPromises.delete(instance.id);
+      });
+
+    this.autoHistorySyncPromises.set(instance.id, syncPromise);
+  }
+
+  private shouldAutoSyncConnectedHistory(
+    instance: {
+      id: string;
+      providerMetadata?: Prisma.JsonValue | null;
+      connectedAt?: Date | null;
+    },
+    state: {
+      status: WhatsAppWebGatewayState['status'];
+      connectedAt?: string | null;
+    },
+  ) {
+    if (state.status !== 'connected') {
+      return false;
+    }
+
+    if (this.autoHistorySyncPromises.has(instance.id)) {
+      return false;
+    }
+
+    const cooldownUntil = this.autoHistorySyncRetryCooldownUntil.get(instance.id);
+    if (typeof cooldownUntil === 'number' && cooldownUntil > Date.now()) {
+      return false;
+    }
+
+    const providerMetadata = this.toRecord(instance.providerMetadata);
+    const historySync = this.toRecord(
+      providerMetadata?.historySync as Prisma.JsonValue | null | undefined,
+    );
+    const historyFinishedAt = this.parseTimestamp(historySync?.finishedAt);
+    const connectedAt = this.parseTimestamp(
+      state.connectedAt ?? instance.connectedAt?.toISOString() ?? null,
+    );
+
+    if (historyFinishedAt && (!connectedAt || historyFinishedAt >= connectedAt)) {
+      return false;
+    }
+
+    return true;
+  }
+
   private async syncConnectedInstanceHistory(instance: {
     id: string;
     providerMetadata?: Prisma.JsonValue | null;
+  }, options?: {
+    trigger?: 'connection-state' | 'session.connected';
   }) {
     try {
       const historySync = await this.gatewayClient.syncHistory(instance.id);
       await this.updateHistorySyncSnapshot(instance, 'connected', historySync);
+      this.autoHistorySyncRetryCooldownUntil.delete(instance.id);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Falha desconhecida.';
+      this.autoHistorySyncRetryCooldownUntil.set(
+        instance.id,
+        Date.now() + 60_000,
+      );
 
       this.logger.warn(
-        `Falha ao sincronizar o historico QR apos conectar a instancia ${instance.id}: ${errorMessage}`,
+        `Falha ao sincronizar o historico QR da instancia ${instance.id} via ${
+          options?.trigger ?? 'session.connected'
+        }: ${errorMessage}`,
       );
+
+      const providerMetadata = this.toRecord(instance.providerMetadata);
+      await this.prisma.instance.update({
+        where: { id: instance.id },
+        data: {
+          providerMetadata: {
+            ...(providerMetadata ?? {}),
+            autoHistorySyncLastError: errorMessage,
+          },
+        },
+      });
+
+      throw error;
     }
   }
 
@@ -966,5 +1084,24 @@ export class WhatsAppWebService {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private parseTimestamp(value: unknown) {
+    if (value instanceof Date) {
+      const timestamp = value.getTime();
+      return Number.isFinite(timestamp) ? timestamp : null;
+    }
+
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const timestamp = new Date(normalizedValue).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
   }
 }

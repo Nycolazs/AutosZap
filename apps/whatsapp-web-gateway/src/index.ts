@@ -147,7 +147,10 @@ async function main() {
       callbackUrl:
         entry.callbackUrl?.trim() ||
         `${config.callbackBaseUrl.replace(/\/+$/, "")}/api/internal/whatsapp-web/events`,
-      autoStart: entry.autoStart ?? true,
+      autoStart:
+        entry.autoStart !== undefined
+          ? entry.autoStart
+          : (existing?.registry.autoStart ?? false),
       createdAt: existing?.registry.createdAt ?? now,
       updatedAt: now,
       metadata: entry.metadata,

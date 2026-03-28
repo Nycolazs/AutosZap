@@ -155,6 +155,74 @@ test("syncs private chat history and includes inbound and outbound messages", as
   assert.equal(payload?.messages?.[1]?.fromMe, true);
 });
 
+test("downloads historical qr media so old chat attachments can be persisted", async () => {
+  const emittedEvents: Array<Record<string, unknown>> = [];
+  const session = createSession(async (_instanceId, event) => {
+    emittedEvents.push(event as Record<string, unknown>);
+  }) as any;
+
+  session.ensureClientReady = async () => ({
+    getChats: async () => [
+      {
+        id: {
+          _serialized: "5511999999999@c.us",
+        },
+        syncHistory: async () => true,
+        getContact: async () => ({
+          pushname: "Maria QR",
+          name: "Maria Salva",
+          shortName: "Maria",
+        }),
+        fetchMessages: async () => [
+          {
+            id: {
+              _serialized: "wamid.media.history.1",
+              remote: "5511999999999@c.us",
+            },
+            from: "5511999999999@c.us",
+            to: "5511888888888@c.us",
+            body: "",
+            type: "image",
+            timestamp: 1710000000,
+            hasMedia: true,
+            fromMe: false,
+            ack: 1,
+            duration: "0",
+            _data: {
+              mimetype: "image/jpeg",
+              filename: "historia.jpg",
+              size: 5,
+            },
+            downloadMedia: async () => ({
+              data: "aGVsbG8=",
+              mimetype: "image/jpeg",
+              filename: "historia.jpg",
+              filesize: 5,
+            }),
+            getContact: async () => null,
+          },
+        ],
+      },
+    ],
+  });
+
+  const result = await session.syncHistory();
+
+  assert.equal(result.mediaMessages, 1);
+  assert.equal(emittedEvents.length, 1);
+
+  const payload = emittedEvents[0]?.data as
+    | { messages?: Array<Record<string, unknown>> }
+    | undefined;
+  const message = payload?.messages?.[0];
+  const media = message?.media as Record<string, unknown> | undefined;
+
+  assert.equal(message?.hasMedia, true);
+  assert.equal(media?.dataBase64, "aGVsbG8=");
+  assert.equal(media?.downloadStrategy, "history-sync");
+  assert.equal(media?.isBase64, true);
+});
+
 test("resolves @lid contacts to a brazilian phone and avatar during qr history sync", async () => {
   const emittedEvents: Array<Record<string, unknown>> = [];
   const session = createSession(async (_instanceId, event) => {
@@ -522,6 +590,61 @@ test("ignores realtime messages from archived private chats", async () => {
   assert.equal(emittedEvents.length, 0);
 });
 
+test("downloads realtime qr media so inbound attachments can be persisted immediately", async () => {
+  const emittedEvents: Array<Record<string, unknown>> = [];
+  const session = createSession(async (_instanceId, event) => {
+    emittedEvents.push(event as Record<string, unknown>);
+  }) as any;
+  const handlers: Record<string, (...args: Array<any>) => Promise<void>> = {};
+
+  session.attachEvents({
+    on(event: string, handler: (...args: Array<any>) => Promise<void>) {
+      handlers[event] = handler;
+    },
+  });
+
+  await handlers.message_create?.({
+    id: {
+      _serialized: "wamid.realtime.media.1",
+      remote: "5511999999999@c.us",
+    },
+    from: "5511999999999@c.us",
+    to: "5511888888888@c.us",
+    body: "",
+    type: "image",
+    timestamp: 1710000000,
+    hasMedia: true,
+    fromMe: false,
+    ack: 0,
+    getChat: async () => ({
+      archived: false,
+    }),
+    getContact: async () => null,
+    _data: {
+      mimetype: "image/jpeg",
+      filename: "tempo-real.jpg",
+      size: 5,
+    },
+    downloadMedia: async () => ({
+      data: "aGVsbG8=",
+      mimetype: "image/jpeg",
+      filename: "tempo-real.jpg",
+      filesize: 5,
+    }),
+  });
+
+  assert.equal(emittedEvents.length, 1);
+  assert.equal(emittedEvents[0]?.event, "message.inbound");
+
+  const payload = emittedEvents[0]?.data as Record<string, unknown> | undefined;
+  const media = payload?.media as Record<string, unknown> | undefined;
+
+  assert.equal(payload?.hasMedia, true);
+  assert.equal(media?.dataBase64, "aGVsbG8=");
+  assert.equal(media?.downloadStrategy, "realtime");
+  assert.equal(media?.isBase64, true);
+});
+
 test("sends recorded audio as a WhatsApp voice note when requested", async () => {
   const sentPayloads: Array<Record<string, unknown>> = [];
   const session = createSession() as any;
@@ -560,6 +683,74 @@ test("sends recorded audio as a WhatsApp voice note when requested", async () =>
   assert.equal(sentPayloads[0]?.sendMediaAsDocument, false);
 });
 
+test("prefers the resolved @lid recipient when sending text to qr contacts", async () => {
+  const sentRecipients: string[] = [];
+  const session = createSession() as any;
+
+  session.ensureClientReady = async () => ({
+    getContactLidAndPhone: async () => [
+      {
+        lid: "163144450211915@lid",
+        pn: "5542999792797@c.us",
+      },
+    ],
+    sendMessage: async (to: string) => {
+      sentRecipients.push(to);
+
+      return {
+        id: {
+          _serialized: "wamid.text.outbound.1",
+        },
+        ack: 1,
+      };
+    },
+  });
+
+  await session.sendText({
+    to: "5542999792797",
+    body: "Oi",
+  });
+
+  assert.deepEqual(sentRecipients, ["163144450211915@lid"]);
+});
+
+test("falls back to the phone jid when the first qr recipient attempt requires a lid", async () => {
+  const sentRecipients: string[] = [];
+  const session = createSession() as any;
+
+  session.ensureClientReady = async () => ({
+    getContactLidAndPhone: async () => [
+      {
+        pn: "5542999792797@c.us",
+      },
+    ],
+    sendMessage: async (to: string) => {
+      sentRecipients.push(to);
+
+      if (to === "163144450211915@lid") {
+        throw new Error("No LID for user new");
+      }
+
+      return {
+        id: {
+          _serialized: "wamid.text.outbound.2",
+        },
+        ack: 1,
+      };
+    },
+  });
+
+  await session.sendText({
+    to: "163144450211915@lid",
+    body: "Oi",
+  });
+
+  assert.deepEqual(sentRecipients, [
+    "163144450211915@lid",
+    "5542999792797@c.us",
+  ]);
+});
+
 test("downloads message media directly from the active qr session", async () => {
   const session = createSession() as any;
 
@@ -584,4 +775,60 @@ test("downloads message media directly from the active qr session", async () => 
   assert.equal(result.mimeType, "image/jpeg");
   assert.equal(result.fileName, "photo.jpg");
   assert.equal(result.contentLength, 5);
+});
+
+test("desiredState is stopped after disconnect and running after start", async () => {
+  const session = createSession() as any;
+
+  session.initializeClient = async () => {
+    session.client = {};
+    session.state = "connected";
+  };
+  session.resetSessionArtifacts = async () => {};
+
+  await session.start();
+  assert.equal(session.getState().desiredState, "running");
+
+  await session.stop(false);
+  assert.equal(session.getState().desiredState, "stopped");
+  assert.equal(session.getState().status, "stopped");
+});
+
+test("stop clears qr state and preserves profile picture when not logging out", async () => {
+  const session = createSession() as any;
+
+  session.initializeClient = async () => {
+    session.client = {};
+    session.state = "qr";
+    session.qr = "raw-qr-data";
+    session.qrDataUrl = "data:image/png;base64,qr";
+    session.qrExpiresAt = new Date();
+    session.profilePictureUrl = "https://example.com/profile.jpg";
+  };
+  session.resetSessionArtifacts = async () => {};
+
+  await session.start();
+  await session.stop(false);
+
+  const state = session.getState();
+  assert.equal(state.qr, null);
+  assert.equal(state.qrDataUrl, null);
+  assert.equal(state.qrExpiresAt, null);
+  assert.equal(state.profilePictureUrl, "https://example.com/profile.jpg");
+});
+
+test("stop clears profile picture when logging out", async () => {
+  const session = createSession() as any;
+
+  session.initializeClient = async () => {
+    session.client = {};
+    session.state = "connected";
+    session.profilePictureUrl = "https://example.com/profile.jpg";
+  };
+  session.resetSessionArtifacts = async () => {};
+
+  await session.start();
+  await session.stop(true);
+
+  assert.equal(session.getState().profilePictureUrl, null);
 });

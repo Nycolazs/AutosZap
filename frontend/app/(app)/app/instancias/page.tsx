@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -428,6 +428,7 @@ export default function InstancesPage() {
   const [syncingProfile, setSyncingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingProfile, setUploadingProfile] = useState(false);
+  const finalizingConnectedQrInstanceIdRef = useRef<string | null>(null);
   const activeQrConnectionInstance = useMemo(() => {
     if (connectionDialogOpen) {
       return selectedConnectionInstance;
@@ -634,14 +635,17 @@ export default function InstancesPage() {
       return;
     }
 
-    setPendingQrDraftInstanceId(null);
-    void queryClient.invalidateQueries({ queryKey: ['instances'] });
-    toast.success('Instancia QR conectada e adicionada ao workspace.');
+    if (finalizingConnectedQrInstanceIdRef.current === pendingQrDraftInstanceId) {
+      return;
+    }
+
+    finalizingConnectedQrInstanceIdRef.current = pendingQrDraftInstanceId;
+    void finalizeConnectedQrInstance(createQrPreviewInstance);
   }, [
     connectionState?.phase,
-    createQrPreviewInstance?.id,
+    createQrPreviewInstance,
     pendingQrDraftInstanceId,
-    queryClient,
+    finalizeConnectedQrInstance,
   ]);
 
   function resetCreateQrDialogState() {
@@ -666,11 +670,11 @@ export default function InstancesPage() {
     setQrState(null);
   }
 
-  async function syncInstance(instanceId: string) {
+  const syncInstance = useCallback((instanceId: string) => {
     return apiRequest<WhatsAppInstanceDiagnostics>(`instances/${instanceId}/sync`, {
       method: 'POST',
     });
-  }
+  }, []);
 
   async function runSyncAction(
     instance: Instance,
@@ -738,6 +742,57 @@ export default function InstancesPage() {
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
     }
   }
+
+  const finalizeConnectedQrInstance = useCallback(
+    async (instance: Instance) => {
+      const syncToastId = toast.loading(
+        'Instancia conectada. Sincronizando conversas privadas do WhatsApp...',
+        {
+          duration: Number.POSITIVE_INFINITY,
+        },
+      );
+
+      setCreateQrDialogOpen(false);
+      resetCreateQrDialogState();
+      setPendingQrDraftInstanceId((current) =>
+        current === instance.id ? null : current,
+      );
+
+      try {
+        const response = await syncInstance(instance.id);
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['instances'] }),
+          queryClient.removeQueries({ queryKey: ['conversations'] }),
+          queryClient.removeQueries({ queryKey: ['conversations-summary'] }),
+          queryClient.removeQueries({ queryKey: ['conversations-instances'] }),
+          queryClient.removeQueries({ queryKey: ['conversation'] }),
+        ]);
+
+        toast.success(
+          response.historySync?.detail ?? 'Instancia conectada com sucesso.',
+          {
+            id: syncToastId,
+          },
+        );
+      } catch (error) {
+        await queryClient.invalidateQueries({ queryKey: ['instances'] });
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Instancia conectada, mas nao foi possivel sincronizar o historico inicial.',
+          {
+            id: syncToastId,
+          },
+        );
+      } finally {
+        if (finalizingConnectedQrInstanceIdRef.current === instance.id) {
+          finalizingConnectedQrInstanceIdRef.current = null;
+        }
+      }
+    },
+    [queryClient, syncInstance],
+  );
 
   async function discardPendingQrDraftInstance(
     instanceId: string,
@@ -920,7 +975,13 @@ export default function InstancesPage() {
         setProfileDialogOpen(false);
         resetProfileDialogState();
       }
-      await queryClient.invalidateQueries({ queryKey: ['instances'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['instances'] }),
+        queryClient.removeQueries({ queryKey: ['conversations'] }),
+        queryClient.removeQueries({ queryKey: ['conversations-summary'] }),
+        queryClient.removeQueries({ queryKey: ['conversations-instances'] }),
+        queryClient.removeQueries({ queryKey: ['conversation'] }),
+      ]);
       toast.success('Instancia removida do workspace.');
     } catch (error) {
       toast.error(

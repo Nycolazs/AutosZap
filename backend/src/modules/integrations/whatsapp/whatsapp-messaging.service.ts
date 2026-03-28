@@ -267,9 +267,10 @@ export class WhatsAppMessagingService {
       conversationId,
       quotedMessageId: options?.quotedMessageId,
     });
+    const outboundRecipient = await this.resolveConversationRecipient(context);
     const providerResult = await context.transport.sendTextMessage(
       context.config,
-      context.conversation.contact.phone,
+      outboundRecipient,
       content,
       {
         quotedExternalMessageId: quoteContext?.externalMessageId,
@@ -342,6 +343,7 @@ export class WhatsAppMessagingService {
       voice: payload.voice ?? false,
       ...(quoteContext?.metadata ?? {}),
     };
+    const outboundRecipient = await this.resolveConversationRecipient(context);
 
     if (context.config.provider === InstanceProvider.META_WHATSAPP) {
       const uploadResult = await context.transport.uploadMedia(context.config, {
@@ -351,7 +353,7 @@ export class WhatsAppMessagingService {
       });
       providerResult = await context.transport.sendMediaMessage(
         context.config,
-        context.conversation.contact.phone,
+        outboundRecipient,
         {
           type: normalizedMessageType,
           mediaId: uploadResult.mediaId,
@@ -369,7 +371,7 @@ export class WhatsAppMessagingService {
     } else {
       providerResult = await context.transport.sendMediaMessage(
         context.config,
-        context.conversation.contact.phone,
+        outboundRecipient,
         {
           type: normalizedMessageType,
           mediaBufferBase64: payload.buffer.toString('base64'),
@@ -662,6 +664,7 @@ export class WhatsAppMessagingService {
         const existingMessage = await this.prisma.conversationMessage.findFirst(
           {
             where: {
+              workspaceId: inboundInstance.workspaceId,
               externalMessageId: inbound.externalMessageId,
             },
             select: { id: true },
@@ -813,7 +816,10 @@ export class WhatsAppMessagingService {
             select: { provider: true, id: true, workspaceId: true },
           })
         : null;
-      const nextStatus = this.mapProviderStatus(status.status);
+      const nextStatus = this.resolveNextOutboundMessageStatus(
+        message.status,
+        this.mapProviderStatus(status.status),
+      );
 
       await this.prisma.conversationMessage.update({
         where: { id: message.id },
@@ -880,65 +886,139 @@ export class WhatsAppMessagingService {
     }
 
     const metadata = this.readMessageMetadata(message.metadata);
-    const instanceId = message.instanceId ?? message.conversation.instanceId;
+    if (metadata.storagePath) {
+      try {
+        return await this.readStoredMessageMedia({
+          messageId,
+          storagePath: metadata.storagePath,
+          mimeType: metadata.mimeType ?? null,
+          fileName: metadata.fileName ?? null,
+        });
+      } catch {
+        // Fall back to provider download when the local file is no longer available.
+      }
+    }
 
-    if (!instanceId) {
+    const instanceIdCandidates = [
+      message.conversation.instanceId,
+      message.instanceId,
+    ].filter((value, index, values): value is string =>
+      typeof value === 'string' && value.trim().length > 0 && values.indexOf(value) === index,
+    );
+
+    if (!instanceIdCandidates.length) {
       throw new BadRequestException(
         'A mensagem nao possui uma instancia associada para baixar a midia.',
       );
     }
 
-    const config = await this.getInstanceConfig(instanceId, workspaceId);
-    const transport = this.resolveTransport(config.provider);
-    const mediaId = metadata.mediaId ?? message.externalMessageId ?? undefined;
+    let config: MessagingInstanceConfig | null = null;
+    let lastConfigError: unknown = null;
 
-    if (config.provider === InstanceProvider.WHATSAPP_WEB && mediaId) {
+    for (const candidateInstanceId of instanceIdCandidates) {
       try {
-        const download = await transport.downloadMedia(config, mediaId);
-
-        return {
-          ...download,
-          mimeType: download.mimeType ?? metadata.mimeType ?? null,
-          fileName: download.fileName ?? metadata.fileName ?? null,
-        };
+        config = await this.getInstanceConfig(candidateInstanceId, workspaceId);
+        break;
       } catch (error) {
-        if (metadata.storagePath) {
-          this.logger.warn(
-            `Falha no download sob demanda da mensagem ${messageId}; tentando storage legado: ${error instanceof Error ? error.message : String(error)}`,
-          );
+        lastConfigError = error;
 
-          return this.readStoredMessageMedia({
-            messageId,
-            storagePath: metadata.storagePath,
-            mimeType: metadata.mimeType ?? null,
-            fileName: metadata.fileName ?? null,
-          });
+        if (!(error instanceof NotFoundException)) {
+          throw error;
         }
-
-        throw error;
       }
     }
 
-    if (metadata.storagePath) {
-      return this.readStoredMessageMedia({
-        messageId,
-        storagePath: metadata.storagePath,
-        mimeType: metadata.mimeType ?? null,
-        fileName: metadata.fileName ?? null,
-      });
+    if (!config) {
+      throw (lastConfigError instanceof Error
+        ? lastConfigError
+        : new BadRequestException(
+            'A mensagem nao possui uma instancia valida para baixar a midia.',
+          ));
     }
+
+    const transport = this.resolveTransport(config.provider);
+    const mediaId =
+      config.provider === InstanceProvider.WHATSAPP_WEB
+        ? message.externalMessageId ?? metadata.mediaId ?? undefined
+        : metadata.mediaId ?? message.externalMessageId ?? undefined;
 
     if (!mediaId) {
       throw new BadRequestException('A mensagem nao possui midia anexada.');
     }
 
     const download = await transport.downloadMedia(config, mediaId);
+    const persistedMedia = await this.persistDownloadedMessageMedia({
+      messageId: message.id,
+      workspaceId,
+      conversationId: message.conversationId,
+      instanceId: config.id,
+      direction:
+        message.direction === MessageDirection.OUTBOUND ? 'outbound' : 'inbound',
+      buffer: download.buffer,
+      mimeType: download.mimeType ?? metadata.mimeType ?? null,
+      fileName: download.fileName ?? metadata.fileName ?? null,
+    });
 
     return {
       ...download,
-      mimeType: download.mimeType ?? metadata.mimeType ?? null,
-      fileName: download.fileName ?? metadata.fileName ?? null,
+      mimeType:
+        persistedMedia?.mimeType ??
+        download.mimeType ??
+        metadata.mimeType ??
+        null,
+      fileName:
+        persistedMedia?.fileName ??
+        download.fileName ??
+        metadata.fileName ??
+        null,
     };
+  }
+
+  private async persistDownloadedMessageMedia(payload: {
+    messageId: string;
+    workspaceId: string;
+    conversationId: string;
+    instanceId: string;
+    direction: 'inbound' | 'outbound';
+    buffer: Buffer;
+    mimeType?: string | null;
+    fileName?: string | null;
+  }) {
+    try {
+      const stored = await this.mediaStorageService.save({
+        workspaceId: payload.workspaceId,
+        instanceId: payload.instanceId,
+        conversationId: payload.conversationId,
+        direction: payload.direction,
+        buffer: payload.buffer,
+        mimeType: payload.mimeType ?? null,
+        fileName: payload.fileName ?? null,
+      });
+
+      await this.refreshDuplicateMessageMetadata(payload.messageId, {
+        mediaId: stored.storagePath,
+        storagePath: stored.storagePath,
+        mimeType: stored.mimeType,
+        fileName: stored.fileName,
+        media: {
+          storagePath: stored.storagePath,
+          mimeType: stored.mimeType,
+          fileName: stored.fileName,
+          size: stored.size,
+          isBase64: false,
+          downloadStrategy: 'storage',
+          downloadError: null,
+        },
+      });
+
+      return stored;
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao persistir midia baixada sob demanda para a mensagem ${payload.messageId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+
+      return null;
+    }
   }
 
   private async readStoredMessageMedia(payload: {
@@ -1013,6 +1093,65 @@ export class WhatsAppMessagingService {
       config,
       transport: this.resolveTransport(config.provider),
     };
+  }
+
+  private async resolveConversationRecipient(
+    context: ResolvedConversationContext,
+  ) {
+    if (context.config.provider !== InstanceProvider.WHATSAPP_WEB) {
+      return context.conversation.contact.phone;
+    }
+
+    const qrPeerJid = await this.findLatestPrivateQrPeerJid(
+      context.conversation.id,
+    );
+
+    return qrPeerJid ?? context.conversation.contact.phone;
+  }
+
+  private async findLatestPrivateQrPeerJid(conversationId: string) {
+    const messages = await this.prisma.conversationMessage.findMany({
+      where: {
+        conversationId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 25,
+      select: {
+        externalMessageId: true,
+        metadata: true,
+      },
+    });
+
+    for (const message of messages) {
+      const metadata = this.toRecord(message.metadata);
+      const providerMessageContext = this.readProviderMessageContext(
+        metadata ?? undefined,
+      );
+      const peerJid = this.pickString(
+        providerMessageContext?.remoteJid,
+        providerMessageContext?.fromMe === true
+          ? providerMessageContext?.toRaw
+          : providerMessageContext?.fromRaw,
+        providerMessageContext?.fromRaw,
+        providerMessageContext?.toRaw,
+        this.extractPrivateChatJidFromExternalMessageId(
+          message.externalMessageId,
+        ),
+      );
+
+      if (
+        peerJid &&
+        this.isPrivateChatJid(peerJid) &&
+        !this.isGroupJid(peerJid) &&
+        !this.isStatusBroadcastJid(peerJid)
+      ) {
+        return peerJid;
+      }
+    }
+
+    return null;
   }
 
   private resolveTransport(provider: InstanceProvider): MessagingProvider {
@@ -2079,12 +2218,17 @@ export class WhatsAppMessagingService {
     autoMessageType?: AutoMessageType;
     providerResult: {
       externalMessageId: string;
+      status: 'sent' | 'delivered' | 'queued';
       simulated: boolean;
       raw: Record<string, unknown>;
       messageType?: string;
       metadata?: Record<string, unknown>;
     };
   }) {
+    const initialStatus = payload.providerResult.simulated
+      ? MessageStatus.DELIVERED
+      : this.mapProviderSendResultStatus(payload.providerResult.status);
+
     const message = await this.prisma.conversationMessage.create({
       data: {
         workspaceId: payload.workspaceId,
@@ -2098,13 +2242,11 @@ export class WhatsAppMessagingService {
         metadata: payload.providerResult.metadata as
           | Prisma.InputJsonValue
           | undefined,
-        status: payload.providerResult.simulated
-          ? MessageStatus.DELIVERED
-          : MessageStatus.SENT,
+        status: initialStatus,
         isAutomated: payload.isAutomated ?? false,
         autoMessageType: payload.autoMessageType,
         sentAt: new Date(),
-        deliveredAt: payload.providerResult.simulated ? new Date() : null,
+        deliveredAt: initialStatus === MessageStatus.DELIVERED ? new Date() : null,
       },
     });
 
@@ -2115,9 +2257,7 @@ export class WhatsAppMessagingService {
         instanceId: payload.instanceId,
         provider: payload.provider,
         externalMessageId: payload.providerResult.externalMessageId,
-        status: payload.providerResult.simulated
-          ? MessageStatus.DELIVERED
-          : MessageStatus.SENT,
+        status: initialStatus,
         payload: payload.providerResult.raw as Prisma.InputJsonValue,
       },
     });
@@ -2311,6 +2451,7 @@ export class WhatsAppMessagingService {
       where: {
         workspaceId,
         contactId,
+        instanceId,
         deletedAt: null,
       },
       orderBy: {
@@ -2319,29 +2460,55 @@ export class WhatsAppMessagingService {
     });
 
     if (existing) {
-      if (existing.instanceId !== instanceId) {
-        try {
-          return await this.prisma.conversation.update({
+      return existing;
+    }
+
+    const legacyConversation = await this.prisma.conversation.findFirst({
+      where: {
+        workspaceId,
+        contactId,
+        instanceId: null,
+        deletedAt: null,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    if (legacyConversation) {
+      try {
+        return await this.prisma.conversation.update({
+          where: {
+            id: legacyConversation.id,
+          },
+          data: {
+            instanceId,
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          const instanceConversation = await this.prisma.conversation.findFirst({
             where: {
-              id: existing.id,
-            },
-            data: {
+              workspaceId,
+              contactId,
               instanceId,
+              deletedAt: null,
+            },
+            orderBy: {
+              updatedAt: 'desc',
             },
           });
-        } catch (error) {
-          if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === 'P2002'
-          ) {
-            return existing;
+
+          if (instanceConversation) {
+            return instanceConversation;
           }
-
-          throw error;
         }
-      }
 
-      return existing;
+        throw error;
+      }
     }
 
     try {
@@ -2368,6 +2535,7 @@ export class WhatsAppMessagingService {
           where: {
             workspaceId,
             contactId,
+            instanceId,
             deletedAt: null,
           },
           orderBy: {
@@ -2422,11 +2590,59 @@ export class WhatsAppMessagingService {
       return MessageStatus.DELIVERED;
     }
 
+    if (normalized === 'queued' || normalized === 'pending') {
+      return MessageStatus.QUEUED;
+    }
+
     if (normalized === 'failed' || normalized === 'error') {
       return MessageStatus.FAILED;
     }
 
     return MessageStatus.SENT;
+  }
+
+  private mapProviderSendResultStatus(status: 'sent' | 'delivered' | 'queued') {
+    if (status === 'queued') {
+      return MessageStatus.QUEUED;
+    }
+
+    if (status === 'delivered') {
+      return MessageStatus.DELIVERED;
+    }
+
+    return MessageStatus.SENT;
+  }
+
+  private resolveNextOutboundMessageStatus(
+    currentStatus: MessageStatus,
+    incomingStatus: MessageStatus,
+  ) {
+    if (incomingStatus === MessageStatus.FAILED) {
+      if (
+        currentStatus === MessageStatus.DELIVERED ||
+        currentStatus === MessageStatus.READ
+      ) {
+        return currentStatus;
+      }
+
+      return MessageStatus.FAILED;
+    }
+
+    if (currentStatus === MessageStatus.FAILED) {
+      return incomingStatus;
+    }
+
+    const statusRank: Record<MessageStatus, number> = {
+      [MessageStatus.QUEUED]: 0,
+      [MessageStatus.SENT]: 1,
+      [MessageStatus.DELIVERED]: 2,
+      [MessageStatus.READ]: 3,
+      [MessageStatus.FAILED]: -1,
+    };
+
+    return statusRank[incomingStatus] >= statusRank[currentStatus]
+      ? incomingStatus
+      : currentStatus;
   }
 
   private shouldIgnoreInboundMessage(payload: {
@@ -2624,6 +2840,19 @@ export class WhatsAppMessagingService {
         value.includes('@newsletter') ||
         value.includes('status@broadcast') ||
         value.includes('@broadcast')),
+    );
+  }
+
+  private extractPrivateChatJidFromExternalMessageId(value?: string | null) {
+    if (!value?.trim()) {
+      return null;
+    }
+
+    return (
+      value
+        .split('_')
+        .map((segment) => segment.trim())
+        .find((segment) => this.isPrivateChatJid(segment)) ?? null
     );
   }
 
@@ -2853,6 +3082,49 @@ export class WhatsAppMessagingService {
           : null;
 
     if (payload.provider === InstanceProvider.WHATSAPP_WEB) {
+      if (mediaBase64) {
+        try {
+          const buffer = Buffer.from(mediaBase64, 'base64');
+          const stored = await this.mediaStorageService.save({
+            workspaceId: payload.workspaceId,
+            instanceId: payload.instanceId,
+            conversationId: payload.conversationId,
+            direction: payload.direction,
+            buffer,
+            fileName:
+              typeof media?.fileName === 'string' ? media.fileName : 'arquivo',
+            mimeType:
+              typeof media?.mimeType === 'string'
+                ? media.mimeType
+                : 'application/octet-stream',
+          });
+
+          return {
+            ...payload.metadata,
+            media: {
+              ...media,
+              dataBase64: undefined,
+              base64: undefined,
+              storagePath: stored.storagePath,
+              mimeType: stored.mimeType,
+              fileName: stored.fileName,
+              size: stored.size,
+              isBase64: false,
+              downloadStrategy: 'storage',
+              downloadError: null,
+            },
+            mediaId: stored.storagePath,
+            storagePath: stored.storagePath,
+            mimeType: stored.mimeType,
+            fileName: stored.fileName,
+          };
+        } catch (error) {
+          this.logger.warn(
+            `Falha ao materializar midia inbound do WhatsApp Web: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
       return this.buildWhatsAppWebSessionMediaMetadata({
         metadata: payload.metadata,
         externalMessageId: payload.externalMessageId,
@@ -2957,7 +3229,7 @@ export class WhatsAppMessagingService {
     return {
       ...payload.metadata,
       media: normalizedMedia,
-      mediaId: normalizedMediaId,
+      mediaId: normalizedMedia ? normalizedMediaId : undefined,
       storagePath: undefined,
       mimeType: mimeType ?? undefined,
       fileName: fileName ?? undefined,
