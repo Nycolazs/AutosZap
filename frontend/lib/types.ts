@@ -123,6 +123,12 @@ export interface ConversationMessage {
     caption?: string | null;
     animated?: boolean;
     voice?: boolean;
+    durationSeconds?: number | null;
+    call?: {
+      status?: string | null;
+      type?: string | null;
+      durationSeconds?: number | null;
+    } | null;
     internalMessage?: {
       scope?: string | null;
       authorUserId?: string | null;

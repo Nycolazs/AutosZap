@@ -388,6 +388,7 @@ export class WhatsAppWebService {
     payload: Record<string, unknown>,
   ) {
     const isFromMe = payload.fromMe === true;
+    const messageType = this.readGatewayString(payload.type) ?? 'text';
     const normalizedFrom = this.readGatewayString(payload.from);
     const normalizedTo = this.readGatewayString(payload.to);
     const media =
@@ -396,6 +397,16 @@ export class WhatsAppWebService {
       !Array.isArray(payload.media)
         ? (payload.media as Record<string, unknown>)
         : null;
+    const gatewayCall =
+      payload.call &&
+      typeof payload.call === 'object' &&
+      !Array.isArray(payload.call)
+        ? (payload.call as Record<string, unknown>)
+        : null;
+    const durationSeconds = this.readGatewayPositiveInteger(
+      payload.durationSeconds,
+      gatewayCall?.durationSeconds,
+    );
     const profileName = this.readGatewayString(
       payload.profileName,
       payload.contactName,
@@ -404,6 +415,20 @@ export class WhatsAppWebService {
       payload.notifyName,
       payload.shortName,
     );
+    const callMetadata =
+      messageType === 'call_log'
+        ? {
+            status: this.resolveGatewayCallStatus(
+              this.readGatewayString(payload.callStatus, gatewayCall?.status),
+              isFromMe,
+              durationSeconds,
+            ),
+            type: this.normalizeGatewayCallType(
+              this.readGatewayString(payload.callType, gatewayCall?.type),
+            ),
+            durationSeconds,
+          }
+        : undefined;
 
     return {
       instanceId,
@@ -417,7 +442,7 @@ export class WhatsAppWebService {
         typeof payload.messageId === 'string'
           ? payload.messageId
           : `${instanceId}:${Date.now()}`,
-      messageType: typeof payload.type === 'string' ? payload.type : 'text',
+      messageType,
       body: typeof payload.body === 'string' ? payload.body : '',
       timestamp:
         typeof payload.timestamp === 'number'
@@ -429,10 +454,8 @@ export class WhatsAppWebService {
         provider: 'WHATSAPP_WEB',
         ack: payload.ack,
         voice: payload.voice === true,
-        durationSeconds:
-          typeof payload.durationSeconds === 'number'
-            ? payload.durationSeconds
-            : null,
+        durationSeconds,
+        call: callMetadata,
         quotedMessageId: payload.quotedMessageId,
         fromMe: isFromMe,
         providerMessageContext: {
@@ -443,7 +466,7 @@ export class WhatsAppWebService {
             payload.isArchivedChat === true || payload.archived === true,
           fromMe: isFromMe,
           broadcast: payload.broadcast === true,
-          messageType: typeof payload.type === 'string' ? payload.type : null,
+          messageType,
           remoteJid: this.readGatewayString(payload.remoteJid),
           fromRaw: this.readGatewayString(payload.fromRaw),
           toRaw: this.readGatewayString(payload.toRaw),
@@ -1447,6 +1470,111 @@ export class WhatsAppWebService {
 
     const normalizedCandidate = candidate.trim();
     return normalizedCandidate || null;
+  }
+
+  private readGatewayPositiveInteger(...candidates: unknown[]) {
+    for (const candidate of candidates) {
+      if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+        const normalizedCandidate = Math.trunc(candidate);
+
+        if (normalizedCandidate > 0) {
+          return normalizedCandidate;
+        }
+      }
+
+      if (typeof candidate === 'string') {
+        const parsedCandidate = Number.parseInt(candidate.trim(), 10);
+
+        if (Number.isFinite(parsedCandidate) && parsedCandidate > 0) {
+          return parsedCandidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeGatewayCallType(value?: string) {
+    const normalizedValue = value?.trim().toLowerCase();
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    if (normalizedValue.includes('video')) {
+      return 'video';
+    }
+
+    if (
+      normalizedValue.includes('voice') ||
+      normalizedValue.includes('audio')
+    ) {
+      return 'voice';
+    }
+
+    return null;
+  }
+
+  private resolveGatewayCallStatus(
+    explicitStatus: string | undefined,
+    fromMe: boolean,
+    durationSeconds: number | null,
+  ) {
+    const normalizedStatus = explicitStatus?.trim().toLowerCase();
+
+    if (normalizedStatus) {
+      if (normalizedStatus.includes('miss')) {
+        return 'missed';
+      }
+
+      if (
+        normalizedStatus.includes('declin') ||
+        normalizedStatus.includes('reject') ||
+        normalizedStatus.includes('busy') ||
+        normalizedStatus.includes('timeout') ||
+        normalizedStatus.includes('cancel') ||
+        normalizedStatus.includes('unanswer') ||
+        normalizedStatus.includes('no_answer') ||
+        normalizedStatus.includes('noanswer') ||
+        normalizedStatus.includes('failed')
+      ) {
+        return 'unanswered';
+      }
+
+      if (
+        normalizedStatus.includes('answer') ||
+        normalizedStatus.includes('accept') ||
+        normalizedStatus.includes('connect') ||
+        normalizedStatus.includes('complete') ||
+        normalizedStatus.includes('finish') ||
+        normalizedStatus.includes('success') ||
+        normalizedStatus.includes('handled')
+      ) {
+        return 'connected';
+      }
+
+      if (
+        normalizedStatus.includes('incoming') ||
+        normalizedStatus.includes('received')
+      ) {
+        return 'incoming';
+      }
+
+      if (
+        normalizedStatus.includes('outgoing') ||
+        normalizedStatus.includes('placed') ||
+        normalizedStatus.includes('dialed') ||
+        normalizedStatus.includes('dialled')
+      ) {
+        return 'outgoing';
+      }
+    }
+
+    if (durationSeconds) {
+      return 'connected';
+    }
+
+    return fromMe ? 'unanswered' : 'missed';
   }
 
   private shouldIgnoreInboundPayload(payload: Record<string, unknown>) {

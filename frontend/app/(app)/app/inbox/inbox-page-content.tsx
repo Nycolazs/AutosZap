@@ -38,6 +38,10 @@ import {
   Mic,
   Pause,
   Paperclip,
+  PhoneCall,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
   Play,
   Reply,
   Search,
@@ -4351,6 +4355,18 @@ function MessageBubbleContent({
     );
   }
 
+  if (effectiveType === "call_log") {
+    return (
+      <div className="space-y-2">
+        {quoteBlock}
+        <CallLogMessageContent message={message} tone={tone} />
+        {messageCaption ? (
+          <FormattedMessageText content={messageCaption} tone={tone} />
+        ) : null}
+      </div>
+    );
+  }
+
   if (effectiveType === "image" || effectiveType === "sticker") {
     return (
       <div className="space-y-2">
@@ -4451,6 +4467,59 @@ function MessageBubbleContent({
     <div className="space-y-2">
       {quoteBlock}
       <FormattedMessageText content={message.content} tone={tone} />
+    </div>
+  );
+}
+
+function CallLogMessageContent({
+  message,
+  tone,
+}: {
+  message: ConversationMessage;
+  tone: "incoming" | "outgoing" | "system";
+}) {
+  const presentation = getConversationCallPresentation(message);
+
+  if (!presentation) {
+    return (
+      <FormattedMessageText
+        content={message.content || "Ligacao"}
+        tone={tone}
+      />
+    );
+  }
+
+  const Icon = presentation.icon;
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <span
+        className={cn(
+          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/8",
+          presentation.iconClassName,
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium leading-5">
+          {presentation.label}
+        </p>
+        {presentation.detail ? (
+          <p
+            className={cn(
+              "text-[11px] leading-4 opacity-75",
+              tone === "outgoing"
+                ? "text-[var(--text-bubble-meta)]"
+                : tone === "system"
+                  ? "text-muted-foreground/70"
+                  : "text-[var(--text-bubble-time)]",
+            )}
+          >
+            {presentation.detail}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -6207,6 +6276,206 @@ function resolveMessageMediaMetadata(
   };
 }
 
+function normalizeConversationCallStatus(value?: string | null) {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (normalizedValue.includes("miss")) {
+    return "missed";
+  }
+
+  if (
+    normalizedValue.includes("declin") ||
+    normalizedValue.includes("reject") ||
+    normalizedValue.includes("busy") ||
+    normalizedValue.includes("timeout") ||
+    normalizedValue.includes("cancel") ||
+    normalizedValue.includes("unanswer") ||
+    normalizedValue.includes("no_answer") ||
+    normalizedValue.includes("noanswer") ||
+    normalizedValue.includes("failed")
+  ) {
+    return "unanswered";
+  }
+
+  if (
+    normalizedValue.includes("answer") ||
+    normalizedValue.includes("accept") ||
+    normalizedValue.includes("connect") ||
+    normalizedValue.includes("complete") ||
+    normalizedValue.includes("finish") ||
+    normalizedValue.includes("success") ||
+    normalizedValue.includes("handled")
+  ) {
+    return "connected";
+  }
+
+  if (
+    normalizedValue.includes("outgoing") ||
+    normalizedValue.includes("placed") ||
+    normalizedValue.includes("dialed") ||
+    normalizedValue.includes("dialled")
+  ) {
+    return "outgoing";
+  }
+
+  if (
+    normalizedValue.includes("incoming") ||
+    normalizedValue.includes("received")
+  ) {
+    return "incoming";
+  }
+
+  return null;
+}
+
+function normalizeConversationCallType(value?: string | null) {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (normalizedValue.includes("video")) {
+    return "video";
+  }
+
+  if (
+    normalizedValue.includes("voice") ||
+    normalizedValue.includes("audio")
+  ) {
+    return "voice";
+  }
+
+  return null;
+}
+
+function readPositiveConversationInteger(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const normalizedValue = Math.trunc(value);
+
+      if (normalizedValue > 0) {
+        return normalizedValue;
+      }
+    }
+
+    if (typeof value === "string") {
+      const parsedValue = Number.parseInt(value.trim(), 10);
+
+      if (Number.isFinite(parsedValue) && parsedValue > 0) {
+        return parsedValue;
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveConversationCallMetadata(message: ConversationMessage) {
+  if (normalizeConversationMessageType(message.messageType) !== "call_log") {
+    return null;
+  }
+
+  const metadataAsRecord =
+    message.metadata &&
+    typeof message.metadata === "object" &&
+    !Array.isArray(message.metadata)
+      ? (message.metadata as Record<string, unknown>)
+      : null;
+  const callAsRecord =
+    metadataAsRecord?.call &&
+    typeof metadataAsRecord.call === "object" &&
+    !Array.isArray(metadataAsRecord.call)
+      ? (metadataAsRecord.call as Record<string, unknown>)
+      : null;
+  const durationSeconds = readPositiveConversationInteger(
+    message.metadata?.call?.durationSeconds,
+    message.metadata?.durationSeconds,
+    callAsRecord?.durationSeconds,
+    metadataAsRecord?.durationSeconds,
+  );
+  const status =
+    normalizeConversationCallStatus(
+      message.metadata?.call?.status ??
+        (typeof callAsRecord?.status === "string" ? callAsRecord.status : null) ??
+        (typeof metadataAsRecord?.callStatus === "string"
+          ? metadataAsRecord.callStatus
+          : null),
+    ) ??
+    (durationSeconds
+      ? "connected"
+      : message.direction === "OUTBOUND"
+        ? "unanswered"
+        : "missed");
+  const callType =
+    normalizeConversationCallType(
+      message.metadata?.call?.type ??
+        (typeof callAsRecord?.type === "string" ? callAsRecord.type : null) ??
+        (typeof metadataAsRecord?.callType === "string"
+          ? metadataAsRecord.callType
+          : null),
+    ) ?? null;
+
+  return {
+    status,
+    callType,
+    durationSeconds,
+  };
+}
+
+function getConversationCallPresentation(message: ConversationMessage) {
+  const callMetadata = resolveConversationCallMetadata(message);
+
+  if (!callMetadata) {
+    return null;
+  }
+
+  const baseLabel =
+    callMetadata.callType === "video" ? "Ligacao de video" : "Ligacao";
+  const label =
+    callMetadata.status === "missed"
+      ? `${baseLabel} perdida`
+      : callMetadata.status === "connected"
+        ? message.direction === "OUTBOUND"
+          ? `${baseLabel} realizada`
+          : `${baseLabel} atendida`
+        : callMetadata.status === "unanswered"
+          ? message.direction === "OUTBOUND"
+            ? `${baseLabel} nao atendida`
+            : `${baseLabel} perdida`
+          : callMetadata.status === "outgoing"
+            ? `${baseLabel} de saida`
+            : `${baseLabel} recebida`;
+  const detail = callMetadata.durationSeconds
+    ? `Duracao ${formatMediaDuration(callMetadata.durationSeconds)}`
+    : null;
+  const icon =
+    callMetadata.status === "missed"
+      ? PhoneMissed
+      : message.direction === "OUTBOUND"
+        ? PhoneOutgoing
+        : callMetadata.status === "connected"
+          ? PhoneIncoming
+          : PhoneCall;
+  const iconClassName =
+    callMetadata.status === "missed" || callMetadata.status === "unanswered"
+      ? "bg-rose-500/14 text-rose-100"
+      : callMetadata.status === "connected"
+        ? "bg-emerald-500/14 text-emerald-100"
+        : "bg-sky-500/14 text-sky-100";
+
+  return {
+    label,
+    detail,
+    icon,
+    iconClassName,
+  };
+}
+
 function isPdfConversationMedia(
   mediaMetadata: ReturnType<typeof resolveMessageMediaMetadata>,
 ) {
@@ -6221,6 +6490,12 @@ function buildMessageQuotePreview(message: ConversationMessage) {
 
   if (content && !HIDDEN_MEDIA_LABELS.has(content)) {
     return content.slice(0, 220);
+  }
+
+  const callPresentation = getConversationCallPresentation(message);
+
+  if (callPresentation) {
+    return callPresentation.label;
   }
 
   const normalizedType = normalizeConversationMessageType(message.messageType);

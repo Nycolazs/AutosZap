@@ -232,3 +232,58 @@ test("marks qr voice notes with audio metadata that the inbox can render correct
     downloadStrategy: "session",
   });
 });
+
+test("derives missed inbound call logs even when WhatsApp Web omits a body", async () => {
+  const payload = await buildInboundMessageData("instance-1", {
+    id: {
+      _serialized: "wamid.call.1",
+      remote: "5511999999999@c.us",
+    },
+    from: "5511999999999@c.us",
+    to: "5511888888888@c.us",
+    body: "",
+    type: "call_log",
+    timestamp: 1710000000,
+    hasMedia: false,
+    fromMe: false,
+    ack: 0,
+    getContact: async () => null,
+  } as any);
+
+  assert.deepEqual(payload.call, {
+    status: "missed",
+    type: null,
+    durationSeconds: null,
+  });
+  assert.equal(payload.durationSeconds, null);
+});
+
+test("keeps call metadata that the inbox can use for connected outbound call logs", async () => {
+  const payload = await buildInboundMessageData("instance-1", {
+    id: {
+      _serialized: "wamid.call.2",
+      remote: "5511999999999@c.us",
+    },
+    from: "5511888888888@c.us",
+    to: "5511999999999@c.us",
+    body: "",
+    type: "call_log",
+    duration: "42",
+    timestamp: 1710000000,
+    hasMedia: false,
+    fromMe: true,
+    ack: 0,
+    _data: {
+      isVideo: true,
+      callStatus: "connected",
+    },
+    getContact: async () => null,
+  } as any);
+
+  assert.deepEqual(payload.call, {
+    status: "connected",
+    type: "video",
+    durationSeconds: 42,
+  });
+  assert.equal(payload.durationSeconds, 42);
+});

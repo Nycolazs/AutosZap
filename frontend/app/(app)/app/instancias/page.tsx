@@ -588,6 +588,7 @@ export default function InstancesPage() {
   const [uploadingProfile, setUploadingProfile] = useState(false);
   const finalizingConnectedQrInstanceIdRef = useRef<string | null>(null);
   const createQrDialogOpenRef = useRef(false);
+  const createQrDraftCanceledRef = useRef(false);
 
   const instancesQuery = useQuery({
     queryKey: ['instances'],
@@ -975,7 +976,7 @@ export default function InstancesPage() {
         setInstanceHistorySyncJobInCache(
           instance.id,
           buildRunningHistorySyncJob(
-            'Sincronizando conversas privadas do WhatsApp Web.',
+            'Sincronizando conversas do WhatsApp Web.',
           ),
         );
       }
@@ -1093,7 +1094,7 @@ export default function InstancesPage() {
           setInstanceHistorySyncJobInCache(
             instance.id,
             buildRunningHistorySyncJob(
-              'Sincronizando conversas privadas do WhatsApp Web.',
+              'Sincronizando conversas do WhatsApp Web.',
             ),
           );
           await syncInstance(instance.id);
@@ -1180,6 +1181,7 @@ export default function InstancesPage() {
     }
 
     const previewInstanceId = createQrPreviewInstance?.id ?? null;
+    createQrDraftCanceledRef.current = true;
 
     setCreateQrDialogOpen(false);
     resetCreateQrDialogState();
@@ -1232,6 +1234,7 @@ export default function InstancesPage() {
       return;
     }
 
+    createQrDraftCanceledRef.current = false;
     const draftName = buildQrDraftInstanceName();
     const actionKey = 'create-qr-draft';
 
@@ -1249,7 +1252,7 @@ export default function InstancesPage() {
         },
       });
 
-      if (!createQrDialogOpenRef.current) {
+      if (createQrDraftCanceledRef.current || !createQrDialogOpenRef.current) {
         await discardPendingQrDraftInstance(createdInstance.id, { silent: true });
         return;
       }
@@ -1269,7 +1272,7 @@ export default function InstancesPage() {
         },
       );
 
-      if (!createQrDialogOpenRef.current) {
+      if (createQrDraftCanceledRef.current || !createQrDialogOpenRef.current) {
         await discardPendingQrDraftInstance(createdInstance.id, { silent: true });
         return;
       }
@@ -1294,6 +1297,10 @@ export default function InstancesPage() {
       setPendingQrDraftInstanceId(null);
       setConnectionState(null);
       setQrState(null);
+
+      if (createQrDraftCanceledRef.current || !createQrDialogOpenRef.current) {
+        return;
+      }
 
       toast.error(
         error instanceof Error ? error.message : 'Nao foi possivel criar a instancia QR.',
@@ -2385,7 +2392,7 @@ export default function InstancesPage() {
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       {currentCreateQrHistorySyncProgress.messagesProcessed}{' '}
-                      mensagens privadas carregadas ate agora.
+                      mensagens carregadas ate agora.
                     </p>
                   </div>
                 </div>

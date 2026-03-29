@@ -691,7 +691,13 @@ export class WhatsAppMessagingService {
       }
 
       const inboundPreview =
-        inbound.body || this.buildMediaPlaceholder(inbound.messageType);
+        inbound.body ||
+        this.buildMediaPlaceholder(inbound.messageType, undefined, {
+          metadata: inboundMetadata,
+          direction: isSyncedOutboundMessage
+            ? MessageDirection.OUTBOUND
+            : MessageDirection.INBOUND,
+        });
 
       if (isSyncedOutboundMessage) {
         await this.persistSyncedPrivateOutboundMessage({
@@ -2942,6 +2948,10 @@ export class WhatsAppMessagingService {
   private buildMediaPlaceholder(
     messageType?: string,
     fileName?: string | null,
+    options?: {
+      metadata?: Prisma.JsonValue | Record<string, unknown> | null;
+      direction?: MessageDirection | null;
+    },
   ) {
     if (messageType === 'image') return 'Imagem';
     if (messageType === 'audio') return 'Audio';
@@ -2951,7 +2961,165 @@ export class WhatsAppMessagingService {
     if (messageType === 'document')
       return fileName ? `Documento: ${fileName}` : 'Documento';
     if (messageType === 'template') return 'Template enviado';
+    if (messageType === 'call_log')
+      return this.buildCallMessagePreview(
+        options?.metadata ?? null,
+        options?.direction ?? null,
+      );
     return 'Mensagem';
+  }
+
+  private buildCallMessagePreview(
+    metadataValue: Prisma.JsonValue | Record<string, unknown> | null,
+    direction: MessageDirection | null,
+  ) {
+    const metadata = this.toRecord(metadataValue) ?? {};
+    const call = this.toRecord(metadata.call);
+    const durationSeconds = this.readPositiveInteger(
+      call?.durationSeconds,
+      metadata.durationSeconds,
+    );
+    const normalizedStatus =
+      this.normalizeCallStatus(
+        this.pickString(
+          call?.status,
+          metadata.callStatus,
+          call?.callStatus,
+          call?.result,
+          call?.callResult,
+        ),
+      ) ??
+      (durationSeconds
+        ? 'connected'
+        : direction === MessageDirection.OUTBOUND
+          ? 'unanswered'
+          : 'missed');
+    const normalizedCallType = this.normalizeCallType(
+      this.pickString(call?.type, metadata.callType),
+    );
+    const baseLabel =
+      normalizedCallType === 'video' ? 'Ligacao de video' : 'Ligacao';
+
+    if (normalizedStatus === 'missed') {
+      return `${baseLabel} perdida`;
+    }
+
+    if (normalizedStatus === 'connected') {
+      return direction === MessageDirection.OUTBOUND
+        ? `${baseLabel} realizada`
+        : `${baseLabel} atendida`;
+    }
+
+    if (normalizedStatus === 'unanswered') {
+      return direction === MessageDirection.OUTBOUND
+        ? `${baseLabel} nao atendida`
+        : `${baseLabel} perdida`;
+    }
+
+    if (normalizedStatus === 'outgoing') {
+      return `${baseLabel} de saida`;
+    }
+
+    return `${baseLabel} recebida`;
+  }
+
+  private normalizeCallStatus(value?: string | null) {
+    const normalizedValue = value?.trim().toLowerCase();
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    if (normalizedValue.includes('miss')) {
+      return 'missed';
+    }
+
+    if (
+      normalizedValue.includes('declin') ||
+      normalizedValue.includes('reject') ||
+      normalizedValue.includes('busy') ||
+      normalizedValue.includes('timeout') ||
+      normalizedValue.includes('cancel') ||
+      normalizedValue.includes('unanswer') ||
+      normalizedValue.includes('no_answer') ||
+      normalizedValue.includes('noanswer') ||
+      normalizedValue.includes('failed')
+    ) {
+      return 'unanswered';
+    }
+
+    if (
+      normalizedValue.includes('answer') ||
+      normalizedValue.includes('accept') ||
+      normalizedValue.includes('connect') ||
+      normalizedValue.includes('complete') ||
+      normalizedValue.includes('finish') ||
+      normalizedValue.includes('success') ||
+      normalizedValue.includes('handled')
+    ) {
+      return 'connected';
+    }
+
+    if (
+      normalizedValue.includes('outgoing') ||
+      normalizedValue.includes('placed') ||
+      normalizedValue.includes('dialed') ||
+      normalizedValue.includes('dialled')
+    ) {
+      return 'outgoing';
+    }
+
+    if (
+      normalizedValue.includes('incoming') ||
+      normalizedValue.includes('received')
+    ) {
+      return 'incoming';
+    }
+
+    return null;
+  }
+
+  private normalizeCallType(value?: string | null) {
+    const normalizedValue = value?.trim().toLowerCase();
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    if (normalizedValue.includes('video')) {
+      return 'video';
+    }
+
+    if (
+      normalizedValue.includes('voice') ||
+      normalizedValue.includes('audio')
+    ) {
+      return 'voice';
+    }
+
+    return null;
+  }
+
+  private readPositiveInteger(...values: unknown[]) {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        const normalizedValue = Math.trunc(value);
+
+        if (normalizedValue > 0) {
+          return normalizedValue;
+        }
+      }
+
+      if (typeof value === 'string') {
+        const parsedValue = Number.parseInt(value.trim(), 10);
+
+        if (Number.isFinite(parsedValue) && parsedValue > 0) {
+          return parsedValue;
+        }
+      }
+    }
+
+    return null;
   }
 
   private readMessageMetadata(metadata: Prisma.JsonValue | null): {
@@ -3297,6 +3465,7 @@ export class WhatsAppMessagingService {
     content?: string | null;
     messageType?: string | null;
     metadata?: Prisma.JsonValue | null;
+    direction?: MessageDirection | null;
   }) {
     const normalizedContent = message.content?.trim();
 
@@ -3309,6 +3478,10 @@ export class WhatsAppMessagingService {
     return this.buildMediaPlaceholder(
       message.messageType ?? undefined,
       metadata.fileName,
+      {
+        metadata: message.metadata ?? null,
+        direction: message.direction ?? null,
+      },
     );
   }
 

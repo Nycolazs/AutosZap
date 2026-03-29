@@ -130,6 +130,50 @@ describe('WhatsAppWebService inbound event mapping', () => {
     );
   });
 
+  it('maps qr call logs into structured call metadata for the inbox', () => {
+    const service = createService();
+
+    const result = privateApi(service).mapInboundEvent('instance-1', {
+      from: '5511999999999',
+      messageId: 'wamid.call.1',
+      type: 'call_log',
+      body: '',
+      timestamp: 1710000000000,
+      call: {
+        status: 'connected',
+        type: 'video',
+        durationSeconds: 42,
+      },
+      durationSeconds: 42,
+    });
+
+    expect(result.messageType).toBe('call_log');
+    expect(result.metadata.durationSeconds).toBe(42);
+    expect(result.metadata.call).toEqual({
+      status: 'connected',
+      type: 'video',
+      durationSeconds: 42,
+    });
+  });
+
+  it('derives missed call logs when the gateway only reports type and direction', () => {
+    const service = createService();
+
+    const result = privateApi(service).mapInboundEvent('instance-1', {
+      from: '5511999999999',
+      messageId: 'wamid.call.2',
+      type: 'call_log',
+      body: '',
+      timestamp: 1710000000000,
+    });
+
+    expect(result.metadata.call).toEqual({
+      status: 'missed',
+      type: null,
+      durationSeconds: null,
+    });
+  });
+
   it('maps profile picture updates from the qr gateway into instance cache fields', () => {
     const service = createService();
 

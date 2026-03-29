@@ -3,6 +3,7 @@ import {
   ConversationStatus,
   InstanceMode,
   InstanceProvider,
+  MessageDirection,
   MessageStatus,
 } from '@prisma/client';
 import { WhatsAppMessagingService } from './whatsapp-messaging.service';
@@ -248,6 +249,36 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     expect((service as any).mapProviderSendResultStatus('delivered')).toBe(
       MessageStatus.DELIVERED,
     );
+  });
+
+  it('builds readable previews for missed qr call logs', () => {
+    const { service } = createService();
+
+    expect(
+      (service as any).buildMediaPlaceholder('call_log', null, {
+        metadata: {
+          durationSeconds: null,
+        },
+        direction: MessageDirection.INBOUND,
+      }),
+    ).toBe('Ligacao perdida');
+  });
+
+  it('builds readable previews for connected outbound qr call logs', () => {
+    const { service } = createService();
+
+    expect(
+      (service as any).buildMediaPlaceholder('call_log', null, {
+        metadata: {
+          call: {
+            type: 'video',
+            status: 'connected',
+            durationSeconds: 42,
+          },
+        },
+        direction: MessageDirection.OUTBOUND,
+      }),
+    ).toBe('Ligacao de video realizada');
   });
 
   it('keeps the most advanced outbound status when qr callbacks arrive out of order', () => {
@@ -729,7 +760,7 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
       orderBy: {
         createdAt: 'desc',
       },
-      take: 25,
+      take: 200,
       select: {
         externalMessageId: true,
         metadata: true,
