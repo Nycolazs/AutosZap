@@ -14,14 +14,18 @@ import {
 } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { EventDedupService } from '../../../common/services/event-dedup.service';
 import { TenantConnectionService } from '../../../common/tenancy/tenant-connection.service';
 import { WhatsAppMessagingService } from '../whatsapp/whatsapp-messaging.service';
+import { InstanceConnectionManager } from './instance-connection-manager';
+import { SyncOrchestratorService } from './sync-orchestrator.service';
 import {
   WhatsAppWebGatewayClient,
   WhatsAppWebGatewayHistorySyncCanceledError,
 } from './whatsapp-web-gateway.client';
 import type {
   WhatsAppWebGatewayEventEnvelope,
+  WhatsAppWebGatewayHistorySyncProgress,
   WhatsAppWebGatewayHistorySyncResult,
   WhatsAppWebGatewayMessageBatchPayload,
   WhatsAppWebGatewayQrState,
@@ -43,6 +47,9 @@ export class WhatsAppWebService {
     private readonly tenantConnectionService: TenantConnectionService,
     private readonly gatewayClient: WhatsAppWebGatewayClient,
     private readonly messagingService: WhatsAppMessagingService,
+    private readonly eventDedup: EventDedupService,
+    private readonly connectionManager: InstanceConnectionManager,
+    private readonly syncOrchestrator: SyncOrchestratorService,
   ) {}
 
   async testConnection(workspaceId: string, instanceId: string) {
@@ -236,6 +243,41 @@ export class WhatsAppWebService {
       throw new NotFoundException('Instancia WhatsApp Web nao encontrada.');
     }
 
+    // --- Event dedup: skip if already processed (single-message events only) ---
+    // Batch events (messages.batch) rely on per-message externalMessageId dedup
+    // inside processIncomingPayload, so we skip event-level dedup for them.
+    if (payload.event === 'message.inbound') {
+      try {
+        const dedupKey = this.eventDedup.buildKey([
+          payload.event,
+          payload.instanceId ?? instanceId,
+          payload.timestamp ?? Date.now().toString(),
+          String((payload.data as Record<string, unknown>)?.messageId ?? ''),
+        ]);
+
+        const isDuplicate = await this.eventDedup.isDuplicate(instanceId, dedupKey);
+        if (isDuplicate) {
+          this.logger.debug(
+            `Skipping duplicate event ${payload.event} for instance ${instanceId}`,
+          );
+          return { success: true, event: payload.event, instanceId, duplicate: true };
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Event dedup check failed for instance ${instanceId}, proceeding with processing: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // --- Connection state machine transitions ---
+    try {
+      await this.transitionConnectionState(instanceId, payload.event, instance.workspaceId);
+    } catch (error) {
+      this.logger.debug(
+        `Connection state transition skipped for ${payload.event}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
     const webhookEvent = await this.prisma.whatsAppWebhookEvent.create({
       data: {
         workspaceId: instance.workspaceId,
@@ -296,6 +338,14 @@ export class WhatsAppWebService {
       });
 
       await this.incrementHistorySyncProgress(instance.id, privateMessages);
+    }
+
+    if (payload.event === 'history.sync.progress') {
+      const progress = this.readHistorySyncProgressPayload(payload.data);
+
+      if (progress) {
+        await this.updateHistorySyncProgressSnapshot(instance.id, progress);
+      }
     }
 
     if (payload.event === 'message.status') {
@@ -389,6 +439,8 @@ export class WhatsAppWebService {
           isStatus: payload.isStatus === true,
           isGroupMsg: payload.isGroupMsg === true,
           isPrivateChat: payload.isPrivateChat !== false,
+          isArchivedChat:
+            payload.isArchivedChat === true || payload.archived === true,
           fromMe: isFromMe,
           broadcast: payload.broadcast === true,
           messageType: typeof payload.type === 'string' ? payload.type : null,
@@ -578,6 +630,34 @@ export class WhatsAppWebService {
         provider: instance.provider,
       },
     });
+  }
+
+  /**
+   * Maps gateway event names to connection manager state transitions.
+   * Invalid transitions are silently skipped (logged at debug level).
+   */
+  private async transitionConnectionState(
+    instanceId: string,
+    eventName: string,
+    workspaceId: string,
+  ): Promise<void> {
+    const stateMap: Record<string, string> = {
+      'qr.updated': 'waiting_scan',
+      'session.ready': 'scanned',
+      'session.connected': 'connected',
+      'session.disconnected': 'disconnected',
+      'auth.failure': 'failed',
+    };
+
+    const targetState = stateMap[eventName];
+    if (!targetState) return;
+
+    await this.connectionManager.transition(
+      instanceId,
+      targetState as any,
+      { event: eventName },
+      workspaceId,
+    );
   }
 
   private resolveGatewayCallbackUrl() {
@@ -770,6 +850,9 @@ export class WhatsAppWebService {
           ...this.readHistorySyncJob(providerMetadata),
           status: 'COMPLETED',
           finishedAt: new Date().toISOString(),
+          totalChats: historySync.chatsEligible,
+          processedChats: historySync.chatsEligible,
+          progressPercent: 100,
           messagesProcessed: historySync.messagesDiscovered,
           inboundMessages: historySync.inboundMessages,
           outboundMessages: historySync.outboundMessages,
@@ -913,6 +996,9 @@ export class WhatsAppWebService {
 
   private async markHistorySyncStarted(instanceId: string, trigger: string) {
     const initialProgress = {
+      totalChats: null,
+      processedChats: 0,
+      progressPercent: 0,
       messagesProcessed: 0,
       inboundMessages: 0,
       outboundMessages: 0,
@@ -1015,6 +1101,7 @@ export class WhatsAppWebService {
   private readHistorySyncJobCount(
     historySyncJob: Record<string, unknown> | null,
     key:
+      | 'processedChats'
       | 'messagesProcessed'
       | 'inboundMessages'
       | 'outboundMessages'
@@ -1024,14 +1111,81 @@ export class WhatsAppWebService {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
   }
 
+  private readHistorySyncJobNullableCount(
+    historySyncJob: Record<string, unknown> | null,
+    key: 'totalChats',
+  ) {
+    const value = historySyncJob?.[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
+  private readProgressCounter(value: unknown) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return null;
+    }
+
+    return Math.floor(value);
+  }
+
+  private calculateHistorySyncProgressPercent(progress: {
+    totalChats?: number | null;
+    processedChats: number;
+  }) {
+    if (
+      typeof progress.totalChats !== 'number' ||
+      !Number.isFinite(progress.totalChats) ||
+      progress.totalChats <= 0
+    ) {
+      return 0;
+    }
+
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round((progress.processedChats / progress.totalChats) * 100),
+      ),
+    );
+  }
+
   private buildRunningHistorySyncDetail(progress: {
+    totalChats?: number | null;
+    processedChats?: number;
+    progressPercent?: number;
     messagesProcessed: number;
     inboundMessages: number;
     outboundMessages: number;
     mediaMessages: number;
   }) {
+    if (typeof progress.totalChats !== 'number') {
+      const baseDetail =
+        `Mapeando conversas privadas do WhatsApp Web. ${progress.messagesProcessed} mensagens carregadas ate agora ` +
+        `(${progress.outboundMessages} enviadas, ${progress.inboundMessages} recebidas).`;
+
+      if (progress.mediaMessages <= 0) {
+        return baseDetail;
+      }
+
+      return `${baseDetail} ${progress.mediaMessages} contem midia.`;
+    }
+
+    if (progress.totalChats <= 0) {
+      return 'Nenhuma conversa privada encontrada. Finalizando sincronizacao.';
+    }
+
+    const processedChats = Math.min(
+      progress.processedChats ?? 0,
+      progress.totalChats,
+    );
+    const progressPercent =
+      typeof progress.progressPercent === 'number'
+        ? progress.progressPercent
+        : this.calculateHistorySyncProgressPercent({
+            totalChats: progress.totalChats,
+            processedChats,
+          });
     const baseDetail =
-      `Sincronizando historico do WhatsApp Web: ${progress.messagesProcessed} mensagens carregadas ate agora ` +
+      `Sincronizando historico do WhatsApp Web: ${processedChats}/${progress.totalChats} conversas processadas (${progressPercent}%) e ${progress.messagesProcessed} mensagens carregadas ate agora ` +
       `(${progress.outboundMessages} enviadas, ${progress.inboundMessages} recebidas).`;
 
     if (progress.mediaMessages <= 0) {
@@ -1066,7 +1220,16 @@ export class WhatsAppWebService {
         return providerMetadata ?? {};
       }
 
+      const totalChats = this.readHistorySyncJobNullableCount(
+        historySyncJob,
+        'totalChats',
+      );
       const nextProgress = {
+        totalChats,
+        processedChats: this.readHistorySyncJobCount(
+          historySyncJob,
+          'processedChats',
+        ),
         messagesProcessed:
           this.readHistorySyncJobCount(historySyncJob, 'messagesProcessed') +
           batchProgress.messagesProcessed,
@@ -1080,14 +1243,80 @@ export class WhatsAppWebService {
           this.readHistorySyncJobCount(historySyncJob, 'mediaMessages') +
           batchProgress.mediaMessages,
       };
+      const progressPercent = this.calculateHistorySyncProgressPercent(
+        nextProgress,
+      );
 
       return {
         ...(providerMetadata ?? {}),
         historySyncJob: {
           ...historySyncJob,
           ...nextProgress,
+          progressPercent,
           lastBatchAt: new Date().toISOString(),
-          detail: this.buildRunningHistorySyncDetail(nextProgress),
+          detail: this.buildRunningHistorySyncDetail({
+            ...nextProgress,
+            progressPercent,
+          }),
+        },
+      };
+    });
+  }
+
+  private readHistorySyncProgressPayload(
+    payload: Record<string, unknown>,
+  ): WhatsAppWebGatewayHistorySyncProgress | null {
+    const totalChats = this.readProgressCounter(payload.totalChats);
+    const processedChats = this.readProgressCounter(payload.processedChats);
+
+    if (totalChats === null || processedChats === null) {
+      return null;
+    }
+
+    return {
+      totalChats,
+      processedChats: Math.min(processedChats, totalChats),
+      messagesProcessed: this.readProgressCounter(payload.messagesProcessed) ?? 0,
+      inboundMessages: this.readProgressCounter(payload.inboundMessages) ?? 0,
+      outboundMessages: this.readProgressCounter(payload.outboundMessages) ?? 0,
+      mediaMessages: this.readProgressCounter(payload.mediaMessages) ?? 0,
+    };
+  }
+
+  private async updateHistorySyncProgressSnapshot(
+    instanceId: string,
+    progress: WhatsAppWebGatewayHistorySyncProgress,
+  ) {
+    await this.updateActiveInstanceProviderMetadata(instanceId, (providerMetadata) => {
+      const historySyncJob = this.readHistorySyncJob(providerMetadata);
+
+      if (historySyncJob?.status !== 'RUNNING') {
+        return providerMetadata ?? {};
+      }
+
+      const nextProgress = {
+        totalChats: progress.totalChats,
+        processedChats: progress.processedChats,
+        messagesProcessed: progress.messagesProcessed,
+        inboundMessages: progress.inboundMessages,
+        outboundMessages: progress.outboundMessages,
+        mediaMessages: progress.mediaMessages,
+      };
+      const progressPercent = this.calculateHistorySyncProgressPercent(
+        nextProgress,
+      );
+
+      return {
+        ...(providerMetadata ?? {}),
+        historySyncJob: {
+          ...historySyncJob,
+          ...nextProgress,
+          progressPercent,
+          lastProgressAt: new Date().toISOString(),
+          detail: this.buildRunningHistorySyncDetail({
+            ...nextProgress,
+            progressPercent,
+          }),
         },
       };
     });

@@ -8,11 +8,18 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
+type DialogContentProps = React.ComponentPropsWithoutRef<
+  typeof DialogPrimitive.Content
+> & {
+  hideCloseButton?: boolean;
+};
+
 export function DialogContent({
   className,
   children,
+  hideCloseButton = false,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
+}: DialogContentProps) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
@@ -24,9 +31,11 @@ export function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-3.5 top-3.5 z-10 rounded-full p-1.5 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground">
-          <X className="h-4 w-4" />
-        </DialogPrimitive.Close>
+        {hideCloseButton ? null : (
+          <DialogPrimitive.Close className="absolute right-3.5 top-3.5 z-10 rounded-full p-1.5 text-muted-foreground transition hover:bg-foreground/5 hover:text-foreground">
+            <X className="h-4 w-4" />
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );

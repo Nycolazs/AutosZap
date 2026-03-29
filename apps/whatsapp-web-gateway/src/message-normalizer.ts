@@ -137,6 +137,7 @@ export async function buildInboundMessageData(
     contact?: WhatsAppContactSnapshot | null;
     peerPhoneNumber?: string | null;
     contactProfilePictureUrl?: string | null;
+    isArchivedChat?: boolean;
   },
 ): Promise<Record<string, unknown>> {
   const contact =
@@ -201,6 +202,7 @@ export async function buildInboundMessageData(
     broadcast: message.broadcast ?? false,
     isGroupMsg: isWhatsAppGroupMessage(message),
     isPrivateChat: isWhatsAppPrivateChatMessage(message),
+    isArchivedChat: options?.isArchivedChat === true,
     hasMedia: message.hasMedia ?? false,
     voice: isVoiceMessage,
     durationSeconds:

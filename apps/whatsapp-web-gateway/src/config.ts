@@ -28,7 +28,25 @@ function readBoolean(value: string | undefined, fallback: boolean) {
   return fallback;
 }
 
+function loadLocalEnvFile() {
+  const candidates = [
+    path.join(process.cwd(), '.env'),
+    path.resolve(__dirname, '..', '.env'),
+  ];
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+
+    process.loadEnvFile(candidate);
+    return;
+  }
+}
+
 export async function loadGatewayConfig(): Promise<GatewayConfig> {
+  loadLocalEnvFile();
+
   const port = readNumber(process.env.PORT, 3001);
   const bindHost = process.env.BIND_HOST?.trim() || '0.0.0.0';
   const internalSecret = process.env.GATEWAY_SHARED_SECRET?.trim();

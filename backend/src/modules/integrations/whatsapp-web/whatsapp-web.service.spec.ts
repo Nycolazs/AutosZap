@@ -47,6 +47,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
   }
 
@@ -175,6 +178,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {
         processIncomingPayload: jest.fn(),
       } as never,
+      { isDuplicate: jest.fn().mockResolvedValue(false), buildKey: jest.fn().mockReturnValue('test-key') } as never,
+      { transition: jest.fn().mockResolvedValue({}) } as never,
+      {} as never,
     );
     const syncSpy = jest
       .spyOn(service as any, 'syncConnectedInstanceHistory')
@@ -246,6 +252,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {} as never,
       {} as never,
       messagingService as never,
+      { isDuplicate: jest.fn().mockResolvedValue(false), buildKey: jest.fn().mockReturnValue('test-key') } as never,
+      { transition: jest.fn().mockResolvedValue({}) } as never,
+      {} as never,
     );
 
     await privateApi(service).handleGatewayEventInTenantContext('instance-1', {
@@ -285,6 +294,18 @@ describe('WhatsAppWebService inbound event mapping', () => {
             body: 'Grupo',
             timestamp: 1710000002000,
           },
+          {
+            from: '5511777777777',
+            to: '5511888888888',
+            fromRaw: '5511777777777@c.us',
+            toRaw: '5511888888888@c.us',
+            remoteJid: '5511777777777@c.us',
+            isArchivedChat: true,
+            messageId: 'wamid.archived.1',
+            type: 'text',
+            body: 'Arquivada',
+            timestamp: 1710000003000,
+          },
         ],
         statuses: [],
       },
@@ -318,6 +339,89 @@ describe('WhatsAppWebService inbound event mapping', () => {
             mediaMessages: 0,
             detail: expect.stringContaining('3 mensagens carregadas'),
             lastBatchAt: expect.any(String),
+          }),
+        }),
+      },
+    });
+  });
+
+  it('persists chat-level qr history sync progress emitted by the gateway', async () => {
+    const prisma = {
+      instance: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'instance-1',
+            workspaceId: 'workspace-1',
+            providerMetadata: null,
+          })
+          .mockResolvedValueOnce({
+            providerMetadata: {
+              historySyncJob: {
+                status: 'RUNNING',
+                totalChats: null,
+                processedChats: 0,
+                messagesProcessed: 1,
+                inboundMessages: 1,
+                outboundMessages: 0,
+                mediaMessages: 0,
+              },
+            },
+          }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      whatsAppWebhookEvent: {
+        create: jest.fn().mockResolvedValue({
+          id: 'webhook-1',
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const service = new WhatsAppWebService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        processIncomingPayload: jest.fn(),
+      } as never,
+      { isDuplicate: jest.fn().mockResolvedValue(false), buildKey: jest.fn().mockReturnValue('test-key') } as never,
+      { transition: jest.fn().mockResolvedValue({}) } as never,
+      {} as never,
+    );
+
+    await privateApi(service).handleGatewayEventInTenantContext('instance-1', {
+      instanceId: 'instance-1',
+      event: 'history.sync.progress',
+      data: {
+        totalChats: 5,
+        processedChats: 2,
+        messagesProcessed: 14,
+        inboundMessages: 8,
+        outboundMessages: 6,
+        mediaMessages: 3,
+      },
+    });
+
+    expect(prisma.instance.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'instance-1',
+        deletedAt: null,
+      },
+      data: {
+        providerMetadata: expect.objectContaining({
+          historySyncJob: expect.objectContaining({
+            status: 'RUNNING',
+            totalChats: 5,
+            processedChats: 2,
+            progressPercent: 40,
+            messagesProcessed: 14,
+            inboundMessages: 8,
+            outboundMessages: 6,
+            mediaMessages: 3,
+            detail: expect.stringContaining('2/5 conversas processadas'),
+            lastProgressAt: expect.any(String),
           }),
         }),
       },
@@ -378,6 +482,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {} as never,
       gatewayClient as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
 
     await service.getConnectionState('workspace-1', 'instance-1');
@@ -430,6 +537,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {} as never,
       gatewayClient as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     );
 
     await service.getConnectionState('workspace-1', 'instance-1');
@@ -462,6 +572,9 @@ describe('WhatsAppWebService inbound event mapping', () => {
       {} as never,
       {} as never,
       gatewayClient as never,
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
     );
 

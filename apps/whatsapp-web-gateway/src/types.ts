@@ -15,6 +15,7 @@ export type GatewayEventName =
   | "session.connected"
   | "session.disconnected"
   | "auth.failure"
+  | "history.sync.progress"
   | "message.inbound"
   | "messages.batch"
   | "message.status";
@@ -98,4 +99,13 @@ export type HistorySyncResult = {
     chatId?: string;
     message: string;
   }>;
+};
+
+export type HistorySyncProgress = {
+  totalChats: number;
+  processedChats: number;
+  messagesProcessed: number;
+  inboundMessages: number;
+  outboundMessages: number;
+  mediaMessages: number;
 };

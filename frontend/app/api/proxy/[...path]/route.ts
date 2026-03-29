@@ -130,15 +130,10 @@ async function handler(request: NextRequest, context: RouteContext) {
       responseHeaders.set('X-Accel-Buffering', 'no');
     }
 
-    const proxyResponse = isEventStream
-      ? new NextResponse(response.body, {
-          status: response.status,
-          headers: responseHeaders,
-        })
-      : new NextResponse(await response.arrayBuffer(), {
-          status: response.status,
-          headers: responseHeaders,
-        });
+    const proxyResponse = new NextResponse(response.body, {
+      status: response.status,
+      headers: responseHeaders,
+    });
 
     if (nextAccessToken) {
       proxyResponse.cookies.set(ACCESS_COOKIE, nextAccessToken, {

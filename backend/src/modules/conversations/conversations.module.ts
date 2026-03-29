@@ -12,6 +12,8 @@ import { ConversationRemindersService } from './conversation-reminders.service';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 import { MessagesController } from './messages.controller';
+import { MessagesCursorController } from './messages-cursor.controller';
+import { MessagesCursorService } from './messages-cursor.service';
 import { QuickMessagesController } from './quick-messages.controller';
 import { QuickMessagesService } from './quick-messages.service';
 
@@ -28,15 +30,17 @@ import { QuickMessagesService } from './quick-messages.service';
   controllers: [
     ConversationsController,
     MessagesController,
+    MessagesCursorController,
     ConversationRemindersController,
     QuickMessagesController,
   ],
   providers: [
     ConversationsService,
+    MessagesCursorService,
     ConversationRemindersService,
     ConversationReminderAutomationService,
     QuickMessagesService,
   ],
-  exports: [ConversationsService],
+  exports: [ConversationsService, MessagesCursorService],
 })
 export class ConversationsModule {}

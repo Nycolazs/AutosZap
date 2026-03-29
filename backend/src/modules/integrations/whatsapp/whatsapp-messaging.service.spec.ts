@@ -352,6 +352,46 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     expect(result).toBe(true);
   });
 
+  it('marks archived payloads as ignorable before persistence', () => {
+    const { service } = createService();
+
+    const result = (service as any).shouldIgnoreInboundMessage({
+      externalMessageId: 'wamid.archived.1',
+      metadata: {
+        providerMessageContext: {
+          isArchivedChat: true,
+          isPrivateChat: true,
+          remoteJid: '5511999999999@c.us',
+          fromRaw: '5511999999999@c.us',
+          toRaw: '5511888888888@c.us',
+        },
+      },
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('marks empty notification_template payloads as ignorable before persistence', () => {
+    const { service } = createService();
+
+    const result = (service as any).shouldIgnoreInboundMessage({
+      externalMessageId: 'wamid.notification-template.1',
+      messageType: 'notification_template',
+      body: '   ',
+      metadata: {
+        providerMessageContext: {
+          isPrivateChat: true,
+          remoteJid: '5511999999999@c.us',
+          fromRaw: '5511999999999@c.us',
+          toRaw: '5511888888888@c.us',
+          messageType: 'notification_template',
+        },
+      },
+    });
+
+    expect(result).toBe(true);
+  });
+
   it('does not persist empty quote objects when merging duplicate qr metadata', async () => {
     const { service, prisma } = createService();
 
@@ -698,6 +738,73 @@ describe('WhatsAppMessagingService contact and conversation resolution', () => {
     expect(recipient).toBe('163144450211915@lid');
   });
 
+  it('keeps looking past the latest 25 conversation items when a qr auto-reply needs the private peer jid', async () => {
+    const { service, prisma } = createService();
+
+    prisma.conversationMessage.findMany.mockResolvedValue([
+      ...Array.from({ length: 30 }).map((_, index) => ({
+        externalMessageId: `status-${index}`,
+        metadata: {
+          providerMessageContext: {
+            remoteJid: 'status@broadcast',
+            fromRaw: 'status@broadcast',
+            toRaw: '558585712528@c.us',
+            fromMe: false,
+            isPrivateChat: false,
+          },
+        },
+      })),
+      {
+        externalMessageId: 'false_163144450211915@lid_3A11269E65ACF3E5F81B',
+        metadata: {
+          providerMessageContext: {
+            remoteJid: '163144450211915@lid',
+            fromRaw: '163144450211915@lid',
+            toRaw: '558585712528@c.us',
+            fromMe: false,
+            isPrivateChat: true,
+          },
+        },
+      },
+    ]);
+
+    const recipient = await (service as any).resolveConversationRecipient({
+      conversation: {
+        id: 'conv-qr-automation-1',
+        workspaceId: 'ws-1',
+        instanceId: 'instance-1',
+        contact: {
+          id: 'contact-1',
+          name: 'Rafael Nunes',
+          phone: '+5542999792797',
+        },
+      },
+      instanceId: 'instance-1',
+      config: {
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        provider: InstanceProvider.WHATSAPP_WEB,
+        mode: InstanceMode.PRODUCTION,
+      },
+      transport: {} as never,
+    });
+
+    expect(prisma.conversationMessage.findMany).toHaveBeenCalledWith({
+      where: {
+        conversationId: 'conv-qr-automation-1',
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 200,
+      select: {
+        externalMessageId: true,
+        metadata: true,
+      },
+    });
+    expect(recipient).toBe('163144450211915@lid');
+  });
+
   it('falls back to the contact phone when no private qr peer jid is available', async () => {
     const { service, prisma } = createService();
 
@@ -869,5 +976,49 @@ describe('WhatsAppMessagingService qr history ingestion', () => {
       (service as any).maybeSendInteractiveMenuReply,
     ).not.toHaveBeenCalled();
     expect((service as any).maybeSendAutomaticReply).not.toHaveBeenCalled();
+  });
+
+  it('ignores empty notification_template qr messages before creating ghost conversations', async () => {
+    const { service, prisma, conversationWorkflowService } = createService();
+
+    prisma.instance.findFirst.mockResolvedValue({
+      id: 'instance-1',
+      workspaceId: 'ws-1',
+      provider: InstanceProvider.WHATSAPP_WEB,
+    });
+
+    await service.processIncomingPayload({
+      historical: true,
+      messages: [
+        {
+          instanceId: 'instance-1',
+          from: '5511999999999',
+          profileName: 'Contato 6400',
+          externalMessageId: 'wamid.notification-template.ghost',
+          messageType: 'notification_template',
+          body: '   ',
+          timestamp: String(Math.floor(Date.now() / 1000)),
+          metadata: {
+            providerMessageContext: {
+              fromMe: false,
+              isPrivateChat: true,
+              messageType: 'notification_template',
+              remoteJid: '5511999999999@c.us',
+              fromRaw: '5511999999999@c.us',
+              toRaw: '5511888888888@c.us',
+            },
+          },
+        },
+      ],
+      statuses: [],
+    });
+
+    expect((service as any).ensureContact).not.toHaveBeenCalled();
+    expect((service as any).ensureConversation).not.toHaveBeenCalled();
+    expect(prisma.conversationMessage.create).not.toHaveBeenCalled();
+    expect(prisma.instance.update).not.toHaveBeenCalled();
+    expect(
+      conversationWorkflowService.registerInboundActivity,
+    ).not.toHaveBeenCalled();
   });
 });

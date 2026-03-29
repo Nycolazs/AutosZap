@@ -45,6 +45,8 @@ import { getWhatsAppProviderCapabilities } from './whatsapp-provider-capabilitie
 import { WhatsAppMediaStorageService } from './whatsapp-media-storage.service';
 import { WhatsAppWebTransportProvider } from '../whatsapp-web/whatsapp-web.transport-provider';
 
+const QR_RECIPIENT_LOOKBACK_LIMIT = 200;
+
 type InteractiveMenuNodeRecord = {
   id: string;
   parentId: string | null;
@@ -600,7 +602,7 @@ export class WhatsAppMessagingService {
     for (const inbound of payload.messages) {
       if (this.shouldIgnoreInboundMessage(inbound)) {
         this.logger.warn(
-          `Webhook inbound ignorado: ${inbound.externalMessageId || 'sem-id'} marcado como status ou thread nao privada do WhatsApp.`,
+          `Webhook inbound ignorado: ${inbound.externalMessageId || 'sem-id'} marcado como payload nao elegivel do WhatsApp.`,
         );
         continue;
       }
@@ -1127,7 +1129,7 @@ export class WhatsAppMessagingService {
       orderBy: {
         createdAt: 'desc',
       },
-      take: 25,
+      take: QR_RECIPIENT_LOOKBACK_LIMIT,
       select: {
         externalMessageId: true,
         metadata: true,
@@ -2664,6 +2666,8 @@ export class WhatsAppMessagingService {
 
   private shouldIgnoreInboundMessage(payload: {
     externalMessageId?: string;
+    messageType?: string;
+    body?: string;
     metadata?: Record<string, unknown>;
   }) {
     const providerMessageContext = this.readProviderMessageContext(
@@ -2671,6 +2675,10 @@ export class WhatsAppMessagingService {
     );
 
     if (this.isNonPrivateExternalMessageId(payload.externalMessageId)) {
+      return true;
+    }
+
+    if (this.isIgnorableNotificationTemplateMessage(payload)) {
       return true;
     }
 
@@ -2686,6 +2694,7 @@ export class WhatsAppMessagingService {
     );
 
     return (
+      providerMessageContext.isArchivedChat === true ||
       providerMessageContext.isPrivateChat === false ||
       providerMessageContext.isStatus === true ||
       providerMessageContext.isGroupMsg === true ||
@@ -2702,6 +2711,33 @@ export class WhatsAppMessagingService {
       this.isGroupJid(providerMessageContext.fromRaw) ||
       this.isGroupJid(providerMessageContext.toRaw)
     );
+  }
+
+  private isIgnorableNotificationTemplateMessage(payload: {
+    messageType?: string;
+    body?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const providerMessageContext = this.readProviderMessageContext(
+      payload.metadata,
+    );
+    const messageType = this.pickString(
+      payload.messageType,
+      providerMessageContext?.messageType,
+    );
+
+    if (messageType !== 'notification_template') {
+      return false;
+    }
+
+    const body = typeof payload.body === 'string' ? payload.body.trim() : '';
+
+    if (body) {
+      return false;
+    }
+
+    const metadata = this.toRecord(payload.metadata);
+    return this.toRecord(metadata?.media) === null;
   }
 
   private readProviderMessageContext(metadata?: Record<string, unknown>) {
@@ -2828,10 +2864,14 @@ export class WhatsAppMessagingService {
 
   private shouldIgnoreStoredConversationMessage(message: {
     externalMessageId?: string | null;
+    messageType?: string | null;
+    content?: string | null;
     metadata?: Prisma.JsonValue | null;
   }) {
     return this.shouldIgnoreInboundMessage({
       externalMessageId: message.externalMessageId ?? undefined,
+      messageType: message.messageType ?? undefined,
+      body: message.content ?? undefined,
       metadata: this.toRecord(message.metadata) ?? undefined,
     });
   }

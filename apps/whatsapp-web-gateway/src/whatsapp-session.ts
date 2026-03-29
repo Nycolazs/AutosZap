@@ -19,6 +19,7 @@ import {
 import type {
   GatewayCallbackEnvelope,
   GatewayEventName,
+  HistorySyncProgress,
   HistorySyncResult,
   InstanceState,
   SendResult,
@@ -524,8 +525,17 @@ export class WhatsAppSession {
     }
 
     result.chatsEligible = eligibleChats.length;
+    await this.emitHistorySyncProgress({
+      totalChats: result.chatsEligible,
+      processedChats: 0,
+      messagesProcessed: 0,
+      inboundMessages: 0,
+      outboundMessages: 0,
+      mediaMessages: 0,
+    });
 
     const syncedChatIds = new Set<string>();
+    let processedChats = 0;
     let pendingChats = eligibleChats;
 
     for (
@@ -559,11 +569,23 @@ export class WhatsAppSession {
             pass + 1 < HISTORY_SYNC_MAX_RECURSIVE_PASSES
           ) {
             nextPendingChats.push(chat);
+          } else {
+            processedChats += 1;
           }
         } catch (error) {
           result.errors.push({
             chatId: chatId ?? undefined,
             message: normalizeSyncError(error),
+          });
+          processedChats += 1;
+        } finally {
+          await this.emitHistorySyncProgress({
+            totalChats: result.chatsEligible,
+            processedChats,
+            messagesProcessed: result.messagesDiscovered,
+            inboundMessages: result.inboundMessages,
+            outboundMessages: result.outboundMessages,
+            mediaMessages: result.mediaMessages,
           });
         }
       }
@@ -577,6 +599,14 @@ export class WhatsAppSession {
     const finishedAt = new Date();
     result.finishedAt = finishedAt.toISOString();
     result.durationMs = finishedAt.getTime() - startedAt.getTime();
+    await this.emitHistorySyncProgress({
+      totalChats: result.chatsEligible,
+      processedChats: result.chatsEligible,
+      messagesProcessed: result.messagesDiscovered,
+      inboundMessages: result.inboundMessages,
+      outboundMessages: result.outboundMessages,
+      mediaMessages: result.mediaMessages,
+    });
 
     return result;
   }
@@ -622,6 +652,12 @@ export class WhatsAppSession {
       retryPass?: boolean;
     },
   ) {
+    if (isArchivedChat(chat)) {
+      return {
+        shouldRetry: false,
+      };
+    }
+
     this.assertHistorySyncActive();
     await chat.syncHistory().catch(() => false);
     this.assertHistorySyncActive();
@@ -653,6 +689,7 @@ export class WhatsAppSession {
           contact: contactContext.contact ?? contact,
           peerPhoneNumber: contactContext.peerPhoneNumber,
           contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
+          isArchivedChat: isArchivedChat(chat),
         },
       );
       const normalizedWithMedia =
@@ -663,6 +700,10 @@ export class WhatsAppSession {
               "history-sync",
             )
           : normalized;
+
+      if (this.shouldIgnoreNormalizedInboundPayload(normalizedWithMedia)) {
+        continue;
+      }
 
       if (!options?.retryPass) {
         result.messagesDiscovered += 1;
@@ -676,17 +717,6 @@ export class WhatsAppSession {
         if (normalizedWithMedia.hasMedia === true) {
           result.mediaMessages += 1;
         }
-      }
-
-      if (normalizedWithMedia.hasMedia === true) {
-        this.assertHistorySyncActive();
-        await this.flushHistoryBatch(batch, result);
-        await this.emit("messages.batch", {
-          messages: [normalizedWithMedia],
-          statuses: [],
-        });
-        result.messagesEmitted += 1;
-        continue;
       }
 
       batch.push(normalizedWithMedia);
@@ -719,6 +749,25 @@ export class WhatsAppSession {
 
     if (!media || !message.hasMedia) {
       return payload;
+    }
+
+    if (downloadStrategy === "history-sync") {
+      const mimeType =
+        typeof media.mimeType === "string" ? media.mimeType : null;
+      const fileName =
+        typeof media.fileName === "string" ? media.fileName : null;
+
+      return {
+        ...payload,
+        media: {
+          ...media,
+          isBase64: false,
+          downloadStrategy: "session",
+          downloadError: null,
+        },
+        mimeType: mimeType ?? undefined,
+        fileName: fileName ?? undefined,
+      };
     }
 
     try {
@@ -897,18 +946,22 @@ export class WhatsAppSession {
         contact,
       );
 
-      await this.emit(
-        "message.inbound",
-        await this.materializeMessageMediaPayload(
-          message,
-          await buildInboundMessageData(this.options.instanceId, message, {
-            contact: contactContext.contact ?? contact,
-            peerPhoneNumber: contactContext.peerPhoneNumber,
-            contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
-          }),
-          "realtime",
-        ),
+      const normalizedWithMedia = await this.materializeMessageMediaPayload(
+        message,
+        await buildInboundMessageData(this.options.instanceId, message, {
+          contact: contactContext.contact ?? contact,
+          peerPhoneNumber: contactContext.peerPhoneNumber,
+          contactProfilePictureUrl: contactContext.contactProfilePictureUrl,
+          isArchivedChat: isArchivedChat(chat),
+        }),
+        "realtime",
       );
+
+      if (this.shouldIgnoreNormalizedInboundPayload(normalizedWithMedia)) {
+        return;
+      }
+
+      await this.emit("message.inbound", normalizedWithMedia);
     });
 
     client.on("message_ack", async (message: Message, ack: number) => {
@@ -1068,6 +1121,39 @@ export class WhatsAppSession {
     });
 
     result.messagesEmitted += payload.length;
+  }
+
+  private shouldIgnoreNormalizedInboundPayload(payload: Record<string, unknown>) {
+    return (
+      payload.isArchivedChat === true ||
+      payload.isPrivateChat === false ||
+      payload.isGroupMsg === true ||
+      payload.isStatus === true ||
+      this.isIgnorableNotificationTemplatePayload(payload) ||
+      (payload.broadcast === true && payload.type === "broadcast_notification")
+    );
+  }
+
+  private isIgnorableNotificationTemplatePayload(
+    payload: Record<string, unknown>,
+  ) {
+    if (payload.type !== "notification_template") {
+      return false;
+    }
+
+    const body = typeof payload.body === "string" ? payload.body.trim() : "";
+    return body.length === 0 && payload.hasMedia !== true;
+  }
+
+  private async emitHistorySyncProgress(progress: HistorySyncProgress) {
+    await this.emit("history.sync.progress", {
+      totalChats: progress.totalChats,
+      processedChats: Math.min(progress.processedChats, progress.totalChats),
+      messagesProcessed: progress.messagesProcessed,
+      inboundMessages: progress.inboundMessages,
+      outboundMessages: progress.outboundMessages,
+      mediaMessages: progress.mediaMessages,
+    });
   }
 
   private scheduleReconnect() {

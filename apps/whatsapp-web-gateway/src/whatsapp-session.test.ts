@@ -143,23 +143,33 @@ test("syncs private chat history and includes inbound and outbound messages", as
   assert.equal(result.inboundMessages, 1);
   assert.equal(result.outboundMessages, 1);
   assert.equal(result.errors.length, 0);
-  assert.equal(emittedEvents.length, 1);
-  assert.equal(emittedEvents[0]?.event, "messages.batch");
+  const batchEvent = emittedEvents.find((event) => event.event === "messages.batch");
+  const progressEvents = emittedEvents.filter(
+    (event) => event.event === "history.sync.progress",
+  );
+  assert.ok(batchEvent);
+  assert.equal(progressEvents.length, 3);
 
-  const payload = emittedEvents[0]?.data as
+  const payload = batchEvent?.data as
     | { messages?: Array<Record<string, unknown>> }
+    | undefined;
+  const lastProgress = progressEvents.at(-1)?.data as
+    | { processedChats?: number; totalChats?: number }
     | undefined;
 
   assert.equal(payload?.messages?.length, 2);
   assert.equal(payload?.messages?.[0]?.fromMe, false);
   assert.equal(payload?.messages?.[1]?.fromMe, true);
+  assert.equal(lastProgress?.processedChats, 1);
+  assert.equal(lastProgress?.totalChats, 1);
 });
 
-test("downloads historical qr media so old chat attachments can be persisted", async () => {
+test("keeps historical qr media lightweight so old chat attachments do not block sync", async () => {
   const emittedEvents: Array<Record<string, unknown>> = [];
   const session = createSession(async (_instanceId, event) => {
     emittedEvents.push(event as Record<string, unknown>);
   }) as any;
+  let downloadCalls = 0;
 
   session.ensureClientReady = async () => ({
     getChats: async () => [
@@ -193,12 +203,15 @@ test("downloads historical qr media so old chat attachments can be persisted", a
               filename: "historia.jpg",
               size: 5,
             },
-            downloadMedia: async () => ({
-              data: "aGVsbG8=",
-              mimetype: "image/jpeg",
-              filename: "historia.jpg",
-              filesize: 5,
-            }),
+            downloadMedia: async () => {
+              downloadCalls += 1;
+              return {
+                data: "aGVsbG8=",
+                mimetype: "image/jpeg",
+                filename: "historia.jpg",
+                filesize: 5,
+              };
+            },
             getContact: async () => null,
           },
         ],
@@ -209,18 +222,19 @@ test("downloads historical qr media so old chat attachments can be persisted", a
   const result = await session.syncHistory();
 
   assert.equal(result.mediaMessages, 1);
-  assert.equal(emittedEvents.length, 1);
+  assert.equal(downloadCalls, 0);
 
-  const payload = emittedEvents[0]?.data as
+  const batchEvent = emittedEvents.find((event) => event.event === "messages.batch");
+  const payload = batchEvent?.data as
     | { messages?: Array<Record<string, unknown>> }
     | undefined;
   const message = payload?.messages?.[0];
   const media = message?.media as Record<string, unknown> | undefined;
 
   assert.equal(message?.hasMedia, true);
-  assert.equal(media?.dataBase64, "aGVsbG8=");
-  assert.equal(media?.downloadStrategy, "history-sync");
-  assert.equal(media?.isBase64, true);
+  assert.equal(media?.dataBase64, undefined);
+  assert.equal(media?.downloadStrategy, "session");
+  assert.equal(media?.isBase64, false);
 });
 
 test("cancels qr history sync when the session is stopped", async () => {
@@ -339,9 +353,8 @@ test("resolves @lid contacts to a brazilian phone and avatar during qr history s
   const result = await session.syncHistory();
 
   assert.equal(result.messagesEmitted, 1);
-  assert.equal(emittedEvents.length, 1);
-
-  const payload = emittedEvents[0]?.data as
+  const batchEvent = emittedEvents.find((event) => event.event === "messages.batch");
+  const payload = batchEvent?.data as
     | { messages?: Array<Record<string, unknown>> }
     | undefined;
 
@@ -440,20 +453,19 @@ test("recursively retries qr chat enrichment until phone and avatar become avail
   assert.equal(result.messagesDiscovered, 1);
   assert.equal(result.messagesEmitted, 2);
   assert.equal(lidLookupCalls, 2);
-  assert.equal(emittedEvents.length, 2);
+  const batchPayloads = emittedEvents
+    .filter((event) => event.event === "messages.batch")
+    .map((event) => event.data as { messages?: Array<Record<string, unknown>> });
 
-  const firstPayload = emittedEvents[0]?.data as
-    | { messages?: Array<Record<string, unknown>> }
-    | undefined;
-  const lastPayload = emittedEvents[1]?.data as
-    | { messages?: Array<Record<string, unknown>> }
-    | undefined;
-
-  assert.notEqual(firstPayload?.messages?.[0]?.contactPhone, "5511987654321");
-  assert.equal(firstPayload?.messages?.[0]?.contactProfilePictureUrl, null);
-  assert.equal(lastPayload?.messages?.[0]?.contactPhone, "5511987654321");
+  assert.equal(batchPayloads.length, 2);
+  assert.notEqual(
+    batchPayloads[0]?.messages?.[0]?.contactPhone,
+    "5511987654321",
+  );
+  assert.equal(batchPayloads[0]?.messages?.[0]?.contactProfilePictureUrl, null);
+  assert.equal(batchPayloads[1]?.messages?.[0]?.contactPhone, "5511987654321");
   assert.equal(
-    lastPayload?.messages?.[0]?.contactProfilePictureUrl,
+    batchPayloads[1]?.messages?.[0]?.contactProfilePictureUrl,
     "https://cdn.example.com/bianca.jpg",
   );
 });
@@ -521,7 +533,8 @@ test("falls back to the cached profile picture thumb when direct qr avatar URLs 
 
   await session.syncHistory();
 
-  const payload = emittedEvents[0]?.data as
+  const batchEvent = emittedEvents.find((event) => event.event === "messages.batch");
+  const payload = batchEvent?.data as
     | { messages?: Array<Record<string, unknown>> }
     | undefined;
 
@@ -599,7 +612,74 @@ test("skips archived private chats during qr history sync", async () => {
   assert.equal(result.chatsSynced, 1);
   assert.equal(result.messagesDiscovered, 1);
   assert.equal(result.messagesEmitted, 1);
-  assert.equal(emittedEvents.length, 1);
+  assert.equal(
+    emittedEvents.filter((event) => event.event === "messages.batch").length,
+    1,
+  );
+});
+
+test("skips empty notification_template payloads during qr history sync", async () => {
+  const emittedEvents: Array<Record<string, unknown>> = [];
+  const session = createSession(async (_instanceId, event) => {
+    emittedEvents.push(event as Record<string, unknown>);
+  }) as any;
+
+  session.ensureClientReady = async () => ({
+    getChats: async () => [
+      {
+        id: {
+          _serialized: "5511999999999@c.us",
+        },
+        archived: false,
+        syncHistory: async () => true,
+        getContact: async () => null,
+        fetchMessages: async () => [
+          {
+            id: {
+              _serialized: "wamid.notification-template.1",
+              remote: "5511999999999@c.us",
+            },
+            from: "5511999999999@c.us",
+            to: "5511888888888@c.us",
+            body: "",
+            type: "notification_template",
+            timestamp: 1710000000,
+            hasMedia: false,
+            fromMe: false,
+            ack: 0,
+            getContact: async () => null,
+          },
+          {
+            id: {
+              _serialized: "wamid.real-message.1",
+              remote: "5511999999999@c.us",
+            },
+            from: "5511999999999@c.us",
+            to: "5511888888888@c.us",
+            body: "Mensagem real",
+            type: "chat",
+            timestamp: 1710000001,
+            hasMedia: false,
+            fromMe: false,
+            ack: 0,
+            getContact: async () => null,
+          },
+        ],
+      },
+    ],
+  });
+
+  const result = await session.syncHistory();
+
+  const batchEvent = emittedEvents.find((event) => event.event === "messages.batch");
+  const payload = batchEvent?.data as
+    | { messages?: Array<Record<string, unknown>> }
+    | undefined;
+
+  assert.equal(result.messagesDiscovered, 1);
+  assert.equal(result.messagesEmitted, 1);
+  assert.equal(payload?.messages?.length, 1);
+  assert.equal(payload?.messages?.[0]?.messageId, "wamid.real-message.1");
 });
 
 test("ignores realtime messages from archived private chats", async () => {
@@ -630,6 +710,41 @@ test("ignores realtime messages from archived private chats", async () => {
     ack: 0,
     getChat: async () => ({
       archived: true,
+    }),
+    getContact: async () => null,
+  });
+
+  assert.equal(emittedEvents.length, 0);
+});
+
+test("ignores realtime messages from group chats", async () => {
+  const emittedEvents: Array<Record<string, unknown>> = [];
+  const session = createSession(async (_instanceId, event) => {
+    emittedEvents.push(event as Record<string, unknown>);
+  }) as any;
+  const handlers: Record<string, (...args: Array<any>) => Promise<void>> = {};
+
+  session.attachEvents({
+    on(event: string, handler: (...args: Array<any>) => Promise<void>) {
+      handlers[event] = handler;
+    },
+  });
+
+  await handlers.message_create?.({
+    id: {
+      _serialized: "wamid.group.realtime.1",
+      remote: "120363025570111111@g.us",
+    },
+    from: "120363025570111111@g.us",
+    to: "5511888888888@c.us",
+    body: "Nao mostrar grupo",
+    type: "chat",
+    timestamp: 1710000000,
+    hasMedia: false,
+    fromMe: false,
+    ack: 0,
+    getChat: async () => ({
+      archived: false,
     }),
     getContact: async () => null,
   });

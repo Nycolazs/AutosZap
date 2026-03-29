@@ -9,6 +9,7 @@ describe('InstancesService embedded signup', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
       },
       conversationMessage: {
         findMany: jest.fn(),
@@ -173,6 +174,58 @@ describe('InstancesService embedded signup', () => {
     });
   });
 
+  it('permanently deletes a removed instance before creating another with the same name', async () => {
+    const { service, prisma } = createService();
+
+    prisma.instance.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'instance-removed',
+        workspaceId: 'ws-1',
+        deletedAt: new Date('2026-03-29T20:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'instance-new',
+        workspaceId: 'ws-1',
+        name: 'QR provisoria',
+        provider: 'WHATSAPP_WEB',
+        status: 'DISCONNECTED',
+        mode: 'DEV',
+        deletedAt: null,
+        _count: {
+          messages: 0,
+          conversations: 0,
+          campaigns: 0,
+        },
+      });
+    prisma.conversationMessage.findMany.mockResolvedValueOnce([]);
+    prisma.instance.create.mockResolvedValue({
+      id: 'instance-new',
+    });
+
+    const result = await service.create('ws-1', 'user-1', {
+      name: 'QR provisoria',
+      provider: 'WHATSAPP_WEB' as never,
+    });
+
+    expect(prisma.instance.delete).toHaveBeenCalledWith({
+      where: { id: 'instance-removed' },
+    });
+    expect(prisma.instance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: 'ws-1',
+        createdById: 'user-1',
+        name: 'QR provisoria',
+      }),
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'instance-new',
+        name: 'QR provisoria',
+      }),
+    );
+  });
+
   it('removes locally stored media paths when deleting an instance', async () => {
     const { service, prisma } = createService();
     const mediaStorageService = (service as any).mediaStorageService as {
@@ -223,9 +276,8 @@ describe('InstancesService embedded signup', () => {
       'ws-1',
       'instance-1',
     );
-    expect(prisma.instance.update).toHaveBeenCalledWith({
+    expect(prisma.instance.delete).toHaveBeenCalledWith({
       where: { id: 'instance-1' },
-      data: { deletedAt: expect.any(Date) },
     });
   });
 
@@ -254,5 +306,120 @@ describe('InstancesService embedded signup', () => {
         name: 'Atendimento Comercial',
       }),
     ).rejects.toThrow('Ja existe uma instancia com este nome.');
+  });
+
+  it('permanently deletes a removed instance that blocks a rename', async () => {
+    const { service, prisma } = createService();
+
+    prisma.instance.findFirst
+      .mockResolvedValueOnce({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        name: 'QR provisoria',
+        provider: 'WHATSAPP_WEB',
+        status: 'CONNECTED',
+        mode: 'PRODUCTION',
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'instance-removed',
+        workspaceId: 'ws-1',
+        deletedAt: new Date('2026-03-29T20:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'instance-1',
+        workspaceId: 'ws-1',
+        name: 'Atendimento Comercial',
+        provider: 'WHATSAPP_WEB',
+        status: 'CONNECTED',
+        mode: 'PRODUCTION',
+        deletedAt: null,
+        _count: {
+          messages: 0,
+          conversations: 0,
+          campaigns: 0,
+        },
+      });
+    prisma.conversationMessage.findMany.mockResolvedValueOnce([]);
+
+    const result = await service.update('instance-1', 'ws-1', {
+      name: 'Atendimento Comercial',
+    });
+
+    expect(prisma.instance.delete).toHaveBeenCalledWith({
+      where: { id: 'instance-removed' },
+    });
+    expect(prisma.instance.update).toHaveBeenCalledWith({
+      where: { id: 'instance-1' },
+      data: expect.objectContaining({
+        name: 'Atendimento Comercial',
+      }),
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'instance-1',
+        name: 'Atendimento Comercial',
+      }),
+    );
+  });
+
+  it('does not reuse a removed embedded-signup instance and deletes it permanently', async () => {
+    const { service, prisma } = createService({
+      META_WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'default-verify-token',
+    });
+    const axiosGetSpy = jest.spyOn(axios, 'get');
+
+    axiosGetSpy
+      .mockResolvedValueOnce({
+        data: {
+          access_token: 'business-token-789',
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          display_phone_number: '+55 85 97777-6666',
+          verified_name: 'AutosZap Oficina',
+        },
+      } as never);
+
+    prisma.instance.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'instance-removed',
+        workspaceId: 'ws-1',
+        createdById: 'user-old',
+        deletedAt: new Date('2026-03-29T20:00:00.000Z'),
+        webhookVerifyTokenEncrypted: 'enc:legacy-verify-token',
+      })
+      .mockResolvedValueOnce(null);
+    prisma.conversationMessage.findMany.mockResolvedValueOnce([]);
+    prisma.instance.create.mockResolvedValue({
+      id: 'instance-new',
+    });
+
+    const result = await service.createFromEmbeddedSignup('ws-1', 'user-1', {
+      code: 'fungible-code',
+      phoneNumberId: 'phone-789',
+      wabaId: 'waba-789',
+    });
+
+    expect(result).toEqual({
+      instanceId: 'instance-new',
+      reusedExistingInstance: false,
+    });
+    expect(prisma.instance.delete).toHaveBeenCalledWith({
+      where: { id: 'instance-removed' },
+    });
+    expect(prisma.instance.update).not.toHaveBeenCalled();
+    expect(prisma.instance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workspaceId: 'ws-1',
+        createdById: 'user-1',
+        phoneNumberId: 'phone-789',
+        businessAccountId: 'waba-789',
+        webhookVerifyTokenEncrypted: 'enc:default-verify-token',
+      }),
+    });
   });
 });

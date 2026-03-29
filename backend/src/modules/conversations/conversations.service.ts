@@ -812,6 +812,7 @@ export class ConversationsService {
 
     const conditions: Prisma.ConversationWhereInput[] = [accessWhere];
 
+    conditions.push(this.buildNonEmptyConversationWhere());
     conditions.push(this.buildPrivateConversationOnlyWhere());
     conditions.push(this.buildActiveInboxInstanceWhere());
 
@@ -876,6 +877,14 @@ export class ConversationsService {
           },
         },
       ],
+    };
+  }
+
+  private buildNonEmptyConversationWhere(): Prisma.ConversationWhereInput {
+    return {
+      messages: {
+        some: {},
+      },
     };
   }
 

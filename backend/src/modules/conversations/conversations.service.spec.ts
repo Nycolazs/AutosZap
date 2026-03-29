@@ -166,6 +166,7 @@ describe('ConversationsService list', () => {
     const prisma = {
       conversation: {
         findMany: jest.fn(),
+        count: jest.fn(),
         groupBy: jest.fn(),
       },
       $transaction: jest.fn((operations: Array<Promise<unknown>>) =>
@@ -380,6 +381,52 @@ describe('ConversationsService list', () => {
             ]),
           },
         },
+      }),
+    );
+  });
+
+  it('filters empty conversations without messages from inbox queries', async () => {
+    const { service, prisma } = createService();
+
+    prisma.conversation.findMany.mockResolvedValue([]);
+    prisma.conversation.count.mockResolvedValue(0);
+
+    await service.list(
+      {
+        sub: 'seller-1',
+        workspaceId: 'ws-1',
+        role: 'SELLER',
+      } as never,
+      {
+        page: 1,
+        limit: 50,
+      },
+    );
+
+    expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              messages: {
+                some: {},
+              },
+            },
+          ]),
+        }),
+      }),
+    );
+    expect(prisma.conversation.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              messages: {
+                some: {},
+              },
+            },
+          ]),
+        }),
       }),
     );
   });

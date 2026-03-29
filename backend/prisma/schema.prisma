@@ -194,6 +194,10 @@ enum InstanceStatus {
   DISCONNECTED
   ERROR
   SYNCING
+  GENERATING_QR
+  WAITING_SCAN
+  SCANNED
+  RECONNECTING
 }
 
 enum InstanceMode {
@@ -288,6 +292,8 @@ model Workspace {
   quickMessages        QuickMessage[]
   quickMessageUsages   QuickMessageUsage[]
   autoResponseMenus    AutoResponseMenu[]
+  syncCursors          SyncCursor[]
+  eventProcessingKeys  EventProcessingKey[]
 }
 
 model User {
@@ -658,6 +664,7 @@ model ConversationMessage {
   sentAt            DateTime?
   deliveredAt       DateTime?
   readAt            DateTime?
+  externalTimestamp DateTime?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
   workspace         Workspace               @relation(fields: [workspaceId], references: [id])
@@ -1072,6 +1079,9 @@ model Instance {
   profilePictureUrl           String?
   profilePictureUpdatedAt     DateTime?
   lastSyncAt                  DateTime?
+  connectionState             Json?
+  syncState                   Json?
+  sessionPersistedAt          DateTime?
   createdAt                   DateTime                @default(now())
   updatedAt                   DateTime                @updatedAt
   deletedAt                   DateTime?
@@ -1082,6 +1092,8 @@ model Instance {
   campaigns                   Campaign[]
   webhookEvents               WhatsAppWebhookEvent[]
   deliveryStatuses            MessageDeliveryStatus[]
+  syncCursors                 SyncCursor[]
+  eventProcessingKeys         EventProcessingKey[]
 
   @@unique([workspaceId, name])
   @@unique([workspaceId, externalInstanceId])
@@ -1190,4 +1202,38 @@ model AutoResponseMenuNode {
 
   @@index([menuId])
   @@index([parentId])
+}
+
+model SyncCursor {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  instanceId    String
+  cursorType    String
+  chatId        String?
+  cursorValue   String
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id])
+  instance      Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, cursorType, chatId])
+  @@index([workspaceId, instanceId])
+}
+
+model EventProcessingKey {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  instanceId    String
+  eventKey      String
+  processedAt   DateTime @default(now())
+  expiresAt     DateTime
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id])
+  instance      Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, eventKey])
+  @@index([expiresAt])
+  @@index([workspaceId, instanceId])
 }

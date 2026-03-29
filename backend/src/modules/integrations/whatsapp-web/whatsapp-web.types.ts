@@ -63,6 +63,15 @@ export type WhatsAppWebGatewayHistorySyncResult = {
   }>;
 };
 
+export type WhatsAppWebGatewayHistorySyncProgress = {
+  totalChats: number;
+  processedChats: number;
+  messagesProcessed: number;
+  inboundMessages: number;
+  outboundMessages: number;
+  mediaMessages: number;
+};
+
 export type WhatsAppWebGatewayMessageBatchPayload = {
   messages?: Array<Record<string, unknown>>;
   statuses?: Array<Record<string, unknown>>;

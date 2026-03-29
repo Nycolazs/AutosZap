@@ -117,10 +117,16 @@ export class InstancesService {
   }
 
   async create(workspaceId: string, actorId: string, payload: InstancePayload) {
+    const normalizedName = payload.name.trim();
+
+    if (!normalizedName) {
+      throw new BadRequestException('Informe um nome para a instancia.');
+    }
+
     const existing = await this.prisma.instance.findFirst({
       where: {
         workspaceId,
-        name: payload.name,
+        name: normalizedName,
         deletedAt: null,
       },
     });
@@ -132,9 +138,9 @@ export class InstancesService {
     const deletedInstance = await this.prisma.instance.findFirst({
       where: {
         workspaceId,
-        name: payload.name,
-        NOT: {
-          deletedAt: null,
+        name: normalizedName,
+        deletedAt: {
+          not: null,
         },
       },
       orderBy: {
@@ -143,41 +149,14 @@ export class InstancesService {
     });
 
     if (deletedInstance) {
-      await this.prisma.instance.update({
-        where: { id: deletedInstance.id },
-        data: {
-          deletedAt: null,
-          createdById: actorId,
-          name: payload.name,
-          provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
-          status: payload.status ?? InstanceStatus.DISCONNECTED,
-          mode: payload.mode ?? InstanceMode.DEV,
-          externalInstanceId: payload.externalInstanceId,
-          appId: payload.appId,
-          phoneNumber: payload.phoneNumber,
-          businessAccountId: payload.businessAccountId,
-          phoneNumberId: payload.phoneNumberId,
-          providerConfig: payload.providerConfig as never,
-          providerMetadata: payload.providerMetadata as never,
-          providerSessionState: payload.providerSessionState as never,
-          accessTokenEncrypted: this.cryptoService.encrypt(payload.accessToken),
-          webhookVerifyTokenEncrypted: this.cryptoService.encrypt(
-            payload.webhookVerifyToken,
-          ),
-          appSecretEncrypted: this.cryptoService.encrypt(payload.appSecret),
-          lastSyncAt:
-            payload.status === InstanceStatus.CONNECTED ? new Date() : null,
-        },
-      });
-
-      return this.findOne(deletedInstance.id, workspaceId);
+      await this.permanentlyDeleteInstance(deletedInstance);
     }
 
     const instance = await this.prisma.instance.create({
       data: {
         workspaceId,
         createdById: actorId,
-        name: payload.name,
+        name: normalizedName,
         provider: payload.provider ?? InstanceProvider.META_WHATSAPP,
         status: payload.status ?? InstanceStatus.DISCONNECTED,
         mode: payload.mode ?? InstanceMode.DEV,
@@ -240,8 +219,10 @@ export class InstancesService {
         where: {
           workspaceId,
           name: normalizedName,
+          deletedAt: {
+            not: null,
+          },
           NOT: {
-            deletedAt: null,
             id,
           },
         },
@@ -251,9 +232,7 @@ export class InstancesService {
       });
 
       if (deletedInstance) {
-        throw new BadRequestException(
-          'Ja existe uma instancia removida com este nome. Escolha outro nome.',
-        );
+        await this.permanentlyDeleteInstance(deletedInstance);
       }
     }
 
@@ -326,12 +305,7 @@ export class InstancesService {
       throw new NotFoundException('Instancia nao encontrada.');
     }
 
-    await this.deleteInstanceMediaFiles(instance.workspaceId, instance.id);
-
-    await this.prisma.instance.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    await this.permanentlyDeleteInstance(instance);
 
     return { success: true };
   }
@@ -404,11 +378,17 @@ export class InstancesService {
       instanceName = `WhatsApp ${payload.phoneNumberId}`;
     }
 
-    const existingInstance =
+    let existingInstance =
       await this.findEmbeddedSignupInstanceByPhoneNumberId(
         workspaceId,
         payload.phoneNumberId,
       );
+
+    if (existingInstance?.deletedAt) {
+      await this.permanentlyDeleteInstance(existingInstance);
+      existingInstance = null;
+    }
+
     const resolvedInstanceName = await this.resolveAvailableInstanceName(
       workspaceId,
       instanceName,
@@ -609,6 +589,17 @@ export class InstancesService {
       workspaceId,
       instanceId,
     );
+  }
+
+  private async permanentlyDeleteInstance(instance: {
+    id: string;
+    workspaceId: string;
+  }) {
+    await this.deleteInstanceMediaFiles(instance.workspaceId, instance.id);
+
+    await this.prisma.instance.delete({
+      where: { id: instance.id },
+    });
   }
 
   private extractMediaStoragePaths(metadata: unknown) {

@@ -169,6 +169,33 @@ test("includes private-chat markers for backend-side sync decisions", async () =
   assert.equal(payload.isPrivateChat, true);
 });
 
+test("includes archived markers so upstream persistence can reject archived chats", async () => {
+  const payload = await buildInboundMessageData(
+    "instance-1",
+    {
+      id: {
+        _serialized: "wamid.archived.1",
+        remote: "5511999999999@c.us",
+      },
+      from: "5511999999999@c.us",
+      to: "5511888888888@c.us",
+      body: "Mensagem arquivada",
+      type: "chat",
+      timestamp: 1710000000,
+      hasMedia: false,
+      fromMe: false,
+      ack: 0,
+      getContact: async () => null,
+    } as any,
+    {
+      isArchivedChat: true,
+    },
+  );
+
+  assert.equal(payload.isPrivateChat, true);
+  assert.equal(payload.isArchivedChat, true);
+});
+
 test("marks qr voice notes with audio metadata that the inbox can render correctly", async () => {
   const payload = await buildInboundMessageData("instance-1", {
     id: {

@@ -100,6 +100,13 @@ type InstanceHistorySyncJob = {
   finishedAt?: string | null;
   trigger?: string | null;
   detail?: string | null;
+  totalChats?: number | null;
+  processedChats?: number | null;
+  messagesProcessed?: number | null;
+  inboundMessages?: number | null;
+  outboundMessages?: number | null;
+  mediaMessages?: number | null;
+  progressPercent?: number | null;
 };
 
 const DEFAULT_PROVIDER_CAPABILITIES: Record<
@@ -272,6 +279,10 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function readHistorySyncJobNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function getInstanceHistorySyncJob(instance: Instance): InstanceHistorySyncJob | null {
   const providerMetadata = toRecord(instance.providerMetadata);
   const historySyncJob = toRecord(providerMetadata?.historySyncJob);
@@ -304,6 +315,13 @@ function getInstanceHistorySyncJob(instance: Instance): InstanceHistorySyncJob |
       typeof historySyncJob.trigger === 'string' ? historySyncJob.trigger : null,
     detail:
       typeof historySyncJob.detail === 'string' ? historySyncJob.detail : null,
+    totalChats: readHistorySyncJobNumber(historySyncJob.totalChats),
+    processedChats: readHistorySyncJobNumber(historySyncJob.processedChats),
+    messagesProcessed: readHistorySyncJobNumber(historySyncJob.messagesProcessed),
+    inboundMessages: readHistorySyncJobNumber(historySyncJob.inboundMessages),
+    outboundMessages: readHistorySyncJobNumber(historySyncJob.outboundMessages),
+    mediaMessages: readHistorySyncJobNumber(historySyncJob.mediaMessages),
+    progressPercent: readHistorySyncJobNumber(historySyncJob.progressPercent),
   };
 }
 
@@ -313,6 +331,53 @@ function buildRunningHistorySyncJob(detail: string): InstanceHistorySyncJob {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     detail,
+    totalChats: null,
+    processedChats: 0,
+    messagesProcessed: 0,
+    inboundMessages: 0,
+    outboundMessages: 0,
+    mediaMessages: 0,
+    progressPercent: 0,
+  };
+}
+
+function getHistorySyncJobProgress(job: InstanceHistorySyncJob | null) {
+  if (!job) {
+    return {
+      totalChats: null,
+      processedChats: 0,
+      messagesProcessed: 0,
+      progressPercent: 0,
+    };
+  }
+
+  const totalChats =
+    typeof job.totalChats === 'number' && Number.isFinite(job.totalChats)
+      ? job.totalChats
+      : null;
+  const processedChats =
+    typeof job.processedChats === 'number' && Number.isFinite(job.processedChats)
+      ? job.processedChats
+      : 0;
+  const fallbackPercent =
+    totalChats && totalChats > 0
+      ? Math.round((Math.min(processedChats, totalChats) / totalChats) * 100)
+      : job.status === 'COMPLETED'
+        ? 100
+        : 0;
+  const progressPercent =
+    typeof job.progressPercent === 'number' && Number.isFinite(job.progressPercent)
+      ? Math.max(0, Math.min(100, job.progressPercent))
+      : fallbackPercent;
+
+  return {
+    totalChats,
+    processedChats: totalChats === null ? processedChats : Math.min(processedChats, totalChats),
+    messagesProcessed:
+      typeof job.messagesProcessed === 'number' && Number.isFinite(job.messagesProcessed)
+        ? job.messagesProcessed
+        : 0,
+    progressPercent,
   };
 }
 
@@ -523,23 +588,46 @@ export default function InstancesPage() {
   const [uploadingProfile, setUploadingProfile] = useState(false);
   const finalizingConnectedQrInstanceIdRef = useRef<string | null>(null);
   const createQrDialogOpenRef = useRef(false);
-  const activeQrConnectionInstance = useMemo(() => {
-    if (connectionDialogOpen) {
-      return selectedConnectionInstance;
-    }
-
-    return createQrDialogOpen ? createQrPreviewInstance : null;
-  }, [
-    connectionDialogOpen,
-    createQrDialogOpen,
-    createQrPreviewInstance,
-    selectedConnectionInstance,
-  ]);
 
   const instancesQuery = useQuery({
     queryKey: ['instances'],
     queryFn: () => apiRequest<Instance[]>('instances'),
   });
+  const createQrPreviewInstanceId = createQrPreviewInstance?.id ?? null;
+  const currentCreateQrPreviewInstance = useMemo(() => {
+    if (!createQrPreviewInstanceId) {
+      return null;
+    }
+
+    return (
+      instancesQuery.data?.find((instance) => instance.id === createQrPreviewInstanceId) ??
+      createQrPreviewInstance
+    );
+  }, [createQrPreviewInstance, createQrPreviewInstanceId, instancesQuery.data]);
+  const currentCreateQrHistorySyncJob = useMemo(
+    () =>
+      currentCreateQrPreviewInstance
+        ? getInstanceHistorySyncJob(currentCreateQrPreviewInstance)
+        : null,
+    [currentCreateQrPreviewInstance],
+  );
+  const currentCreateQrHistorySyncProgress = useMemo(
+    () => getHistorySyncJobProgress(currentCreateQrHistorySyncJob),
+    [currentCreateQrHistorySyncJob],
+  );
+  const createQrDialogSyncLocked = qrDialogSyncPhase === 'syncing';
+  const activeQrConnectionInstance = useMemo(() => {
+    if (connectionDialogOpen) {
+      return selectedConnectionInstance;
+    }
+
+    return createQrDialogOpen ? currentCreateQrPreviewInstance : null;
+  }, [
+    connectionDialogOpen,
+    createQrDialogOpen,
+    currentCreateQrPreviewInstance,
+    selectedConnectionInstance,
+  ]);
 
   const instances = useMemo(() => {
     const nextInstances = instancesQuery.data ?? [];
@@ -605,6 +693,29 @@ export default function InstancesPage() {
       window.clearInterval(intervalId);
     };
   }, [instancesQuery, qrSyncingInstanceIds]);
+
+  useEffect(() => {
+    if (
+      !createQrDialogOpen ||
+      !createQrPreviewInstanceId ||
+      qrDialogSyncPhase !== 'syncing'
+    ) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void instancesQuery.refetch();
+    }, 1500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    createQrDialogOpen,
+    createQrPreviewInstanceId,
+    instancesQuery,
+    qrDialogSyncPhase,
+  ]);
 
   const loadConnectionState = useCallback((instanceId: string) => {
     return apiRequest<InstanceConnectionState>(
@@ -784,6 +895,36 @@ export default function InstancesPage() {
     ]);
   }, [queryClient]);
 
+  useEffect(() => {
+    if (
+      !createQrDialogOpen ||
+      qrDialogSyncPhase !== 'syncing' ||
+      !currentCreateQrHistorySyncJob
+    ) {
+      return;
+    }
+
+    setQrDialogSyncDetail(currentCreateQrHistorySyncJob.detail ?? null);
+
+    if (currentCreateQrHistorySyncJob.status === 'COMPLETED') {
+      setQrDialogSyncPhase('done');
+      void clearConversationCaches();
+      return;
+    }
+
+    if (
+      currentCreateQrHistorySyncJob.status === 'FAILED' ||
+      currentCreateQrHistorySyncJob.status === 'CANCELED'
+    ) {
+      setQrDialogSyncPhase('failed');
+    }
+  }, [
+    clearConversationCaches,
+    createQrDialogOpen,
+    currentCreateQrHistorySyncJob,
+    qrDialogSyncPhase,
+  ]);
+
   const setInstanceHistorySyncJobInCache = useCallback(
     (instanceId: string, historySyncJob: InstanceHistorySyncJob) => {
       queryClient.setQueryData<Instance[]>(['instances'], (current) =>
@@ -812,45 +953,6 @@ export default function InstancesPage() {
     [queryClient],
   );
 
-  const triggerInitialQrHistorySync = useCallback((instanceId: string) => {
-    void (async () => {
-      try {
-        setInstanceHistorySyncJobInCache(
-          instanceId,
-          buildRunningHistorySyncJob(
-            'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
-          ),
-        );
-        await syncInstance(instanceId);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['instances'] }),
-          clearConversationCaches(),
-        ]);
-      } catch (error) {
-        if (isWhatsAppWebGatewayTimeoutError(error)) {
-          await queryClient.invalidateQueries({ queryKey: ['instances'] });
-          return;
-        }
-
-        if (isWhatsAppWebGatewaySyncCanceledError(error)) {
-          await queryClient.invalidateQueries({ queryKey: ['instances'] });
-          return;
-        }
-
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Instancia salva, mas nao foi possivel concluir a sincronizacao inicial.',
-        );
-      }
-    })();
-  }, [
-    clearConversationCaches,
-    queryClient,
-    setInstanceHistorySyncJobInCache,
-    syncInstance,
-  ]);
-
   async function runSyncAction(
     instance: Instance,
     options?: {
@@ -873,7 +975,7 @@ export default function InstancesPage() {
         setInstanceHistorySyncJobInCache(
           instance.id,
           buildRunningHistorySyncJob(
-            'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+            'Sincronizando conversas privadas do WhatsApp Web.',
           ),
         );
       }
@@ -991,7 +1093,7 @@ export default function InstancesPage() {
           setInstanceHistorySyncJobInCache(
             instance.id,
             buildRunningHistorySyncJob(
-              'Sincronizando conversas privadas e midias antigas do WhatsApp Web.',
+              'Sincronizando conversas privadas do WhatsApp Web.',
             ),
           );
           await syncInstance(instance.id);
@@ -1007,9 +1109,8 @@ export default function InstancesPage() {
             isWhatsAppWebGatewaySyncCanceledError(syncError)
           ) {
             await queryClient.invalidateQueries({ queryKey: ['instances'] });
-            setQrDialogSyncPhase('done');
             setQrDialogSyncDetail(
-              'Sincronizacao continua em segundo plano. As conversas apareceram em breve.',
+              'A sincronizacao segue em andamento. A barra avanca conforme as conversas forem processadas.',
             );
           } else {
             setQrDialogSyncPhase('failed');
@@ -1074,6 +1175,10 @@ export default function InstancesPage() {
   }, [queryClient]);
 
   const closeCreateQrDialog = useCallback(() => {
+    if (createQrDialogSyncLocked) {
+      return;
+    }
+
     const previewInstanceId = createQrPreviewInstance?.id ?? null;
 
     setCreateQrDialogOpen(false);
@@ -1088,6 +1193,7 @@ export default function InstancesPage() {
       });
     }
   }, [
+    createQrDialogSyncLocked,
     createQrPreviewInstance?.id,
     discardPendingQrDraftInstance,
     pendingQrDraftInstanceId,
@@ -2175,17 +2281,32 @@ export default function InstancesPage() {
             return;
           }
 
+          if (createQrDialogSyncLocked) {
+            return;
+          }
+
           closeCreateQrDialog();
         }}
       >
         <DialogContent
+          hideCloseButton={createQrDialogSyncLocked}
           className={
-            createQrPreviewInstance
+            currentCreateQrPreviewInstance
               ? 'sm:max-w-lg sm:h-[min(86dvh,760px)] sm:max-h-[min(86dvh,760px)] sm:overflow-hidden'
               : 'sm:max-w-lg'
           }
+          onEscapeKeyDown={(event) => {
+            if (createQrDialogSyncLocked) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (createQrDialogSyncLocked) {
+              event.preventDefault();
+            }
+          }}
         >
-          <DialogHeader className={createQrPreviewInstance ? 'shrink-0' : undefined}>
+          <DialogHeader className={currentCreateQrPreviewInstance ? 'shrink-0' : undefined}>
             <DialogTitle>
               {qrDialogSyncPhase === 'syncing'
                 ? 'Sincronizando historico'
@@ -2199,7 +2320,11 @@ export default function InstancesPage() {
             </DialogTitle>
             <DialogDescription>
               {qrDialogSyncPhase === 'syncing'
-                ? 'Buscando conversas privadas do WhatsApp Web. Isso pode levar alguns minutos.'
+                ? currentCreateQrHistorySyncProgress.totalChats === null
+                  ? 'Mapeando as conversas privadas do WhatsApp Web para iniciar a sincronizacao.'
+                  : currentCreateQrHistorySyncProgress.totalChats === 0
+                    ? 'Nenhuma conversa privada foi encontrada. Estamos finalizando a sincronizacao.'
+                    : `Processando ${currentCreateQrHistorySyncProgress.processedChats} de ${currentCreateQrHistorySyncProgress.totalChats} conversas privadas do WhatsApp Web.`
                 : qrDialogSyncPhase === 'done'
                   ? 'A instancia foi salva e o historico foi sincronizado com sucesso.'
                   : qrDialogSyncPhase === 'failed'
@@ -2210,7 +2335,7 @@ export default function InstancesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {createQrPreviewInstance ? (
+          {currentCreateQrPreviewInstance ? (
             <div className="space-y-4 sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:space-y-0 sm:gap-4">
               {qrDialogSyncPhase === 'idle' ? (
                 <div className="rounded-[24px] border border-border/70 bg-background-panel/55 p-4 sm:shrink-0">
@@ -2233,12 +2358,35 @@ export default function InstancesPage() {
                       Sincronizando conversas...
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Buscando historico de mensagens privadas do WhatsApp Web.
-                      Isso pode levar alguns minutos.
+                      {qrDialogSyncDetail ??
+                        'Buscando historico de mensagens privadas do WhatsApp Web.'}
                     </p>
                     <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-border">
-                      <div className="animate-sync-progress absolute inset-y-0 w-1/3 rounded-full bg-primary" />
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-primary transition-[width] duration-500 ease-out"
+                        style={{
+                          width: `${currentCreateQrHistorySyncProgress.progressPercent}%`,
+                        }}
+                      />
                     </div>
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                      <span>
+                        {currentCreateQrHistorySyncProgress.totalChats === null
+                          ? 'Preparando'
+                          : currentCreateQrHistorySyncProgress.totalChats === 0
+                            ? 'Nenhuma conversa'
+                            : `${currentCreateQrHistorySyncProgress.processedChats}/${currentCreateQrHistorySyncProgress.totalChats} conversas`}
+                      </span>
+                      <span>
+                        {currentCreateQrHistorySyncProgress.totalChats === null
+                          ? '0%'
+                          : `${currentCreateQrHistorySyncProgress.progressPercent}%`}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {currentCreateQrHistorySyncProgress.messagesProcessed}{' '}
+                      mensagens privadas carregadas ate agora.
+                    </p>
                   </div>
                 </div>
               ) : qrDialogSyncPhase === 'done' ? (
@@ -2334,15 +2482,9 @@ export default function InstancesPage() {
 
               <div className="flex flex-col gap-2 sm:shrink-0 sm:flex-row">
                 {qrDialogSyncPhase === 'syncing' ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setQrDialogSyncPhase('done');
-                      setQrDialogSyncDetail('Sincronizacao continua em segundo plano.');
-                    }}
-                  >
-                    Minimizar
+                  <Button type="button" variant="secondary" disabled>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sincronizando...
                   </Button>
                 ) : qrDialogSyncPhase === 'done' || qrDialogSyncPhase === 'failed' ? (
                   <Link href="/app/inbox">
@@ -2354,10 +2496,12 @@ export default function InstancesPage() {
                 ) : connectionState?.phase === 'CONNECTED' ? (
                   <Button
                     type="button"
-                    onClick={() => void finalizeConnectedQrInstance(createQrPreviewInstance)}
-                    disabled={instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}` || !createQrForm.name.trim()}
+                    onClick={() =>
+                      void finalizeConnectedQrInstance(currentCreateQrPreviewInstance)
+                    }
+                    disabled={instanceActionKey === `finalize-qr:${currentCreateQrPreviewInstance.id}` || !createQrForm.name.trim()}
                   >
-                    {instanceActionKey === `finalize-qr:${createQrPreviewInstance.id}` ? (
+                    {instanceActionKey === `finalize-qr:${currentCreateQrPreviewInstance.id}` ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Plus className="h-4 w-4" />
@@ -2369,10 +2513,10 @@ export default function InstancesPage() {
                     type="button"
                     variant="secondary"
                     onClick={() =>
-                      createQrPreviewInstance
+                      currentCreateQrPreviewInstance
                         ? void runQrAction(
-                            `refresh-qr:${createQrPreviewInstance.id}`,
-                            createQrPreviewInstance.id,
+                            `refresh-qr:${currentCreateQrPreviewInstance.id}`,
+                            currentCreateQrPreviewInstance.id,
                             'qr/refresh',
                           )
                         : undefined

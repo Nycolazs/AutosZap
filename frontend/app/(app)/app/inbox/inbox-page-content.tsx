@@ -330,9 +330,9 @@ function getConversationContactAvatarUrl(
 }
 
 function shouldShowConversationContactAvatar(
-  _conversation?: Pick<Conversation, "instance"> | null,
+  conversation?: Pick<Conversation, "instance"> | null,
 ) {
-  return true;
+  return isQrConversation(conversation);
 }
 
 function ConversationContactAvatar({
@@ -608,7 +608,7 @@ function getInboxHistorySyncJob(
 function getConversationSortTimestamp(conversation: Conversation) {
   return conversation.lastMessageAt
     ? new Date(conversation.lastMessageAt).getTime()
-    : new Date(conversation.createdAt).getTime();
+    : 0;
 }
 
 type InboxPageContentProps = {
