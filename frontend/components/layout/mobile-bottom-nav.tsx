@@ -80,7 +80,7 @@ export function MobileBottomNav({
 
   return (
     <>
-      <nav className="motion-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-border bg-[linear-gradient(180deg,rgba(5,16,29,0.95),rgba(4,13,25,0.98))] pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
+      <nav className="motion-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(5,16,29,0.95),rgba(4,13,25,0.98))] lg:hidden">
         <div className="grid grid-cols-5 gap-1 px-2">
           {visiblePrimary.map((item) => {
             const active = isRouteActive(pathname, item.href);
