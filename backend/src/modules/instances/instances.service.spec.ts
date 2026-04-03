@@ -11,6 +11,9 @@ describe('InstancesService embedded signup', () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
+      conversation: {
+        deleteMany: jest.fn(),
+      },
       conversationMessage: {
         findMany: jest.fn(),
       },
@@ -211,6 +214,12 @@ describe('InstancesService embedded signup', () => {
     expect(prisma.instance.delete).toHaveBeenCalledWith({
       where: { id: 'instance-removed' },
     });
+    expect(prisma.conversation.deleteMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'ws-1',
+        instanceId: 'instance-removed',
+      },
+    });
     expect(prisma.instance.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         workspaceId: 'ws-1',
@@ -278,6 +287,12 @@ describe('InstancesService embedded signup', () => {
     );
     expect(prisma.instance.delete).toHaveBeenCalledWith({
       where: { id: 'instance-1' },
+    });
+    expect(prisma.conversation.deleteMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'ws-1',
+        instanceId: 'instance-1',
+      },
     });
   });
 
@@ -410,6 +425,12 @@ describe('InstancesService embedded signup', () => {
     });
     expect(prisma.instance.delete).toHaveBeenCalledWith({
       where: { id: 'instance-removed' },
+    });
+    expect(prisma.conversation.deleteMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'ws-1',
+        instanceId: 'instance-removed',
+      },
     });
     expect(prisma.instance.update).not.toHaveBeenCalled();
     expect(prisma.instance.create).toHaveBeenCalledWith({

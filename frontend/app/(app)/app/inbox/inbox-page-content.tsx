@@ -4882,6 +4882,76 @@ function MediaLoadingSkeleton({
   );
 }
 
+function MediaUnavailableState({
+  title,
+  description,
+  rounded = "rounded-xl",
+  className,
+  style,
+  compact = false,
+}: {
+  title: string;
+  description: string;
+  rounded?: string;
+  className?: string;
+  style?: CSSProperties;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden border border-border/70 bg-[var(--surface-bubble-inbound)] shadow-[0_16px_32px_rgba(15,23,42,0.10)]",
+        rounded,
+        className,
+      )}
+      style={style}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(43,125,233,0.14),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(14,155,181,0.10),transparent_42%)]" />
+      <div
+        className={cn(
+          "relative flex h-full w-full items-center justify-center",
+          compact ? "px-3 py-4" : "px-5 py-6",
+        )}
+      >
+        <div
+          className={cn(
+            "flex flex-col items-center text-center",
+            compact ? "gap-2.5" : "max-w-[22rem] gap-3.5",
+          )}
+        >
+          <div
+            className={cn(
+              "flex items-center justify-center rounded-2xl border border-border/70 bg-background-elevated/80 text-[var(--text-link-blue)] shadow-[0_10px_22px_rgba(15,23,42,0.10)] backdrop-blur-sm",
+              compact ? "h-10 w-10" : "h-12 w-12",
+            )}
+          >
+            <Paperclip className={compact ? "h-4 w-4" : "h-5 w-5"} />
+          </div>
+          <div className="space-y-1.5">
+            <p
+              className={cn(
+                "font-semibold text-[var(--text-on-bubble)]",
+                compact ? "text-[11px]" : "text-sm",
+              )}
+            >
+              {title}
+            </p>
+            <p
+              className={cn(
+                "text-muted-foreground",
+                compact ? "text-[10px] leading-4" : "text-xs leading-5",
+              )}
+            >
+              {description}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useDeferredMediaLoad(rootMargin = "240px") {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(
@@ -4973,6 +5043,12 @@ function ImageMessagePreview({
       ? previewImageSize.width / previewImageSize.height
       : 4 / 3;
   const previewWidth = constrainedPreviewSize?.width ?? 300;
+  const previewFrameClassName =
+    "relative inline-block max-w-full overflow-hidden rounded-[22px] bg-black/10 align-top shadow-[0_14px_28px_rgba(15,23,42,0.08)]";
+  const previewFrameStyle = {
+    aspectRatio: `${previewAspectRatio}`,
+    width: `min(${previewWidth}px, calc(100vw - 7rem))`,
+  } satisfies CSSProperties;
 
   const clampPan = useCallback(
     (nextPan: { x: number; y: number }, nextZoom = zoom) => {
@@ -5095,6 +5171,15 @@ function ImageMessagePreview({
         ref={containerRef}
         className="relative h-32 w-32 overflow-hidden rounded-2xl sm:h-36 sm:w-36"
       >
+        {hasError ? (
+          <MediaUnavailableState
+            title="Figurinha indisponivel"
+            description="Essa midia nao esta disponivel no momento."
+            rounded="rounded-2xl"
+            className="h-full w-full"
+            compact
+          />
+        ) : null}
         {!isLoaded && !hasError && (
           <MediaLoadingSkeleton
             width="w-32 sm:w-36"
@@ -5102,7 +5187,7 @@ function ImageMessagePreview({
             rounded="rounded-2xl"
           />
         )}
-        {shouldRenderImage ? (
+        {shouldRenderImage && !hasError ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={src}
@@ -5113,8 +5198,12 @@ function ImageMessagePreview({
               "absolute inset-0 h-full w-full object-contain transition-opacity duration-300",
               isLoaded ? "opacity-100" : "opacity-0",
             )}
-            onLoad={() => setIsLoaded(true)}
+            onLoad={() => {
+              setHasError(false);
+              setIsLoaded(true);
+            }}
             onError={() => {
+              setPreviewImageSize({ width: 0, height: 0 });
               setHasError(true);
               setIsLoaded(true);
             }}
@@ -5131,52 +5220,56 @@ function ImageMessagePreview({
         className="max-w-full"
         data-prevent-message-quote="true"
       >
-        <button
-          type="button"
-          className="relative inline-block max-w-full overflow-hidden rounded-[22px] bg-black/10 align-top shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-          onClick={() => handleOpenChange(true)}
-          style={{
-            aspectRatio: `${previewAspectRatio}`,
-            width: `min(${previewWidth}px, calc(100vw - 7rem))`,
-          }}
-        >
-          {!isLoaded && !hasError && (
-            <MediaLoadingSkeleton
-              width="w-full"
-              height="h-full"
-              rounded="rounded-xl"
-            />
-          )}
-          {shouldRenderImage ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={src}
-              alt={alt}
-              loading="lazy"
-              decoding="async"
-              className={cn(
-                "absolute inset-0 h-full w-full object-contain transition-opacity duration-300",
-                isLoaded ? "opacity-100" : "opacity-0",
-              )}
-              onLoad={(event) => {
-                setPreviewImageSize({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight,
-                });
-                setIsLoaded(true);
-              }}
-              onError={() => {
-                setHasError(true);
-                setIsLoaded(true);
-              }}
-            />
-          ) : null}
-          {hasError ? (
-            <span className="absolute inset-0 flex items-center justify-center bg-foreground/60 px-4 text-center text-xs text-foreground/70">
-              Nao foi possivel carregar a imagem.
-            </span>
-          ) : null}
-        </button>
+        {hasError ? (
+          <MediaUnavailableState
+            title="Imagem indisponivel"
+            description="Nao foi possivel carregar essa midia agora."
+            rounded="rounded-[22px]"
+            className={previewFrameClassName}
+            style={previewFrameStyle}
+          />
+        ) : (
+          <button
+            type="button"
+            className={previewFrameClassName}
+            onClick={() => handleOpenChange(true)}
+            style={previewFrameStyle}
+          >
+            {!isLoaded && !hasError && (
+              <MediaLoadingSkeleton
+                width="w-full"
+                height="h-full"
+                rounded="rounded-xl"
+              />
+            )}
+            {shouldRenderImage ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={src}
+                alt={alt}
+                loading="lazy"
+                decoding="async"
+                className={cn(
+                  "absolute inset-0 h-full w-full object-contain transition-opacity duration-300",
+                  isLoaded ? "opacity-100" : "opacity-0",
+                )}
+                onLoad={(event) => {
+                  setHasError(false);
+                  setPreviewImageSize({
+                    width: event.currentTarget.naturalWidth,
+                    height: event.currentTarget.naturalHeight,
+                  });
+                  setIsLoaded(true);
+                }}
+                onError={() => {
+                  setPreviewImageSize({ width: 0, height: 0 });
+                  setHasError(true);
+                  setIsLoaded(true);
+                }}
+              />
+            ) : null}
+          </button>
+        )}
       </div>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-[min(100vw-1.5rem,1100px)] max-w-none flex-col overflow-hidden rounded-[24px] border border-foreground/10 bg-background/95 p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)]">
@@ -5271,13 +5364,24 @@ function ImageMessagePreview({
             }}
           >
             <div className="flex min-h-full min-w-full items-center justify-center">
-              {shouldRenderImage ? (
+              {hasError ? (
+                <MediaUnavailableState
+                  title="Imagem indisponivel"
+                  description="Nao foi possivel buscar essa midia no momento."
+                  rounded="rounded-[22px]"
+                  className="w-full max-w-[min(100%,720px)]"
+                />
+              ) : shouldRenderImage ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   ref={dialogImageRef}
                   src={src}
                   alt={alt}
                   onLoad={handleDialogImageLoad}
+                  onError={() => {
+                    setHasError(true);
+                    setIsLoaded(true);
+                  }}
                   className="max-h-[calc(100dvh-11rem)] max-w-[min(100%,900px)] select-none rounded-[18px] object-contain shadow-[0_20px_60px_rgba(0,0,0,0.45)] transition-transform duration-200"
                   draggable={false}
                   style={{
@@ -5525,20 +5629,12 @@ function VideoMessagePlayer({
 
         {/* Error state */}
         {hasError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">
-            <span className="text-[12px] text-white/78">
-              Erro ao carregar video
-            </span>
-            <a
-              href={src}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[12px] text-primary underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Abrir no navegador
-            </a>
-          </div>
+          <MediaUnavailableState
+            title="Video indisponivel"
+            description="Nao foi possivel carregar essa midia agora."
+            rounded={isFullscreen ? "rounded-none" : "rounded-[24px]"}
+            className="absolute inset-0"
+          />
         )}
 
         {/* Play button overlay (centered, shown when paused or no controls) */}
@@ -5831,9 +5927,13 @@ function VideoNoteMessagePlayer({
         ) : null}
 
         {hasError ? (
-          <span className="absolute inset-0 flex items-center justify-center px-8 text-center text-xs text-white/80">
-            Nao foi possivel carregar o video.
-          </span>
+          <MediaUnavailableState
+            title="Video indisponivel"
+            description="Essa midia nao esta disponivel no momento."
+            rounded="rounded-full"
+            className="absolute inset-0"
+            compact
+          />
         ) : null}
 
         {!hasError ? (

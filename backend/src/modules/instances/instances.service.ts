@@ -597,6 +597,13 @@ export class InstancesService {
   }) {
     await this.deleteInstanceMediaFiles(instance.workspaceId, instance.id);
 
+    await this.prisma.conversation.deleteMany({
+      where: {
+        workspaceId: instance.workspaceId,
+        instanceId: instance.id,
+      },
+    });
+
     await this.prisma.instance.delete({
       where: { id: instance.id },
     });

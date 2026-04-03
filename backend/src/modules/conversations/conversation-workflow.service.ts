@@ -193,18 +193,11 @@ export class ConversationWorkflowService {
 
   private buildActiveInboxInstanceWhere(): Prisma.ConversationWhereInput {
     return {
-      OR: [
-        {
-          instanceId: null,
+      instance: {
+        is: {
+          deletedAt: null,
         },
-        {
-          instance: {
-            is: {
-              deletedAt: null,
-            },
-          },
-        },
-      ],
+      },
     };
   }
 

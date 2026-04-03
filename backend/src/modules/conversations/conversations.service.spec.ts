@@ -106,24 +106,18 @@ describe('ConversationsService summary', () => {
           deletedAt: null,
         }),
         expect.objectContaining({
-          OR: [
-            {
-              instanceId: null,
+          instance: {
+            is: {
+              deletedAt: null,
             },
-            {
-              instance: {
-                is: {
-                  deletedAt: null,
-                },
-              },
-            },
-          ],
+          },
         }),
       ]),
     );
     expect(result).toEqual({
       ALL: 15,
-      NEW: 3,
+      OPEN: 3,
+      NEW: 0,
       IN_PROGRESS: 4,
       WAITING: 2,
       RESOLVED: 5,
@@ -259,17 +253,7 @@ describe('ConversationsService list', () => {
         tags: [],
       },
     ]);
-
-    prisma.conversation.groupBy.mockResolvedValue([
-      {
-        contactId: 'contact-1',
-        instanceId: 'instance-1',
-      },
-      {
-        contactId: 'contact-1',
-        instanceId: 'instance-2',
-      },
-    ]);
+    prisma.conversation.count.mockResolvedValue(2);
 
     const result = await service.list(
       {
@@ -286,15 +270,35 @@ describe('ConversationsService list', () => {
     expect(workflow.buildVisibilityWhere).toHaveBeenCalled();
     expect(prisma.conversation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        distinct: ['contactId'],
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              instance: {
+                is: {
+                  deletedAt: null,
+                },
+              },
+            }),
+          ]),
+        }),
         include: expect.objectContaining({
           instance: expect.any(Object),
         }),
       }),
     );
-    expect(prisma.conversation.groupBy).toHaveBeenCalledWith(
+    expect(prisma.conversation.count).toHaveBeenCalledWith(
       expect.objectContaining({
-        by: ['contactId'],
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              instance: {
+                is: {
+                  deletedAt: null,
+                },
+              },
+            }),
+          ]),
+        }),
       }),
     );
     expect(result.meta.total).toBe(2);
@@ -330,18 +334,11 @@ describe('ConversationsService list', () => {
               instanceId: 'instance-qr-1',
             }),
             expect.objectContaining({
-              OR: [
-                {
-                  instanceId: null,
+              instance: {
+                is: {
+                  deletedAt: null,
                 },
-                {
-                  instance: {
-                    is: {
-                      deletedAt: null,
-                    },
-                  },
-                },
-              ],
+              },
             }),
           ]),
         }),
@@ -544,18 +541,11 @@ describe('ConversationsService listInboxInstances', () => {
               deletedAt: null,
             }),
             expect.objectContaining({
-              OR: [
-                {
-                  instanceId: null,
+              instance: {
+                is: {
+                  deletedAt: null,
                 },
-                {
-                  instance: {
-                    is: {
-                      deletedAt: null,
-                    },
-                  },
-                },
-              ],
+              },
             }),
           ]),
         }),
@@ -671,18 +661,11 @@ describe('ConversationsService findOne', () => {
     expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [
-            {
-              instanceId: null,
+          instance: {
+            is: {
+              deletedAt: null,
             },
-            {
-              instance: {
-                is: {
-                  deletedAt: null,
-                },
-              },
-            },
-          ],
+          },
         }),
         include: expect.objectContaining({
           messages: expect.objectContaining({

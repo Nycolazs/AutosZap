@@ -139,18 +139,11 @@ describe('ConversationWorkflowService', () => {
     expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [
-            {
-              instanceId: null,
+          instance: {
+            is: {
+              deletedAt: null,
             },
-            {
-              instance: {
-                is: {
-                  deletedAt: null,
-                },
-              },
-            },
-          ],
+          },
         }),
       }),
     );
@@ -205,7 +198,7 @@ describe('ConversationWorkflowService', () => {
       changed: true,
       fromAssignedUserId: null,
       toAssignedUserId: 'seller-1',
-      fromStatus: ConversationStatus.NEW,
+      fromStatus: ConversationStatus.OPEN,
       toStatus: ConversationStatus.IN_PROGRESS,
     });
     const updateCalls = tx.conversation.update.mock.calls as Array<
